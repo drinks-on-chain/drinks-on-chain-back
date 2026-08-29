@@ -1,0 +1,46 @@
+# Compiled output
+/dist
+/build
+
+# Documentation
+docs/*
+
+# Node modules
+/node_modules
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# TypeScript cache
+*.tsbuildinfo
+
+# Coverage directory used by tools like istanbul
+coverage
+*.lcov
+
+# Prisma generated files
+/prisma/migrations/*_migration_lock.toml
+
+# IDE files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Docker volume data local
+postgres_data/
+redis_data/

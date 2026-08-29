@@ -1,0 +1,18 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// ⚠️ En la Fase 1 no se crean las 28 tablas del negocio para mantener el desarrollo incremental.
+// Se define un modelo de auditoría/sistema inicial para verificar la conectividad de la base de datos:
+model SystemHealth {
+  id        String   @id @default(uuid())
+  checkedAt DateTime @default(now()) @map("checked_at")
+  status    String   @default("OK")
+
+  @@map("system_health")
+}
