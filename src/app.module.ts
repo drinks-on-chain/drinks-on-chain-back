@@ -8,6 +8,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { UsersModule } from './modules/users/users.module';
+import { WineriesModule } from './modules/wineries/wineries.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsersModule } from './modules/users/users.module';
     WalletsModule,
     AuthModule,
     UsersModule,
+    WineriesModule,
   ],
 })
 export class AppModule implements NestModule {
