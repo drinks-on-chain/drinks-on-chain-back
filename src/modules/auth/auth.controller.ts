@@ -23,7 +23,7 @@ import { AuthResponseDto, AuthTokensDto } from './dto/auth-response.dto';
 import { Public } from './decorators/public.decorator';
 
 @ApiTags('Autenticación')
-@Controller('v1/auth')
+@Controller('auth')
 @UseGuards(ThrottlerGuard)
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

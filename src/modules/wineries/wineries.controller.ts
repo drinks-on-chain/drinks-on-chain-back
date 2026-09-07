@@ -41,7 +41,7 @@ import { UserRoleEnum } from '@prisma/client';
 @ApiTags('Bodegas y Productores')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
-@Controller('v1/wineries')
+@Controller('wineries')
 export class WineriesController {
   constructor(private readonly wineriesService: WineriesService) {}
 
