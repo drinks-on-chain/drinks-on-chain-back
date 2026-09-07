@@ -2,9 +2,11 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { CreateDistillationBatchDto } from '../dto/create-distillation-batch.dto';
 import { QueryProductionBatchesDto } from '../dto/query-production-batches.dto';
 import {
@@ -12,13 +14,17 @@ import {
   ProductionBatch,
   ProductionProcessEnum,
   RestStatusEnum,
+  BeverageTypeEnum,
 } from '@prisma/client';
 
 @Injectable()
 export class ProductionBatchesService {
   private readonly logger = new Logger(ProductionBatchesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly strategyFactory: TraceabilityStrategyFactory,
+  ) {}
 
   async createDistillationBatch(
     wineryId: string,
@@ -33,6 +39,20 @@ export class ProductionBatchesService {
       throw new NotFoundException(
         `Cuba de fermentación con ID ${dto.fermentationTankId} no encontrada en esta bodega`,
       );
+    }
+
+    // Validación D.O. si corresponde
+    if (dto.isDoEligible && tank.harvestBatch?.terroir) {
+      const strategy = this.strategyFactory.getStrategy(BeverageTypeEnum.SINGANI);
+      const validation = strategy.validatePlotAndHarvest(
+        tank.harvestBatch.terroir,
+        tank.harvestBatch,
+      );
+      if (!validation.isValid) {
+        throw new UnprocessableEntityException(
+          validation.errors.join('; ') || 'El lote no cumple con los requisitos D.O. para destilación',
+        );
+      }
     }
 
     // Validación de balance de masa si se proveen datos

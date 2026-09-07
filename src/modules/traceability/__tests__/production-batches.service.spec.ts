@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductionBatchesService } from '../services/production-batches.service';
+import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { Prisma, ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
@@ -51,12 +52,22 @@ describe('ProductionBatchesService', () => {
   };
 
   beforeEach(async () => {
+    const mockStrategyFactory = {
+      getStrategy: jest.fn().mockReturnValue({
+        validatePlotAndHarvest: jest.fn().mockReturnValue({ isValid: true, errors: [], warnings: [] }),
+      }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ProductionBatchesService,
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: TraceabilityStrategyFactory,
+          useValue: mockStrategyFactory,
         },
       ],
     }).compile();

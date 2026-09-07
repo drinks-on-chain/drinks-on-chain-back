@@ -48,7 +48,6 @@ export class TenantGuard implements CanActivate {
     // Extraer wineryId objetivo desde params, query o body si se especifica
     const targetWineryId =
       request.params?.wineryId ||
-      request.params?.id ||
       request.query?.wineryId ||
       request.body?.wineryId;
 
