@@ -9,6 +9,8 @@ import { AuthModule } from './modules/auth/auth.module';
 import { WalletsModule } from './modules/wallets/wallets.module';
 import { UsersModule } from './modules/users/users.module';
 import { WineriesModule } from './modules/wineries/wineries.module';
+import { TerroirsModule } from './modules/terroirs/terroirs.module';
+import { HarvestBatchesModule } from './modules/harvest-batches/harvest-batches.module';
 
 @Module({
   imports: [
@@ -25,6 +27,8 @@ import { WineriesModule } from './modules/wineries/wineries.module';
     AuthModule,
     UsersModule,
     WineriesModule,
+    TerroirsModule,
+    HarvestBatchesModule,
   ],
 })
 export class AppModule implements NestModule {
