@@ -75,6 +75,94 @@ enum WalletPurposeEnum {
 }
 
 // -----------------------------------------------------------------------------
+// ENUMS DE TRAZABILIDAD ERP (FASE 4)
+// -----------------------------------------------------------------------------
+enum PhytoStatusEnum {
+  PENDING_INSPECTION
+  APPROVED
+  REJECTED
+  QUARANTINE
+
+  @@map("phyto_status_enum")
+}
+
+enum DestinationTypeEnum {
+  WINE_AGING
+  SINGANI_DIST
+  BEER_MATURATION
+  SPIRITS_DIST
+  OTHER
+
+  @@map("destination_type_enum")
+}
+
+enum TankStatusEnum {
+  FILLING
+  FERMENTING
+  COMPLETED
+  TRANSFERRED
+  CLEANED
+
+  @@map("tank_status_enum")
+}
+
+enum TreatmentTypeEnum {
+  ACIDITY_CORRECTION
+  SO2_ADDITION
+  CLARIFICATION
+  FILTRATION_AID
+  NUTRIENT_ADDITION
+  ENZYME_ADDITION
+  OAK_CHIPS
+  FINING_AGENT
+  STABILIZATION
+  OTHER
+
+  @@map("treatment_type_enum")
+}
+
+enum AgingStatusEnum {
+  AGING
+  READY
+  BOTTLED
+  DISCARDED
+
+  @@map("aging_status_enum")
+}
+
+enum ProductionProcessEnum {
+  SINGANI_DISTILLATION
+  SPIRITS_DISTILLATION
+  BEER_MATURATION
+  SECONDARY_FERMENTATION
+  OTHER
+
+  @@map("production_process_enum")
+}
+
+enum RestStatusEnum {
+  NOT_REQUIRED
+  RESTING
+  READY
+  BOTTLED
+  DISCARDED
+
+  @@map("rest_status_enum")
+}
+
+enum BeverageTypeEnum {
+  WINE
+  SINGANI
+  BEER
+  SPIRITS
+  CIDER
+  MEAD
+  OTHER
+
+  @@map("beverage_type_enum")
+}
+
+// -----------------------------------------------------------------------------
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
@@ -92,9 +180,10 @@ model User {
   updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
-  wineryMemberships WineryMember[]
-  wallets           UserWallet[]
-  approvedWineries  Winery[]       @relation("ApprovedByUser")
+  wineryMemberships        WineryMember[]
+  wallets                  UserWallet[]
+  approvedWineries         Winery[]          @relation("ApprovedByUser")
+  recordedFermentationLogs FermentationLog[]
 
   @@map("users")
 }
@@ -124,9 +213,15 @@ model Winery {
   updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
-  approvedByUser User?          @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
-  members        WineryMember[]
-  wallets        UserWallet[]
+  approvedByUser    User?              @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  members           WineryMember[]
+  wallets           UserWallet[]
+  terroirs          Terroir[]
+  harvestBatches    HarvestBatch[]
+  fermentationTanks FermentationTank[]
+  wineAgingBatches  WineAgingBatch[]
+  productionBatches ProductionBatch[]
+  bottlingBatches   BottlingBatch[]
 
   @@map("wineries")
 }
@@ -142,8 +237,12 @@ model WineryMember {
   joinedAt                  DateTime             @default(now()) @map("joined_at") @db.Timestamptz(6)
 
   // Relaciones
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  winery Winery @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  user                    User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  winery                  Winery                @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  certifiedHarvestBatches HarvestBatch[]
+  authorizedTreatments    EnologicalTreatment[]
+  releasedBottlingBatches BottlingBatch[]
+  reviewedLabAnalyses     BatchLabAnalysis[]
 
   @@unique([userId, wineryId])
   @@map("winery_members")
@@ -165,4 +264,244 @@ model UserWallet {
   winery Winery? @relation(fields: [wineryId], references: [id], onDelete: SetNull)
 
   @@map("user_wallets")
+}
+
+// -----------------------------------------------------------------------------
+// ENTIDADES DE TRAZABILIDAD ERP (FASE 4)
+// -----------------------------------------------------------------------------
+model Terroir {
+  id                       String   @id @default(uuid()) @db.Uuid
+  wineryId                 String   @map("winery_id") @db.Uuid
+  parcelName               String   @map("parcel_name") @db.VarChar(200)
+  cadastreCode             String?  @map("cadastre_code") @db.VarChar(50)
+  surfaceHectares          Decimal  @map("surface_hectares") @db.Decimal(10, 4)
+  altitudeMasl             Decimal  @map("altitude_masl") @db.Decimal(8, 2)
+  latitude                 Decimal? @map("latitude") @db.Decimal(10, 8)
+  longitude                Decimal? @map("longitude") @db.Decimal(11, 8)
+  geographicPolygonGeojson Json?    @map("geographic_polygon_geojson")
+  rawMaterialType          String   @map("raw_material_type") @db.VarChar(100)
+  varietyName              String   @map("variety_name") @db.VarChar(200)
+  soilType                 String?  @map("soil_type") @db.VarChar(100)
+  irrigationSystem         String?  @map("irrigation_system") @db.VarChar(100)
+  isDoEligible             Boolean  @default(false) @map("is_do_eligible")
+  doType                   String?  @map("do_type") @db.VarChar(100)
+  doCertificateUrl         String?  @map("do_certificate_url") @db.VarChar(500)
+  isActive                 Boolean  @default(true) @map("is_active")
+  createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery         Winery         @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  harvestBatches HarvestBatch[]
+
+  @@map("terroirs")
+}
+
+model HarvestBatch {
+  id                    String          @id @default(uuid()) @db.Uuid
+  wineryId              String          @map("winery_id") @db.Uuid
+  terroirId             String          @map("terroir_id") @db.Uuid
+  harvestBatchCode      String          @unique @map("harvest_batch_code") @db.VarChar(50)
+  intakeDate            DateTime        @map("intake_date") @db.Date
+  harvestYear           Int             @map("harvest_year") @db.SmallInt
+  grossWeightKg         Decimal         @map("gross_weight_kg") @db.Decimal(12, 3)
+  tareWeightKg          Decimal         @map("tare_weight_kg") @db.Decimal(12, 3)
+  netWeightKg           Decimal         @map("net_weight_kg") @db.Decimal(12, 3)
+  brixDegrees           Decimal         @map("brix_degrees") @db.Decimal(5, 2)
+  initialPh             Decimal         @map("initial_ph") @db.Decimal(4, 2)
+  initialAcidityGl      Decimal         @map("initial_acidity_gl") @db.Decimal(6, 3)
+  temperatureAtIntakeC  Decimal?        @map("temperature_at_intake_c") @db.Decimal(5, 2)
+  phytosanitaryStatus   PhytoStatusEnum @default(PENDING_INSPECTION) @map("phytosanitary_status")
+  phytoInspectionPdfUrl String?         @map("phyto_inspection_pdf_url") @db.VarChar(500)
+  certifiedByMemberId   String?         @map("certified_by_member_id") @db.Uuid
+  notes                 String?         @db.Text
+  createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery            Winery             @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  terroir           Terroir            @relation(fields: [terroirId], references: [id], onDelete: Cascade)
+  certifiedByMember WineryMember?      @relation(fields: [certifiedByMemberId], references: [id], onDelete: SetNull)
+  fermentationTanks FermentationTank[]
+
+  @@map("harvest_batches")
+}
+
+model FermentationTank {
+  id                 String               @id @default(uuid()) @db.Uuid
+  wineryId           String               @map("winery_id") @db.Uuid
+  harvestBatchId     String               @map("harvest_batch_id") @db.Uuid
+  tankCode           String               @map("tank_code") @db.VarChar(50)
+  capacityLiters     Decimal?             @map("capacity_liters") @db.Decimal(12, 2)
+  material           String?              @db.VarChar(50)
+  volumeFilledLiters Decimal?             @map("volume_filled_liters") @db.Decimal(12, 2)
+  destinationType    DestinationTypeEnum? @map("destination_type")
+  status             TankStatusEnum       @default(FILLING)
+  startDate          DateTime             @map("start_date") @db.Timestamptz(6)
+  endDate            DateTime?            @map("end_date") @db.Timestamptz(6)
+  createdAt          DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery            Winery                @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  harvestBatch      HarvestBatch          @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
+  logs              FermentationLog[]
+  treatments        EnologicalTreatment[]
+  wineAgingBatch    WineAgingBatch?
+  productionBatches ProductionBatch[]
+
+  @@map("fermentation_tanks")
+}
+
+model FermentationLog {
+  id                 String   @id @default(uuid()) @db.Uuid
+  fermentationTankId String   @map("fermentation_tank_id") @db.Uuid
+  temperatureCelsius Decimal  @map("temperature_celsius") @db.Decimal(5, 2)
+  specificGravity    Decimal? @map("specific_gravity") @db.Decimal(6, 4)
+  phValue            Decimal? @map("ph_value") @db.Decimal(4, 2)
+  co2Observations    String?  @map("co2_observations") @db.VarChar(100)
+  recordedAt         DateTime @map("recorded_at") @db.Timestamptz(6)
+  recordedByUserId   String   @map("recorded_by_user_id") @db.Uuid
+  notes              String?  @db.Text
+
+  // Relaciones
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  recordedByUser   User             @relation(fields: [recordedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([fermentationTankId])
+  @@index([recordedAt])
+  @@map("fermentation_logs")
+}
+
+model EnologicalTreatment {
+  id                   String            @id @default(uuid()) @db.Uuid
+  fermentationTankId   String            @map("fermentation_tank_id") @db.Uuid
+  treatmentType        TreatmentTypeEnum @map("treatment_type")
+  additiveName         String            @map("additive_name") @db.VarChar(200)
+  additiveSupplier     String?           @map("additive_supplier") @db.VarChar(200)
+  dosageAppliedGPerHl  Decimal           @map("dosage_applied_g_per_hl") @db.Decimal(10, 4)
+  totalAppliedG        Decimal?          @map("total_applied_g") @db.Decimal(12, 4)
+  regulatoryAuthCode   String            @map("regulatory_auth_code") @db.VarChar(100)
+  appliedAt            DateTime          @map("applied_at") @db.Timestamptz(6)
+  authorizedByMemberId String            @map("authorized_by_member_id") @db.Uuid
+  notes                String?           @db.Text
+
+  // Relaciones
+  fermentationTank   FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  authorizedByMember WineryMember     @relation(fields: [authorizedByMemberId], references: [id], onDelete: Restrict)
+
+  @@map("enological_treatments")
+}
+
+model WineAgingBatch {
+  id                 String          @id @default(uuid()) @db.Uuid
+  wineryId           String          @map("winery_id") @db.Uuid
+  fermentationTankId String          @unique @map("fermentation_tank_id") @db.Uuid
+  containerType      String          @map("container_type") @db.VarChar(100)
+  containerMaterial  String?         @map("container_material") @db.VarChar(100)
+  containerCode      String?         @map("container_code") @db.VarChar(100)
+  barrelUseCycle     Int?            @map("barrel_use_cycle")
+  volumeLiters       Decimal?        @map("volume_liters") @db.Decimal(12, 2)
+  plannedMonths      Int             @map("planned_months")
+  lockUntilDate      DateTime        @map("lock_until_date") @db.Date
+  agingStatus        AgingStatusEnum @default(AGING) @map("aging_status")
+  notes              String?         @db.Text
+  createdAt          DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  bottlingBatches  BottlingBatch[]
+
+  @@map("wine_aging_batches")
+}
+
+model ProductionBatch {
+  id                       String                @id @default(uuid()) @db.Uuid
+  wineryId                 String                @map("winery_id") @db.Uuid
+  fermentationTankId       String                @map("fermentation_tank_id") @db.Uuid
+  processType              ProductionProcessEnum @map("process_type")
+  equipmentIdentifier      String                @map("equipment_identifier") @db.VarChar(100)
+  processStartDate         DateTime              @map("process_start_date") @db.Date
+  processEndDate           DateTime?             @map("process_end_date") @db.Date
+  inputVolumeLiters        Decimal?              @map("input_volume_liters") @db.Decimal(10, 3)
+  outputVolumeLiters       Decimal?              @map("output_volume_liters") @db.Decimal(10, 3)
+  wasteVolumeLiters        Decimal?              @map("waste_volume_liters") @db.Decimal(10, 3)
+  initialAlcoholPercentage Decimal?              @map("initial_alcohol_percentage") @db.Decimal(5, 2)
+  isDoEligible             Boolean               @default(false) @map("is_do_eligible")
+  mandatoryRestUntil       DateTime?             @map("mandatory_rest_until") @db.Date
+  restStatus               RestStatusEnum        @default(NOT_REQUIRED) @map("rest_status")
+  additionalParams         Json?                 @map("additional_params")
+  notes                    String?               @db.Text
+  createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  bottlingBatches  BottlingBatch[]
+
+  @@map("production_batches")
+}
+
+model BottlingBatch {
+  id                     String           @id @default(uuid()) @db.Uuid
+  wineryId               String           @map("winery_id") @db.Uuid
+  wineAgingBatchId       String?          @map("wine_aging_batch_id") @db.Uuid
+  productionBatchId      String?          @map("production_batch_id") @db.Uuid
+  productType            BeverageTypeEnum @map("product_type")
+  internationalLotCode   String           @unique @map("international_lot_code") @db.VarChar(100)
+  finalAlcoholAbv        Decimal          @map("final_alcohol_abv") @db.Decimal(5, 2)
+  waterDilutionLiters    Decimal?         @map("water_dilution_liters") @db.Decimal(10, 3)
+  totalBottlesPackaged   Int              @map("total_bottles_packaged")
+  packagingFormatCl      Int              @map("packaging_format_cl")
+  bottleType             String?          @map("bottle_type") @db.VarChar(100)
+  labelDesignUrl         String?          @map("label_design_url") @db.VarChar(500)
+  bottlingDate           DateTime         @map("bottling_date") @db.Date
+  releasedByMemberId     String?          @map("released_by_member_id") @db.Uuid
+  blockchainAnchorTxHash String?          @map("blockchain_anchor_tx_hash") @db.VarChar(100)
+  blockchainDataHash     String?          @map("blockchain_data_hash") @db.Char(64)
+  isAnchoredOnChain      Boolean          @default(false) @map("is_anchored_on_chain")
+  anchoredAt             DateTime?        @map("anchored_at") @db.Timestamptz(6)
+  qrBatchUrl             String?          @map("qr_batch_url") @db.VarChar(500)
+  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  winery           Winery            @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  wineAgingBatch   WineAgingBatch?   @relation(fields: [wineAgingBatchId], references: [id], onDelete: SetNull)
+  productionBatch  ProductionBatch?  @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
+  releasedByMember WineryMember?     @relation(fields: [releasedByMemberId], references: [id], onDelete: SetNull)
+  labAnalysis      BatchLabAnalysis?
+
+  @@map("bottling_batches")
+}
+
+model BatchLabAnalysis {
+  id                             String    @id @default(uuid()) @db.Uuid
+  bottlingBatchId                String    @unique @map("bottling_batch_id") @db.Uuid
+  certifiedLaboratoryName        String    @map("certified_laboratory_name") @db.VarChar(300)
+  accreditedLabCertificationCode String    @map("accredited_lab_certification_code") @db.VarChar(100)
+  analysisRequestDate            DateTime? @map("analysis_request_date") @db.Date
+  testPerformedAt                DateTime  @map("test_performed_at") @db.Date
+  actualAlcoholAbv               Decimal   @map("actual_alcohol_abv") @db.Decimal(5, 2)
+  totalAlcoholAbv                Decimal?  @map("total_alcohol_abv") @db.Decimal(5, 2)
+  totalAcidityTartaricGl         Decimal   @map("total_acidity_tartaric_gl") @db.Decimal(6, 3)
+  volatileAcidityAceticGl        Decimal   @map("volatile_acidity_acetic_gl") @db.Decimal(6, 3)
+  freeSulfurDioxideMgL           Decimal?  @map("free_sulfur_dioxide_mg_l") @db.Decimal(7, 3)
+  totalSulfurDioxideMgL          Decimal?  @map("total_sulfur_dioxide_mg_l") @db.Decimal(7, 3)
+  reducingSugarsGl               Decimal?  @map("reducing_sugars_gl") @db.Decimal(7, 3)
+  totalDryExtractGl              Decimal?  @map("total_dry_extract_gl") @db.Decimal(7, 3)
+  sugarFreeDryExtractGl          Decimal?  @map("sugar_free_dry_extract_gl") @db.Decimal(7, 3)
+  overpressureBar                Decimal?  @map("overpressure_bar") @db.Decimal(5, 2)
+  methanolContentMgL             Decimal?  @map("methanol_content_mg_l") @db.Decimal(7, 3)
+  copperContentMgL               Decimal?  @map("copper_content_mg_l") @db.Decimal(7, 3)
+  additionalParams               Json?     @map("additional_params")
+  laboratoryReportPdfUrl         String    @map("laboratory_report_pdf_url") @db.VarChar(500)
+  conformsToSenasagStandards     Boolean   @default(false) @map("conforms_to_senasag_standards")
+  conformsToEuStandards          Boolean   @default(false) @map("conforms_to_eu_standards")
+  conformsToUsaStandards         Boolean   @default(false) @map("conforms_to_usa_standards")
+  reviewedByMemberId             String?   @map("reviewed_by_member_id") @db.Uuid
+  createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  bottlingBatch    BottlingBatch @relation(fields: [bottlingBatchId], references: [id], onDelete: Cascade)
+  reviewedByMember WineryMember? @relation(fields: [reviewedByMemberId], references: [id], onDelete: SetNull)
+
+  @@map("batch_lab_analyses")
 }
