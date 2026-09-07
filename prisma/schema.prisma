@@ -7,12 +7,162 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// ⚠️ En la Fase 1 no se crean las 28 tablas del negocio para mantener el desarrollo incremental.
-// Se define un modelo de auditoría/sistema inicial para verificar la conectividad de la base de datos:
+// -----------------------------------------------------------------------------
+// AUDITORÍA Y SALUD DEL SISTEMA
+// -----------------------------------------------------------------------------
 model SystemHealth {
   id        String   @id @default(uuid())
   checkedAt DateTime @default(now()) @map("checked_at")
   status    String   @default("OK")
 
   @@map("system_health")
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
+// -----------------------------------------------------------------------------
+enum UserRoleEnum {
+  PLATFORM_ADMIN
+  WINERY_ADMIN
+  ENOLOGIST
+  AGRONOMIST
+  CONSUMER
+  POS_OPERATOR
+
+  @@map("user_role_enum")
+}
+
+enum WineryCategoryEnum {
+  WINERY
+  BREWERY
+  DISTILLERY
+  OTHER
+
+  @@map("winery_category_enum")
+}
+
+enum WineryStatusEnum {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  REVOKED
+
+  @@map("winery_status_enum")
+}
+
+enum WineryMemberRoleEnum {
+  OWNER
+  ENOLOGIST
+  AGRONOMIST
+  OPERATOR
+  ACCOUNTANT
+
+  @@map("winery_member_role_enum")
+}
+
+enum WalletTypeEnum {
+  CUSTODIAL
+  SELF_CUSTODY
+
+  @@map("wallet_type_enum")
+}
+
+enum WalletPurposeEnum {
+  CONSUMER_NFT
+  PRODUCER_SIGNING
+
+  @@map("wallet_purpose_enum")
+}
+
+// -----------------------------------------------------------------------------
+// ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
+// -----------------------------------------------------------------------------
+model User {
+  id              String       @id @default(uuid()) @db.Uuid
+  email           String       @unique @db.VarChar(255)
+  phoneNumber     String?      @unique @map("phone_number") @db.VarChar(20)
+  passwordHash    String       @map("password_hash") @db.VarChar(255)
+  fullName        String       @map("full_name") @db.VarChar(200)
+  userRole        UserRoleEnum @map("user_role")
+  dynamicUserId   String?      @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale String       @default("es") @map("preferred_locale") @db.Char(2)
+  isActive        Boolean      @default(true) @map("is_active")
+  lastLoginAt     DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relaciones
+  wineryMemberships WineryMember[]
+  wallets           UserWallet[]
+  approvedWineries  Winery[]       @relation("ApprovedByUser")
+
+  @@map("users")
+}
+
+model Winery {
+  id                    String             @id @default(uuid()) @db.Uuid
+  legalName             String             @map("legal_name") @db.VarChar(300)
+  commercialName        String             @map("commercial_name") @db.VarChar(300)
+  beverageCategory      WineryCategoryEnum @map("beverage_category")
+  taxIdNit              String             @unique @map("tax_id_nit") @db.VarChar(20)
+  senasagSanitaryReg    String?            @unique @map("senasag_sanitary_reg") @db.VarChar(50)
+  geographicRegion      String             @map("geographic_region") @db.VarChar(100)
+  countryCode           String             @default("BO") @map("country_code") @db.Char(2)
+  address               String?            @db.Text
+  contactEmail          String             @map("contact_email") @db.VarChar(255)
+  contactPhone          String?            @map("contact_phone") @db.VarChar(20)
+  logoUrl               String?            @map("logo_url") @db.VarChar(500)
+  stellarPublicKey      String?            @unique @map("stellar_public_key") @db.VarChar(60)
+  dynamicVaultId        String?            @unique @map("dynamic_vault_id") @db.VarChar(200)
+  onchainProducerId     String?            @unique @map("onchain_producer_id") @db.VarChar(100)
+  onchainRegisterTxHash String?            @map("onchain_register_tx_hash") @db.VarChar(100)
+  isExportCertified     Boolean            @default(false) @map("is_export_certified")
+  certificationStatus   WineryStatusEnum   @default(PENDING) @map("certification_status")
+  approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(6)
+  approvedByUserId      String?            @map("approved_by_user_id") @db.Uuid
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  // Relaciones
+  approvedByUser User?          @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  members        WineryMember[]
+  wallets        UserWallet[]
+
+  @@map("wineries")
+}
+
+model WineryMember {
+  id                        String               @id @default(uuid()) @db.Uuid
+  userId                    String               @map("user_id") @db.Uuid
+  wineryId                  String               @map("winery_id") @db.Uuid
+  memberRole                WineryMemberRoleEnum @map("member_role")
+  professionalLicenseNumber String?              @map("professional_license_number") @db.VarChar(100)
+  professionalLicensePdfUrl String?              @map("professional_license_pdf_url") @db.VarChar(500)
+  isActive                  Boolean              @default(true) @map("is_active")
+  joinedAt                  DateTime             @default(now()) @map("joined_at") @db.Timestamptz(6)
+
+  // Relaciones
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  winery Winery @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, wineryId])
+  @@map("winery_members")
+}
+
+model UserWallet {
+  id                   String            @id @default(uuid()) @db.Uuid
+  userId               String            @map("user_id") @db.Uuid
+  wineryId             String?           @map("winery_id") @db.Uuid
+  stellarPublicAddress String            @unique @map("stellar_public_address") @db.VarChar(60)
+  dynamicVaultId       String            @unique @map("dynamic_vault_id") @db.VarChar(200)
+  walletType           WalletTypeEnum    @default(CUSTODIAL) @map("wallet_type")
+  walletPurpose        WalletPurposeEnum @map("wallet_purpose")
+  isPrimary            Boolean           @default(true) @map("is_primary")
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  // Relaciones
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  winery Winery? @relation(fields: [wineryId], references: [id], onDelete: SetNull)
+
+  @@map("user_wallets")
 }
