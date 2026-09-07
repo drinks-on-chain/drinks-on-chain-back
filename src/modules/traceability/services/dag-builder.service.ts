@@ -42,9 +42,16 @@ export class DagBuilderService {
     return '0x' + crypto.createHash('sha256').update(canonical).digest('hex');
   }
 
-  async buildDagForBottlingBatch(bottlingBatchId: string): Promise<DagGraphResult> {
-    const batch = await this.prisma.bottlingBatch.findUnique({
-      where: { id: bottlingBatchId },
+  async buildDagForBottlingBatch(identifier: string): Promise<DagGraphResult> {
+    const isUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        identifier,
+      );
+
+    const batch = await this.prisma.bottlingBatch.findFirst({
+      where: isUuid
+        ? { id: identifier }
+        : { internationalLotCode: identifier },
       include: {
         winery: true,
         labAnalysis: true,
@@ -75,7 +82,7 @@ export class DagBuilderService {
 
     if (!batch) {
       throw new NotFoundException(
-        `Lote de embotellado con ID ${bottlingBatchId} no encontrado`,
+        `Lote de embotellado con identificador "${identifier}" no encontrado`,
       );
     }
 

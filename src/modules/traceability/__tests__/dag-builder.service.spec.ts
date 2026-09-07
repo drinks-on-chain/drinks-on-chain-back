@@ -76,6 +76,7 @@ describe('DagBuilderService', () => {
   const mockPrismaService = {
     bottlingBatch: {
       findUnique: jest.fn(),
+      findFirst: jest.fn(),
     },
   };
 
@@ -94,7 +95,7 @@ describe('DagBuilderService', () => {
 
   describe('buildDagForBottlingBatch', () => {
     it('debe reconstruir el grafo DAG completo de 5 etapas para Singani D.O.', async () => {
-      mockPrismaService.bottlingBatch.findUnique.mockResolvedValue(mockFullBatch);
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(mockFullBatch);
 
       const result = await service.buildDagForBottlingBatch(mockBottlingId);
 
@@ -129,7 +130,7 @@ describe('DagBuilderService', () => {
     });
 
     it('debe lanzar NotFoundException si el lote no existe', async () => {
-      mockPrismaService.bottlingBatch.findUnique.mockResolvedValue(null);
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(null);
 
       await expect(service.buildDagForBottlingBatch('random-id')).rejects.toThrow(
         NotFoundException,

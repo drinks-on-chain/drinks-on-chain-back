@@ -18,6 +18,8 @@ import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { SkipTenant } from '@modules/auth/decorators/skip-tenant.decorator';
 
+import { Public } from '@modules/auth/decorators/public.decorator';
+
 @ApiTags('Grafo DAG de Trazabilidad')
 @ApiBearerAuth('JWT-auth')
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
@@ -41,5 +43,23 @@ export class TraceabilityDagController {
     @Param('bottlingBatchId', ParseUUIDPipe) bottlingBatchId: string,
   ): Promise<DagGraphResult> {
     return this.dagBuilderService.buildDagForBottlingBatch(bottlingBatchId);
+  }
+
+  @Public()
+  @Get('public/:lotCode')
+  @ApiOperation({
+    summary: 'Pasaporte Digital Público de Trazabilidad (Acceso QR consumidor)',
+    description:
+      'Endpoint público sin autenticación para consumidores que escanean el código QR en la botella física. Retorna el linaje completo y certificado analítico oficial.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Pasaporte digital de trazabilidad pública',
+  })
+  @ApiNotFoundResponse({ description: 'Código de lote no encontrado' })
+  async getPublicPassportByLotCode(
+    @Param('lotCode') lotCode: string,
+  ): Promise<DagGraphResult> {
+    return this.dagBuilderService.buildDagForBottlingBatch(lotCode);
   }
 }
