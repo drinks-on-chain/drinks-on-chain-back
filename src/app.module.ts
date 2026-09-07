@@ -11,6 +11,7 @@ import { UsersModule } from './modules/users/users.module';
 import { WineriesModule } from './modules/wineries/wineries.module';
 import { TerroirsModule } from './modules/terroirs/terroirs.module';
 import { HarvestBatchesModule } from './modules/harvest-batches/harvest-batches.module';
+import { TraceabilityModule } from './modules/traceability/traceability.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { HarvestBatchesModule } from './modules/harvest-batches/harvest-batches.
     WineriesModule,
     TerroirsModule,
     HarvestBatchesModule,
+    TraceabilityModule,
   ],
 })
 export class AppModule implements NestModule {
