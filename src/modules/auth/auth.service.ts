@@ -13,7 +13,8 @@ import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto, AuthTokensDto } from './dto/auth-response.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
-import { UserRoleEnum } from '@prisma/client';
+import { WalletsService } from '@modules/wallets/wallets.service';
+import { WalletPurposeEnum, UserRoleEnum } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -24,6 +25,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly walletsService: WalletsService,
   ) {}
 
   /**
@@ -65,6 +67,12 @@ export class AuthService {
         isActive: true,
       },
     });
+
+    // Aprovisionamiento automático de billetera custodial
+    await this.walletsService.provisionUserWallet(
+      user.id,
+      WalletPurposeEnum.CONSUMER_NFT,
+    );
 
     this.logger.log(`Usuario registrado exitosamente: ${user.id} (${user.email})`);
 

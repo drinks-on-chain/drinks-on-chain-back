@@ -6,6 +6,8 @@ import { CorrelationIdMiddleware } from './shared/middleware/correlation-id.midd
 
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthModule } from './modules/auth/auth.module';
+import { WalletsModule } from './modules/wallets/wallets.module';
+import { UsersModule } from './modules/users/users.module';
 
 @Module({
   imports: [
@@ -18,7 +20,9 @@ import { AuthModule } from './modules/auth/auth.module';
         limit: 100,
       },
     ]),
+    WalletsModule,
     AuthModule,
+    UsersModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -7,10 +7,13 @@ import { ConflictException, UnauthorizedException } from '@nestjs/common';
 import { UserRoleEnum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+import { WalletsService } from '@modules/wallets/wallets.service';
+
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: PrismaService;
   let jwtService: JwtService;
+  let walletsService: WalletsService;
 
   const mockPrisma = {
     user: {
@@ -18,6 +21,13 @@ describe('AuthService', () => {
       create: jest.fn(),
       update: jest.fn(),
     },
+  };
+
+  const mockWalletsService = {
+    provisionUserWallet: jest.fn().mockResolvedValue({
+      id: 'wallet-uuid-1',
+      stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+    }),
   };
 
   const mockJwtService = {
@@ -49,12 +59,14 @@ describe('AuthService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: JwtService, useValue: mockJwtService },
         { provide: ConfigService, useValue: mockConfigService },
+        { provide: WalletsService, useValue: mockWalletsService },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
     prisma = module.get<PrismaService>(PrismaService);
     jwtService = module.get<JwtService>(JwtService);
+    walletsService = module.get<WalletsService>(WalletsService);
 
     jest.clearAllMocks();
   });
