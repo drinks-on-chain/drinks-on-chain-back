@@ -35,7 +35,7 @@ export class WineAgingService {
       );
     }
 
-    const startDate = new Date();
+    const startDate = dto.startDate ? new Date(dto.startDate) : new Date();
     const lockUntilDate = new Date(startDate);
     lockUntilDate.setMonth(lockUntilDate.getMonth() + dto.plannedMonths);
 

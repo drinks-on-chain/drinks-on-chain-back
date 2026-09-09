@@ -6,6 +6,7 @@ import {
   IsNumber,
   IsPositive,
   IsInt,
+  IsDateString,
   Min,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -68,6 +69,14 @@ export class CreateWineAgingBatchDto {
   @IsInt()
   @Min(1)
   plannedMonths!: number;
+
+  @ApiPropertyOptional({
+    example: '2025-01-15T00:00:00Z',
+    description: 'Fecha de ingreso a barrica (por defecto fecha actual)',
+  })
+  @IsOptional()
+  @IsDateString()
+  startDate?: string;
 
   @ApiPropertyOptional({
     example: 'Crianza en barricas de primer uso en cava subterránea a 14°C',
