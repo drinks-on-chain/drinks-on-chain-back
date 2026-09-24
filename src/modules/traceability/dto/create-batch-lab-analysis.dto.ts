@@ -162,7 +162,7 @@ export class CreateBatchLabAnalysisDto {
     example: 'https://storage.drinksonchain.com/certs/lab-report-2026-991.pdf',
     description: 'URL del PDF del Certificado Analítico oficial firmado',
   })
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   @IsNotEmpty()
   laboratoryReportPdfUrl!: string;
 

@@ -17,7 +17,7 @@ export class UpdatePhytoStatusDto {
     description: 'URL del informe o acta de inspección fitosanitaria firmada',
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   phytoInspectionPdfUrl?: string;
 
   @ApiPropertyOptional({

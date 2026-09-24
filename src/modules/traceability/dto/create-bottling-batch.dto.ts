@@ -86,7 +86,7 @@ export class CreateBottlingBatchDto {
     description: 'URL del arte o diseño de etiqueta aprobado',
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   labelDesignUrl?: string;
 
   @ApiProperty({

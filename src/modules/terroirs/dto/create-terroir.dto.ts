@@ -131,6 +131,6 @@ export class CreateTerroirDto {
     description: 'URL del certificado oficial de Denominación de Origen',
   })
   @IsOptional()
-  @IsUrl()
+  @IsUrl({ require_tld: false })
   doCertificateUrl?: string;
 }
