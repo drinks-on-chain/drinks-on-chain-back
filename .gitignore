@@ -46,3 +46,6 @@ postgres_data/
 redis_data/
 
 uploads/
+
+!docs/demo/*
+!docs/endpoints/*
