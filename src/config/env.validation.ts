@@ -111,16 +111,20 @@ export const envValidationSchema = Joi.object({
     'any.required': 'DYNAMIC_API_KEY is required for Dynamic integration',
   }),
 
-  // Supabase Storage
+  // Almacenamiento de Archivos e Imágenes (Local / S3 / Supabase)
+  STORAGE_DRIVER: Joi.string()
+    .valid('local', 's3', 'supabase')
+    .default('local'),
+  STORAGE_LOCAL_PATH: Joi.string().default('./uploads'),
+  STORAGE_BASE_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .default('http://localhost:3000/uploads'),
+
+  // Proveedores Externos Opcionales (Supabase / S3)
   SUPABASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
-    .required()
-    .messages({
-      'any.required': 'SUPABASE_URL is required for storage',
-    }),
-  SUPABASE_SERVICE_ROLE_KEY: Joi.string().required().messages({
-    'any.required': 'SUPABASE_SERVICE_ROLE_KEY is required for storage operations',
-  }),
+    .optional(),
+  SUPABASE_SERVICE_ROLE_KEY: Joi.string().optional(),
 
   // Pasarela de Pagos (Banco API)
   PAYMENT_BANK_API_KEY: Joi.string().required().messages({

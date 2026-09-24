@@ -61,7 +61,7 @@ export class WineAgingController {
     summary: 'Listar lotes de crianza',
     description: 'Obtiene el listado de barricas y lotes en guarda.',
   })
-  async findAll(@TenantId() wineryId: string) {
+  async findAll(@TenantId() wineryId: string | undefined) {
     return this.wineAgingService.findAll(wineryId);
   }
 
@@ -78,7 +78,7 @@ export class WineAgingController {
   })
   @ApiNotFoundResponse({ description: 'Lote de crianza no encontrado' })
   async findAgingBatchById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.wineAgingService.findAgingBatchById(wineryId, id);

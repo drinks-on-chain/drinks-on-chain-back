@@ -123,11 +123,14 @@ export class LabAnalysesService {
   }
 
   async findByBatchId(
-    wineryId: string,
+    wineryId: string | undefined,
     bottlingBatchId: string,
   ): Promise<BatchLabAnalysis> {
     const batch = await this.prisma.bottlingBatch.findFirst({
-      where: { id: bottlingBatchId, wineryId },
+      where: {
+        id: bottlingBatchId,
+        ...(wineryId && { wineryId }),
+      },
       include: { labAnalysis: true },
     });
 

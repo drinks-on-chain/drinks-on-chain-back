@@ -9,10 +9,14 @@ import { WineryRepository } from './repositories/winery.repository';
 import { WineryMemberRepository } from './repositories/winery-member.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from './hooks/onchain-producer.hook';
+import * as bcrypt from 'bcrypt';
 import { CreateWineryDto } from './dto/create-winery.dto';
 import { UpdateWineryDto } from './dto/update-winery.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { CreateMemberDto } from './dto/create-member.dto';
 import { ApproveWineryDto } from './dto/approve-winery.dto';
+import { RejectWineryDto } from './dto/reject-winery.dto';
+import { QueryWineriesDto } from './dto/query-wineries.dto';
 import {
   WineryResponseDto,
   WineryMemberItemDto,
@@ -21,6 +25,8 @@ import {
   WineryStatusEnum,
   WineryMemberRoleEnum,
   WalletPurposeEnum,
+  UserRoleEnum,
+  Prisma,
 } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 
@@ -158,8 +164,92 @@ export class WineriesService {
       professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
     });
 
+    // Sincronizar userRole con el rol operativo asignado
+    const roleMapping: Partial<Record<WineryMemberRoleEnum, UserRoleEnum>> = {
+      [WineryMemberRoleEnum.ENOLOGIST]: UserRoleEnum.ENOLOGIST,
+      [WineryMemberRoleEnum.AGRONOMIST]: UserRoleEnum.AGRONOMIST,
+      [WineryMemberRoleEnum.OPERATOR]: UserRoleEnum.POS_OPERATOR,
+      [WineryMemberRoleEnum.OWNER]: UserRoleEnum.WINERY_ADMIN,
+    };
+    const targetUserRole = roleMapping[dto.memberRole];
+    if (targetUserRole) {
+      await this.prisma.user.update({
+        where: { id: dto.userId },
+        data: { userRole: targetUserRole },
+      });
+    }
+
     this.logger.log(
       `Nuevo miembro añadido a bodega ${wineryId}: ${user.fullName} (${dto.memberRole})`,
+    );
+
+    return {
+      id: member.id,
+      userId: user.id,
+      fullName: user.fullName,
+      email: user.email,
+      memberRole: member.memberRole,
+      professionalLicenseNumber: member.professionalLicenseNumber,
+      isActive: member.isActive,
+      joinedAt: member.joinedAt,
+    };
+  }
+
+  /**
+   * Crea un nuevo usuario y lo incorpora directamente como miembro operativo de la bodega
+   */
+  async createAndAddMember(
+    wineryId: string,
+    dto: CreateMemberDto,
+  ): Promise<WineryMemberItemDto> {
+    const existingUser = await this.prisma.user.findUnique({
+      where: { email: dto.email.toLowerCase().trim() },
+    });
+
+    if (existingUser) {
+      throw new ConflictException(
+        'El correo electrónico ya se encuentra registrado. Utilice la opción de incorporar usuario existente.',
+      );
+    }
+
+    const roleMapping: Partial<Record<WineryMemberRoleEnum, UserRoleEnum>> = {
+      [WineryMemberRoleEnum.ENOLOGIST]: UserRoleEnum.ENOLOGIST,
+      [WineryMemberRoleEnum.AGRONOMIST]: UserRoleEnum.AGRONOMIST,
+      [WineryMemberRoleEnum.OPERATOR]: UserRoleEnum.POS_OPERATOR,
+      [WineryMemberRoleEnum.OWNER]: UserRoleEnum.WINERY_ADMIN,
+    };
+    const userRole = roleMapping[dto.memberRole] ?? UserRoleEnum.CONSUMER;
+
+    const passwordHash = await bcrypt.hash(dto.password, 12);
+
+    const user = await this.prisma.user.create({
+      data: {
+        email: dto.email.toLowerCase().trim(),
+        passwordHash,
+        fullName: dto.fullName.trim(),
+        userRole,
+        phoneNumber: dto.phoneNumber?.trim() ?? null,
+        preferredLocale: 'es',
+        isActive: true,
+      },
+    });
+
+    // Aprovisionar billetera custodial para el nuevo miembro
+    await this.walletsService.provisionUserWallet(
+      user.id,
+      WalletPurposeEnum.CONSUMER_NFT,
+    );
+
+    const member = await this.wineryMemberRepository.create({
+      userId: user.id,
+      wineryId,
+      memberRole: dto.memberRole,
+      professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
+      professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+    });
+
+    this.logger.log(
+      `Nuevo miembro creado y añadido a bodega ${wineryId}: ${user.fullName} (${dto.memberRole})`,
     );
 
     return {
@@ -243,6 +333,78 @@ export class WineriesService {
     );
 
     return this.mapToWineryResponse(approvedWinery);
+  }
+
+  /**
+   * Rechazo institucional de una solicitud de bodega (Solo Platform Admin)
+   */
+  async rejectWinery(
+    wineryId: string,
+    adminUserId: string,
+    dto: RejectWineryDto,
+  ): Promise<WineryResponseDto> {
+    const winery = await this.wineryRepository.findById(wineryId);
+    if (!winery) {
+      throw new NotFoundException('Bodega no encontrada');
+    }
+
+    if (winery.certificationStatus !== WineryStatusEnum.PENDING) {
+      throw new BadRequestException(
+        `La bodega se encuentra en estado '${winery.certificationStatus}' y no puede ser rechazada`,
+      );
+    }
+
+    const rejectedWinery = await this.wineryRepository.update(wineryId, {
+      certificationStatus: WineryStatusEnum.REVOKED,
+      approvedAt: new Date(),
+      approvedByUser: { connect: { id: adminUserId } },
+    });
+
+    this.logger.log(
+      `Bodega ${wineryId} RECHAZADA por admin ${adminUserId}. Motivo: ${dto.rejectionReason}`,
+    );
+
+    return this.mapToWineryResponse(rejectedWinery);
+  }
+
+  /**
+   * Lista todas las bodegas con soporte de filtros y paginación (Solo Platform Admin)
+   */
+  async findAllWineries(
+    query: QueryWineriesDto,
+  ): Promise<{ items: WineryResponseDto[]; total: number }> {
+    const where: Prisma.WineryWhereInput = {
+      ...(query.status && { certificationStatus: query.status }),
+      ...(query.beverageCategory && { beverageCategory: query.beverageCategory }),
+      ...(query.search && {
+        OR: [
+          { legalName: { contains: query.search, mode: 'insensitive' } },
+          { commercialName: { contains: query.search, mode: 'insensitive' } },
+          { taxIdNit: { contains: query.search } },
+        ],
+      }),
+    };
+
+    const [items, total] = await Promise.all([
+      this.prisma.winery.findMany({
+        where,
+        take: query.limit ?? 50,
+        skip: query.offset ?? 0,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          wallets: true,
+          members: {
+            include: { user: true },
+          },
+        },
+      }),
+      this.prisma.winery.count({ where }),
+    ]);
+
+    return {
+      items: items.map((w) => this.mapToWineryResponse(w)),
+      total,
+    };
   }
 
   private mapToWineryResponse(winery: any): WineryResponseDto {

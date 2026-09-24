@@ -41,7 +41,7 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `93/93` tests pasando (23 suites).
+- **Pruebas Unitarias:** `101/101` tests pasando (25 suites).
 - **Pruebas E2E:** `31/31` tests pasando (3 suites completas).
 - **Compilación TypeScript:** `100%` en modo estricto (`strict: true`) con 0 errores de tipado o linting.
 - **Base de Datos:** 14 modelos relacionales y 14 enums migrados y sincronizados en PostgreSQL.
@@ -76,6 +76,7 @@ drinks-on-chain-backend/
 │   │   │   ├── hooks/                  # Hooks desacoplados para simulación on-chain
 │   │   │   ├── services/               # Lógica de negocio y persistencia Prisma
 │   │   │   └── strategies/             # Strategy Pattern (Vino, Singani, Cerveza)
+│   │   ├── uploads/                    # Subida multiparte de imágenes y PDFs con validación MIME
 │   │   ├── users/                      # Perfiles de usuario y gestión de cuenta
 │   │   ├── wallets/                    # Provisión de billeteras custodiales en Stellar
 │   │   └── wineries/                   # Onboarding institucional y membresías
@@ -84,6 +85,7 @@ drinks-on-chain-backend/
 │       ├── filters/                    # GlobalExceptionFilter (estándar de error API)
 │       ├── interceptors/               # ResponseTransformInterceptor (envelope { success: true })
 │       ├── prisma/                     # PrismaService singleton
+│       ├── storage/                    # IStorageService agnóstico (Local, S3, Supabase)
 │       └── utils/                      # Criptografía SHA-256, utilitarios de QR y sanitización
 └── test/                               # Suite de pruebas de integración End-to-End (E2E)
     ├── app.e2e-spec.ts
@@ -101,7 +103,14 @@ drinks-on-chain-backend/
    - `SinganiTraceabilityStrategy`: Restricción estricta de altitud $\ge 1,600$ msnm, 100% Moscatel de Alejandría, balance de masa en alambiques y **180 días obligatorios de reposo inerte**.
    - `BeerTraceabilityStrategy`: Control de densidades y atenuación de levaduras cerveceras.
 3. **Multi-Tenancy Estricto (`TenantGuard` & `@TenantId()`):** Aislamiento de datos a nivel de base de datos (`wineryId`) garantizando que ningún usuario acceda o vincule recursos de otra bodega (seguridad por oscuridad con respuesta `404 Not Found`).
-4. **Control de Acceso Basado en Roles (RBAC):** `PLATFORM_ADMIN`, `WINERY_ADMIN`, `ENOLOGIST`, `AGRONOMIST`, `CONSUMER`, `POS_OPERATOR`.
+4. **Control de Acceso Basado en Roles (RBAC Estricto):**
+   - `PLATFORM_ADMIN`: Creado exclusivamente vía Seeder inicial. Cuenta con visibilidad global de lectura (`GET` en todos los módulos de trazabilidad de cualquier bodega, con filtro opcional `?wineryId=...`), directorio institucional de bodegas (`GET /v1/wineries`), aprobación (`POST /v1/wineries/:id/approve`) y revocación/rechazo (`POST /v1/wineries/:id/reject`).
+   - `WINERY_ADMIN`: Registrado mediante onboarding público (`signup`). Administra integralmente su bodega y da de alta a su personal operativo (`POST /v1/wineries/my/members/create`).
+   - `AGRONOMIST`: Incorporado por su bodega; gestiona parcelas (`terroirs`) y recepción de vendimia (`harvest-batches`).
+   - `ENOLOGIST`: Incorporado por su bodega; emite dictámenes fitosanitarios, bitácoras de fermentación, destilación, crianza y embotellado.
+   - `POS_OPERATOR`: Operador de punto de venta y cavas turísticas para canje físico de botellas (Claims).
+   - `CONSUMER`: Usuario registrado estándar para comercio, catálogo y seguimiento de pedidos.
+   > 🔒 **Endurecimiento de Seguridad:** El endpoint público `POST /v1/auth/signup` solo permite crear cuentas con rol `CONSUMER` o `WINERY_ADMIN`. Intentos de autoregistro con roles privilegiados (`PLATFORM_ADMIN`, `ENOLOGIST`, etc.) son rechazados con `403 Forbidden`. Todo el personal operativo debe ser dado de alta directamente por el administrador de su bodega.
 5. **Grafo DAG de Trazabilidad:** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
 6. **Formato Estándar de Respuesta API:**
    ```json
@@ -172,6 +181,11 @@ JWT_EXPIRES_IN="7d"
 JWT_REFRESH_SECRET="drinks_on_chain_ultra_secure_refresh_secret_2026"
 JWT_REFRESH_EXPIRES_IN="30d"
 
+# Credenciales del Superadmin Inicial (Seeder)
+SUPERADMIN_EMAIL="superadmin@drinksonchain.com"
+SUPERADMIN_PASSWORD="SuperSecureAdminPassword2026!"
+SUPERADMIN_NAME="Platform Administrator"
+
 # Stellar Soroban (Testnet)
 STELLAR_NETWORK="TESTNET"
 STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org"
@@ -190,11 +204,86 @@ pnpm prisma:migrate
 npx prisma migrate dev
 ```
 
-#### 5. Iniciar la Aplicación en Modo Desarrollo
+#### 5. Inicializar el Superadmin (Seeder Idempotente)
+Crea el usuario `PLATFORM_ADMIN` inicial y su billetera custodial en Stellar a partir de las variables definidas en `.env`:
+```bash
+pnpm prisma:seed
+# o directamente con prisma CLI:
+npx prisma db seed
+```
+> **Nota de Seguridad:** El seeder es **100% idempotente**. Si el usuario ya existe, actualizará su nombre y hash de contraseña asegurando consistencia sin duplicar registros ni fallar en re-ejecuciones.
+
+#### 6. Iniciar la Aplicación en Modo Desarrollo
 ```bash
 pnpm start:dev
 ```
 La API estará disponible en: **`http://localhost:3000`**
+
+---
+
+### 🐳 Encadenamiento en Pipelines de Docker y CI/CD
+
+Para despliegues automatizados (Docker Compose, Kubernetes o CI/CD), se recomienda encadenar las migraciones y el seeder antes de arrancar el servidor Node.js.
+
+#### A. Patrón Docker `entrypoint.sh` (Recomendado para Producción)
+Crea un script de entrada ejecutable (por ejemplo `docker-entrypoint.sh`):
+
+```bash
+#!/bin/sh
+set -e
+
+echo "🚀 [1/3] Aplicando migraciones de base de datos..."
+npx prisma migrate deploy
+
+echo "🌱 [2/3] Ejecutando Seeder de inicialización (Superadmin)..."
+npx prisma db seed
+
+echo "🍷 [3/3] Levantando servidor NestJS en producción..."
+exec node dist/main.js
+```
+
+Asegúrate de otorgarle permisos de ejecución en el `Dockerfile`:
+```dockerfile
+COPY docker-entrypoint.sh ./
+RUN chmod +x docker-entrypoint.sh
+ENTRYPOINT ["./docker-entrypoint.sh"]
+```
+
+#### B. Encadenamiento directo en `docker-compose.yml`
+Si no deseas un script separado, puedes encadenar los comandos en la directiva `command` de tu servicio de aplicación:
+
+```yaml
+services:
+  api:
+    build: .
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/drinks_on_chain_db?schema=public
+      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL}
+      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
+      - SUPERADMIN_NAME=${SUPERADMIN_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "npx prisma migrate deploy &&
+             npx prisma db seed &&
+             node dist/main.js"
+```
+
+#### C. Ejemplo en Pipeline de CI/CD (GitHub Actions / GitLab CI)
+```yaml
+# .github/workflows/deploy.yml
+- name: Run Migrations & Seed
+  env:
+    DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
+    SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
+    SUPERADMIN_NAME: ${{ secrets.SUPERADMIN_NAME }}
+  run: |
+    pnpm prisma migrate deploy
+    pnpm prisma:seed
+```
 
 ---
 
@@ -292,7 +381,8 @@ sequenceDiagram
 
 ## 📄 7. Documentación Complementaria
 
-- 📘 **[Guía de Pruebas Manuales Paso a Paso](docs/demo/guia_pruebas_manuales_trazabilidad.md):** Guía práctica con comandos `curl` y datos ficticios para probar el flujo completo.
+- 🍸 **[Guía de Pruebas Manuales — Flujo Singani D.O.](docs/demo/guia_pruebas_manuales_trazabilidad.md):** Flujo completo con comandos `curl`, altitud $\ge 1,600$ msnm, destilación y 180 días de reposo inerte.
+- 🍷 **[Guía de Pruebas Manuales — Flujo Vino de Altura](docs/demo/guia_pruebas_manuales_vino.md):** Flujo vitivinícola con maceración, crianza en barricas de roble (190 días) y embotellado.
 - 📋 **[Catálogo de Endpoints de la API](docs/endpoints/endpoints.md):** Referencia detallada de todos los endpoints, DTOs y respuestas.
 - 🗄️ **[Registro de Base de Datos](docs/bd/base_de_datos.md):** Estructura de tablas, atributos y relaciones Prisma.
 - 📜 **[Contrato de Trazabilidad Soroban](docs/contratos/trazabillidad.rs):** Smart contract en Rust de referencia para el anclaje on-chain.

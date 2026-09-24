@@ -82,7 +82,7 @@ export class LabAnalysesController {
   })
   @ApiNotFoundResponse({ description: 'Informe analítico no encontrado' })
   async findByBatchId(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('bottlingBatchId', ParseUUIDPipe) bottlingBatchId: string,
   ) {
     return this.labAnalysesService.findByBatchId(wineryId, bottlingBatchId);

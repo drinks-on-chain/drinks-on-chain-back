@@ -7,12 +7,32 @@ import { ResponseTransformInterceptor } from './shared/interceptors/response-tra
 import { HttpLoggingInterceptor } from './shared/interceptors/logging.interceptor';
 import { GlobalExceptionFilter } from './shared/filters/global-exception.filter';
 
+import { NestExpressApplication } from '@nestjs/platform-express';
+import * as path from 'path';
+import * as fs from 'fs';
+
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // 1. Seguridad HTTP con Helmet
-  app.use(helmet());
+  // 1. Seguridad HTTP con Helmet (permitiendo carga cross-origin de recursos como imágenes y PDFs)
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+    }),
+  );
+
+  // 1.1 Servir archivos estáticos locales (/uploads/...)
+  const uploadDir = path.resolve(
+    process.cwd(),
+    process.env.STORAGE_LOCAL_PATH || './uploads',
+  );
+  if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+  }
+  app.useStaticAssets(uploadDir, {
+    prefix: '/uploads/',
+  });
 
   // 2. CORS restrictivo por entorno
   const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [

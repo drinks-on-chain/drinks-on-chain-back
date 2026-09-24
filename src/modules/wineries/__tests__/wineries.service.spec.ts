@@ -46,6 +46,12 @@ describe('WineriesService', () => {
   const mockPrisma = {
     user: {
       findUnique: jest.fn(),
+      update: jest.fn().mockResolvedValue({}),
+      create: jest.fn().mockResolvedValue({}),
+    },
+    winery: {
+      findMany: jest.fn(),
+      count: jest.fn(),
     },
   };
 

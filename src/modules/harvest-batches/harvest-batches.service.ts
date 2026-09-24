@@ -50,7 +50,14 @@ export class HarvestBatchesService {
       .replace(/[^A-Z0-9]/g, '')
       .slice(0, 8);
     const sequence = (existingCount + 1).toString().padStart(3, '0');
-    const harvestBatchCode = `HARV-${dto.harvestYear}-${terroirSlug}-${sequence}`;
+    let harvestBatchCode = `HARV-${dto.harvestYear}-${terroirSlug}-${sequence}`;
+
+    const duplicate = await this.prisma.harvestBatch.findUnique({
+      where: { harvestBatchCode },
+    });
+    if (duplicate) {
+      harvestBatchCode = `HARV-${dto.harvestYear}-${terroirSlug}-${sequence}-${Date.now().toString().slice(-4)}`;
+    }
 
     this.logger.log(
       `Registrando lote de vendimia "${harvestBatchCode}" (${netWeight} kg netos)`,
@@ -81,11 +88,11 @@ export class HarvestBatchesService {
   }
 
   async findAll(
-    wineryId: string,
+    wineryId: string | undefined,
     query: QueryHarvestBatchesDto,
   ): Promise<{ items: HarvestBatch[]; total: number }> {
     const where: Prisma.HarvestBatchWhereInput = {
-      wineryId,
+      ...(wineryId && { wineryId }),
       ...(query.harvestYear && { harvestYear: query.harvestYear }),
       ...(query.terroirId && { terroirId: query.terroirId }),
       ...(query.phytosanitaryStatus && {
@@ -110,11 +117,14 @@ export class HarvestBatchesService {
   }
 
   async findById(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<HarvestBatch & { terroir?: any; fermentationTanks?: any[] }> {
     const batch = await this.prisma.harvestBatch.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         terroir: true,
         fermentationTanks: true,

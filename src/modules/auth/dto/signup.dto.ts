@@ -39,9 +39,10 @@ export class SignupDto {
   fullName!: string;
 
   @ApiPropertyOptional({
-    enum: UserRoleEnum,
+    enum: [UserRoleEnum.CONSUMER, UserRoleEnum.WINERY_ADMIN],
     default: UserRoleEnum.CONSUMER,
-    description: 'Rol del usuario en la plataforma',
+    description:
+      'Rol del usuario para registro público (CONSUMER o WINERY_ADMIN). Roles administrativos y operativos no están permitidos en registro público.',
   })
   @IsOptional()
   @IsEnum(UserRoleEnum, { message: 'Rol de usuario no válido' })

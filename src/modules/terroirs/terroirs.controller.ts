@@ -72,7 +72,7 @@ export class TerroirsController {
     description: 'Listado de parcelas',
   })
   async findAll(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Query() query: QueryTerroirsDto,
   ) {
     return this.terroirsService.findAll(wineryId, query);
@@ -91,7 +91,7 @@ export class TerroirsController {
   })
   @ApiNotFoundResponse({ description: 'Parcela no encontrada' })
   async findById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.terroirsService.findById(wineryId, id);

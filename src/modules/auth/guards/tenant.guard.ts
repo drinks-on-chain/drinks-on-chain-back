@@ -41,7 +41,11 @@ export class TenantGuard implements CanActivate {
 
     // PLATFORM_ADMIN tiene acceso global a todos los inquilinos
     if (user.userRole === UserRoleEnum.PLATFORM_ADMIN) {
-      request.tenantId = user.wineryId ?? null;
+      request.tenantId =
+        request.query?.wineryId ||
+        request.params?.wineryId ||
+        user.wineryId ||
+        null;
       return true;
     }
 

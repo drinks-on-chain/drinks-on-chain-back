@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   ConflictException,
+  ForbiddenException,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
@@ -53,6 +54,18 @@ export class AuthService {
       }
     }
 
+    const allowedPublicRoles: UserRoleEnum[] = [
+      UserRoleEnum.CONSUMER,
+      UserRoleEnum.WINERY_ADMIN,
+    ];
+    const targetRole = dto.userRole ?? UserRoleEnum.CONSUMER;
+
+    if (!allowedPublicRoles.includes(targetRole)) {
+      throw new ForbiddenException(
+        `El rol '${targetRole}' no puede ser asignado mediante registro público. Los administradores globales se inicializan mediante Seeder y el personal operativo es incorporado por la bodega.`,
+      );
+    }
+
     // Hasheo de contraseña con bcrypt (cost factor 12)
     const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
 
@@ -61,7 +74,7 @@ export class AuthService {
         email: dto.email.toLowerCase().trim(),
         passwordHash,
         fullName: dto.fullName.trim(),
-        userRole: dto.userRole ?? UserRoleEnum.CONSUMER,
+        userRole: targetRole,
         phoneNumber: dto.phoneNumber?.trim() ?? null,
         preferredLocale: dto.preferredLocale ?? 'es',
         isActive: true,

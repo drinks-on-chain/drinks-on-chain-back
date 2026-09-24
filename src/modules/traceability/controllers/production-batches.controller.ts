@@ -75,7 +75,7 @@ export class ProductionBatchesController {
     description: 'Estado de reposo inerte',
   })
   async getRestStatus(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.productionBatchesService.getRestStatus(wineryId, id);
@@ -94,7 +94,7 @@ export class ProductionBatchesController {
   })
   @ApiNotFoundResponse({ description: 'Lote de producción no encontrado' })
   async findProductionBatchById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.productionBatchesService.findProductionBatchById(wineryId, id);
@@ -107,7 +107,7 @@ export class ProductionBatchesController {
     description: 'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
   })
   async findAll(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Query() query: QueryProductionBatchesDto,
   ) {
     return this.productionBatchesService.findAll(wineryId, query);

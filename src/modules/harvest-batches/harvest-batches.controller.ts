@@ -82,7 +82,7 @@ export class HarvestBatchesController {
     description: 'Listado de lotes de vendimia',
   })
   async findAll(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Query() query: QueryHarvestBatchesDto,
   ) {
     return this.harvestBatchesService.findAll(wineryId, query);
@@ -105,7 +105,7 @@ export class HarvestBatchesController {
   })
   @ApiNotFoundResponse({ description: 'Lote de vendimia no encontrado' })
   async findById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.harvestBatchesService.findById(wineryId, id);

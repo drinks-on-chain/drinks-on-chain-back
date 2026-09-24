@@ -119,7 +119,7 @@ export class ProductionBatchesService {
   }
 
   async getRestStatus(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<{
     id: string;
@@ -168,13 +168,16 @@ export class ProductionBatchesService {
   }
 
   async findProductionBatchById(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<
     ProductionBatch & { fermentationTank?: any; bottlingBatches?: any[] }
   > {
     const batch = await this.prisma.productionBatch.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         fermentationTank: {
           include: {
@@ -197,11 +200,11 @@ export class ProductionBatchesService {
   }
 
   async findAll(
-    wineryId: string,
+    wineryId: string | undefined,
     query: QueryProductionBatchesDto,
   ): Promise<{ items: ProductionBatch[]; total: number }> {
     const where: Prisma.ProductionBatchWhereInput = {
-      wineryId,
+      ...(wineryId && { wineryId }),
       ...(query.processType && { processType: query.processType }),
       ...(query.restStatus && { restStatus: query.restStatus }),
       ...(query.fermentationTankId && {

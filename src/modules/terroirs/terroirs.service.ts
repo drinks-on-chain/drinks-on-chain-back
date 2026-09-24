@@ -39,9 +39,9 @@ export class TerroirsService {
     return terroir;
   }
 
-  async findAll(wineryId: string, query: QueryTerroirsDto): Promise<{ items: Terroir[]; total: number }> {
+  async findAll(wineryId: string | undefined, query: QueryTerroirsDto): Promise<{ items: Terroir[]; total: number }> {
     const where: Prisma.TerroirWhereInput = {
-      wineryId,
+      ...(wineryId && { wineryId }),
       ...(query.isDoEligible !== undefined && { isDoEligible: query.isDoEligible }),
       ...(query.isActive !== undefined && { isActive: query.isActive }),
       ...(query.rawMaterialType && {
@@ -65,9 +65,12 @@ export class TerroirsService {
     return { items, total };
   }
 
-  async findById(wineryId: string, id: string): Promise<Terroir & { harvestBatches?: any[] }> {
+  async findById(wineryId: string | undefined, id: string): Promise<Terroir & { harvestBatches?: any[] }> {
     const terroir = await this.prisma.terroir.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         harvestBatches: {
           orderBy: { intakeDate: 'desc' },

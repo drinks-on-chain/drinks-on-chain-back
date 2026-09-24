@@ -139,11 +139,11 @@ export class BottlingService {
   }
 
   async findAll(
-    wineryId: string,
+    wineryId: string | undefined,
     query: QueryBottlingBatchesDto,
   ): Promise<{ items: BottlingBatch[]; total: number }> {
     const where: Prisma.BottlingBatchWhereInput = {
-      wineryId,
+      ...(wineryId && { wineryId }),
       ...(query.productType && { productType: query.productType }),
       ...(query.isAnchoredOnChain !== undefined && {
         isAnchoredOnChain: query.isAnchoredOnChain,
@@ -167,7 +167,7 @@ export class BottlingService {
   }
 
   async findById(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<
     BottlingBatch & {
@@ -177,7 +177,10 @@ export class BottlingService {
     }
   > {
     const batch = await this.prisma.bottlingBatch.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         labAnalysis: true,
         wineAgingBatch: {

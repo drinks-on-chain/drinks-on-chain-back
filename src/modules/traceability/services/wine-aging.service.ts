@@ -64,11 +64,14 @@ export class WineAgingService {
   }
 
   async findAgingBatchById(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<WineAgingBatch & { fermentationTank?: any; bottlingBatches?: any[] }> {
     const batch = await this.prisma.wineAgingBatch.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         fermentationTank: {
           include: {
@@ -91,17 +94,21 @@ export class WineAgingService {
   }
 
   async findAll(
-    wineryId: string,
+    wineryId: string | undefined,
   ): Promise<{ items: WineAgingBatch[]; total: number }> {
+    const where: Prisma.WineAgingBatchWhereInput = {
+      ...(wineryId && { wineryId }),
+    };
+
     const [items, total] = await Promise.all([
       this.prisma.wineAgingBatch.findMany({
-        where: { wineryId },
+        where,
         orderBy: { createdAt: 'desc' },
         include: {
           fermentationTank: true,
         },
       }),
-      this.prisma.wineAgingBatch.count({ where: { wineryId } }),
+      this.prisma.wineAgingBatch.count({ where }),
     ]);
 
     return { items, total };

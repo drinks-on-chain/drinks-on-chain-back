@@ -63,11 +63,11 @@ export class FermentationService {
   }
 
   async findTanks(
-    wineryId: string,
+    wineryId: string | undefined,
     query: QueryTanksDto,
   ): Promise<{ items: FermentationTank[]; total: number }> {
     const where: Prisma.FermentationTankWhereInput = {
-      wineryId,
+      ...(wineryId && { wineryId }),
       ...(query.status && { status: query.status }),
       ...(query.destinationType && { destinationType: query.destinationType }),
       ...(query.harvestBatchId && { harvestBatchId: query.harvestBatchId }),
@@ -90,7 +90,7 @@ export class FermentationService {
   }
 
   async findTankById(
-    wineryId: string,
+    wineryId: string | undefined,
     id: string,
   ): Promise<
     FermentationTank & {
@@ -100,7 +100,10 @@ export class FermentationService {
     }
   > {
     const tank = await this.prisma.fermentationTank.findFirst({
-      where: { id, wineryId },
+      where: {
+        id,
+        ...(wineryId && { wineryId }),
+      },
       include: {
         harvestBatch: true,
         logs: {

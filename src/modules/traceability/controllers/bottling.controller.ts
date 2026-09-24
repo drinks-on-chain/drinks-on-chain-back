@@ -74,7 +74,7 @@ export class BottlingController {
     description: 'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
   })
   async findAll(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Query() query: QueryBottlingBatchesDto,
   ) {
     return this.bottlingService.findAll(wineryId, query);
@@ -97,7 +97,7 @@ export class BottlingController {
   })
   @ApiNotFoundResponse({ description: 'Lote de embotellado no encontrado' })
   async findById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.bottlingService.findById(wineryId, id);

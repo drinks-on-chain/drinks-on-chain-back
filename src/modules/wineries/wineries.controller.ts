@@ -5,6 +5,7 @@ import {
   Patch,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -24,7 +25,10 @@ import { WineriesService } from './wineries.service';
 import { CreateWineryDto } from './dto/create-winery.dto';
 import { UpdateWineryDto } from './dto/update-winery.dto';
 import { AddMemberDto } from './dto/add-member.dto';
+import { CreateMemberDto } from './dto/create-member.dto';
 import { ApproveWineryDto } from './dto/approve-winery.dto';
+import { RejectWineryDto } from './dto/reject-winery.dto';
+import { QueryWineriesDto } from './dto/query-wineries.dto';
 import {
   WineryResponseDto,
   WineryMemberItemDto,
@@ -64,6 +68,26 @@ export class WineriesController {
     @Body() dto: CreateWineryDto,
   ): Promise<WineryResponseDto> {
     return this.wineriesService.createWinery(user.id, dto);
+  }
+
+  @Get()
+  @HttpCode(HttpStatus.OK)
+  @SkipTenant()
+  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @ApiOperation({
+    summary: 'Listar todas las bodegas registradas (Solo Platform Admin)',
+    description:
+      'Retorna el directorio completo de bodegas con soporte de filtros por estado, categoría y paginación.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Directorio de bodegas obtenido exitosamente',
+  })
+  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  async findAllWineries(
+    @Query() query: QueryWineriesDto,
+  ): Promise<{ items: WineryResponseDto[]; total: number }> {
+    return this.wineriesService.findAllWineries(query);
   }
 
   @Get('my')
@@ -126,6 +150,27 @@ export class WineriesController {
     return this.wineriesService.addMember(tenantId, dto);
   }
 
+  @Post('my/members/create')
+  @HttpCode(HttpStatus.CREATED)
+  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.PLATFORM_ADMIN)
+  @ApiOperation({
+    summary: 'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
+    description:
+      'Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.',
+  })
+  @ApiResponse({
+    status: HttpStatus.CREATED,
+    description: 'Miembro operativo creado e incorporado exitosamente',
+    type: WineryMemberItemDto,
+  })
+  @ApiConflictResponse({ description: 'El correo electrónico ya se encuentra registrado' })
+  async createAndAddMember(
+    @TenantId() tenantId: string,
+    @Body() dto: CreateMemberDto,
+  ): Promise<WineryMemberItemDto> {
+    return this.wineriesService.createAndAddMember(tenantId, dto);
+  }
+
   @Get('my/members')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
@@ -184,5 +229,29 @@ export class WineriesController {
     @Body() dto?: ApproveWineryDto,
   ): Promise<WineryResponseDto> {
     return this.wineriesService.approveWinery(wineryId, user.id, dto);
+  }
+
+  @Post(':id/reject')
+  @HttpCode(HttpStatus.OK)
+  @SkipTenant()
+  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @ApiOperation({
+    summary: 'Rechazar una solicitud de bodega (Solo Platform Admin)',
+    description:
+      'Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.',
+  })
+  @ApiResponse({
+    status: HttpStatus.OK,
+    description: 'Bodega rechazada exitosamente',
+    type: WineryResponseDto,
+  })
+  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
+  async rejectWinery(
+    @Param('id', ParseUUIDPipe) wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: RejectWineryDto,
+  ): Promise<WineryResponseDto> {
+    return this.wineriesService.rejectWinery(wineryId, user.id, dto);
   }
 }

@@ -5,6 +5,7 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import * as request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
@@ -194,8 +195,8 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
   // 7. REGISTRO Y APROBACIÓN POR PLATFORM_ADMIN
   it('7. POST /v1/wineries/:id/approve - Debe permitir a PLATFORM_ADMIN aprobar la bodega (cambia a ACTIVE)', async () => {
-    // 7.1 Registro de PLATFORM_ADMIN
-    const signupRes = await request(app.getHttpServer())
+    // 7.1 Probar que signup público rechaza PLATFORM_ADMIN con 403 Forbidden
+    await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
         email: platformAdminEmail,
@@ -203,11 +204,31 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
         fullName: 'Admin Plataforma DoC',
         userRole: UserRoleEnum.PLATFORM_ADMIN,
       })
-      .expect(201);
+      .expect(403);
 
-    platformAdminToken = signupRes.body.data.tokens.accessToken;
+    // 7.2 Crear PLATFORM_ADMIN legítimamente en DB (simulando Seeder oficial) y autenticarse
+    const passwordHash = await bcrypt.hash('Password123!', 12);
+    await prisma.user.create({
+      data: {
+        email: platformAdminEmail,
+        passwordHash,
+        fullName: 'Admin Plataforma DoC',
+        userRole: UserRoleEnum.PLATFORM_ADMIN,
+        isActive: true,
+      },
+    });
 
-    // 7.2 Listar pendientes
+    const loginAdmin = await request(app.getHttpServer())
+      .post('/v1/auth/login')
+      .send({
+        email: platformAdminEmail,
+        password: 'Password123!',
+      })
+      .expect(200);
+
+    platformAdminToken = loginAdmin.body.data.tokens.accessToken;
+
+    // 7.3 Listar pendientes
     const pendingRes = await request(app.getHttpServer())
       .get('/v1/wineries/pending')
       .set('Authorization', `Bearer ${platformAdminToken}`)
@@ -216,7 +237,7 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
     expect(pendingRes.body.success).toBe(true);
     expect(pendingRes.body.data.some((w: any) => w.id === createdWineryId)).toBe(true);
 
-    // 7.3 Aprobar bodega
+    // 7.4 Aprobar bodega
     const approveRes = await request(app.getHttpServer())
       .post(`/v1/wineries/${createdWineryId}/approve`)
       .set('Authorization', `Bearer ${platformAdminToken}`)
@@ -231,8 +252,8 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
   // 8. GESTIÓN DE MIEMBROS Y MULTI-TENANCY
   it('8. POST /v1/wineries/my/members - WINERY_ADMIN incorpora un Enólogo a su bodega', async () => {
-    // 8.1 Registrar usuario Enólogo
-    const enologistSignup = await request(app.getHttpServer())
+    // 8.1 Probar que signup público rechaza rol operativo directo (403 Forbidden)
+    await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
         email: enologistEmail,
@@ -240,11 +261,22 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
         fullName: 'Valeria Soliz Enóloga',
         userRole: UserRoleEnum.ENOLOGIST,
       })
+      .expect(403);
+
+    // 8.2 Registrar usuario inicialmente como CONSUMER
+    const enologistSignup = await request(app.getHttpServer())
+      .post('/v1/auth/signup')
+      .send({
+        email: enologistEmail,
+        password: 'Password123!',
+        fullName: 'Valeria Soliz Enóloga',
+        userRole: UserRoleEnum.CONSUMER,
+      })
       .expect(201);
 
     enologistUserId = enologistSignup.body.data.user.id;
 
-    // 8.2 Login como WINERY_ADMIN para refrescar token con wineryId
+    // 8.3 Login como WINERY_ADMIN para refrescar token con wineryId
     const loginWineryAdmin = await request(app.getHttpServer())
       .post('/v1/auth/login')
       .send({
@@ -255,7 +287,7 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     wineryAdminToken = loginWineryAdmin.body.data.tokens.accessToken;
 
-    // 8.3 Incorporar Enólogo como miembro
+    // 8.4 Incorporar Enólogo como miembro (sincroniza rol a ENOLOGIST)
     const addMemberRes = await request(app.getHttpServer())
       .post('/v1/wineries/my/members')
       .set('Authorization', `Bearer ${wineryAdminToken}`)

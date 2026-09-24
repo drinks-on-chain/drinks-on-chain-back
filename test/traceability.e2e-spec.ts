@@ -5,6 +5,7 @@ import {
   VersioningType,
 } from '@nestjs/common';
 import * as request from 'supertest';
+import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
@@ -64,16 +65,26 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);
 
-    // 1. Crear Platform Admin
-    const adminRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: `platform_admin_${timestamp}@doc.bo`,
-        password: 'Password123!',
+    // 1. Crear Platform Admin directamente en DB (simulando Seeder oficial)
+    const adminEmail = `platform_admin_${timestamp}@doc.bo`;
+    const passwordHash = await bcrypt.hash('Password123!', 12);
+    await prisma.user.create({
+      data: {
+        email: adminEmail,
+        passwordHash,
         fullName: 'Platform Admin',
         userRole: UserRoleEnum.PLATFORM_ADMIN,
+        isActive: true,
+      },
+    });
+
+    const adminLogin = await request(app.getHttpServer())
+      .post('/v1/auth/login')
+      .send({
+        email: adminEmail,
+        password: 'Password123!',
       });
-    platformAdminToken = adminRes.body.data.tokens.accessToken;
+    platformAdminToken = adminLogin.body.data.tokens.accessToken;
 
     // 2. Crear Winery Admin para Bodega 1
     const wAdminRes = await request(app.getHttpServer())
@@ -118,18 +129,18 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       });
     wineryAdminToken = wAdminLogin.body.data.tokens.accessToken;
 
-    // 4. Crear Agrónomo
+    // 4. Crear Agrónomo (registro inicial como CONSUMER)
     const agroRes = await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
         email: `agronomist_${timestamp}@singani.bo`,
         password: 'Password123!',
         fullName: 'Ing. Carlos Mendoza',
-        userRole: UserRoleEnum.AGRONOMIST,
+        userRole: UserRoleEnum.CONSUMER,
       });
     const agroUserId = agroRes.body.data.user.id;
 
-    // Asociar Agrónomo a Bodega 1
+    // Asociar Agrónomo a Bodega 1 (sincroniza rol a AGRONOMIST)
     await request(app.getHttpServer())
       .post('/v1/wineries/my/members')
       .set('Authorization', `Bearer ${wineryAdminToken}`)
@@ -147,14 +158,14 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       });
     agronomistToken = agroLogin.body.data.tokens.accessToken;
 
-    // 5. Crear Enólogo
+    // 5. Crear Enólogo (registro inicial como CONSUMER)
     const enolRes = await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
         email: `enologist_${timestamp}@singani.bo`,
         password: 'Password123!',
         fullName: 'Lic. Valeria Soliz',
-        userRole: UserRoleEnum.ENOLOGIST,
+        userRole: UserRoleEnum.CONSUMER,
       });
     const enolUserId = enolRes.body.data.user.id;
 

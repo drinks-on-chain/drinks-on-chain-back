@@ -70,7 +70,7 @@ export class FermentationController {
     description: 'Retorna las cubas de fermentación activas con filtros por estado y lote de vendimia.',
   })
   async findTanks(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Query() query: QueryTanksDto,
   ) {
     return this.fermentationService.findTanks(wineryId, query);
@@ -93,7 +93,7 @@ export class FermentationController {
   })
   @ApiNotFoundResponse({ description: 'Cuba no encontrada' })
   async findTankById(
-    @TenantId() wineryId: string,
+    @TenantId() wineryId: string | undefined,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.fermentationService.findTankById(wineryId, id);
