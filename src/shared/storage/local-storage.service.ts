@@ -52,9 +52,24 @@ export class LocalStorageService implements IStorageService {
     // Asegurar que el directorio exista recursivamente
     await fs.mkdir(targetDir, { recursive: true });
 
-    // Sanitizar extensión y armar nombre de archivo único
-    const ext = path.extname(file.originalname).toLowerCase();
-    const uniqueFileName = `${Date.now()}-${uuidv4()}${ext}`;
+    // Sanitizar extensión y armar nombre de archivo único verificando correspondencia con el tipo MIME
+    const allowedExtensionsMap: Record<string, string[]> = {
+      'image/jpeg': ['.jpg', '.jpeg'],
+      'image/png': ['.png'],
+      'image/webp': ['.webp'],
+      'image/svg+xml': ['.svg'],
+      'image/gif': ['.gif'],
+      'application/pdf': ['.pdf'],
+    };
+
+    const rawExt = path.extname(file.originalname).toLowerCase();
+    const validExtensions = allowedExtensionsMap[file.mimetype] || [];
+    // Si la extensión original es válida para el MIME se conserva; de lo contrario se usa la extensión canónica
+    const safeExt = validExtensions.includes(rawExt)
+      ? rawExt
+      : validExtensions[0] || '.bin';
+
+    const uniqueFileName = `${Date.now()}-${uuidv4()}${safeExt}`;
     const destinationPath = path.join(targetDir, uniqueFileName);
 
     // Guardar el buffer en disco
@@ -82,9 +97,16 @@ export class LocalStorageService implements IStorageService {
   async deleteFile(key: string): Promise<void> {
     if (!key) return;
     try {
-      // Normalizar y sanitizar el key
-      const safeKey = key.replace(/\.\./g, '');
-      const filePath = path.join(this.uploadBasePath, safeKey);
+      // Normalizar y sanitizar el key asegurando que permanezca dentro de uploadBasePath (CWE-22)
+      const safeKey = key.replace(/\.\./g, '').replace(/^\/+/, '');
+      const filePath = path.resolve(this.uploadBasePath, safeKey);
+
+      // Prevenir escape de directorio raíz
+      if (!filePath.startsWith(path.resolve(this.uploadBasePath))) {
+        this.logger.warn(`Intento de acceso a ruta fuera del directorio permitido: ${key}`);
+        return;
+      }
+
       await fs.unlink(filePath);
       this.logger.log(`Archivo eliminado: ${safeKey}`);
     } catch (error) {

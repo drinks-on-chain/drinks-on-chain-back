@@ -107,6 +107,29 @@ describe('LocalStorageService', () => {
 
       await service.deleteFile(result.key);
     });
+
+    it('debe neutralizar extensiones maliciosas forzando la extensión canónica del tipo MIME', async () => {
+      const mockFile: Express.Multer.File = {
+        fieldname: 'file',
+        originalname: 'exploit.php',
+        encoding: '7bit',
+        mimetype: 'image/png',
+        buffer: Buffer.from('fake image'),
+        size: 10,
+        stream: null as any,
+        destination: '',
+        filename: '',
+        path: '',
+      };
+
+      const result = await service.uploadFile(mockFile, 'test');
+
+      // Debe forzar la extensión segura .png y no .php
+      expect(result.key).toMatch(/^test\/\d+-[a-f0-9-]+\.png$/);
+      expect(result.key).not.toContain('.php');
+
+      await service.deleteFile(result.key);
+    });
   });
 
   describe('getFileUrl', () => {
