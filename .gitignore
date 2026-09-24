@@ -44,3 +44,5 @@ coverage
 # Docker volume data local
 postgres_data/
 redis_data/
+
+uploads/
