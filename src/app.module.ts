@@ -32,6 +32,9 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { MailModule } from './modules/mail/mail.module';
 import { AuditQueryModule } from './modules/audit/audit-query.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { CaptchaModule } from './shared/captcha/captcha.module';
+import { InvitationsModule } from './modules/invitations/invitations.module';
+import { PlatformUsersModule } from './modules/platform-users/platform-users.module';
 
 @Module({
   imports: [
@@ -40,6 +43,7 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     RequestContextModule,
     RedisModule,
     AuditModule,
+    CaptchaModule,
     StorageModule,
     IdempotencyModule,
     HealthModule,
@@ -61,6 +65,8 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
     MailModule,
     AuditQueryModule,
     DashboardModule,
+    InvitationsModule,
+    PlatformUsersModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →
