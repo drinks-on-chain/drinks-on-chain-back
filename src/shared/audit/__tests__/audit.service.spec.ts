@@ -12,6 +12,9 @@ type Row = Record<string, unknown> & { seq: bigint; hash: string };
 function fakeTx(rows: Row[]) {
   return {
     $executeRaw: jest.fn().mockResolvedValue(1),
+    user: {
+      findUnique: jest.fn().mockResolvedValue({ fullName: 'Desde la cuenta' }),
+    },
     auditEvent: {
       findFirst: jest.fn(async () => {
         const last = rows[rows.length - 1];
@@ -112,6 +115,20 @@ describe('AuditService.record', () => {
       before: { status: 'PENDING', passwordHash: '[REDACTED]' },
       after: { status: 'ACTIVE' },
       reason: 'Documentación completa',
+    });
+  });
+
+  it('sin nombre en el contexto, lo toma de la cuenta', async () => {
+    const rows: Row[] = [];
+    await runWithRequestContext({ userId: 'u-7', clientApp: 'ERP' }, () =>
+      service.record(fakeTx(rows) as never, {
+        action: 'TEST_NAME',
+        resource: { type: 't' },
+      }),
+    );
+    expect(rows[0]).toMatchObject({
+      actorUserId: 'u-7',
+      actorFullName: 'Desde la cuenta',
     });
   });
 

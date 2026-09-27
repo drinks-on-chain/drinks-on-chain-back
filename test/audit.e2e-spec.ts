@@ -6,6 +6,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { AuditService } from '../src/shared/audit/audit.service';
+import { deleteIdentityData } from './helpers/identity';
 
 /**
  * Bitácora con Postgres real (AUD-01, AUD-02): misma transacción que la
@@ -37,6 +38,10 @@ describe('Bitácora (e2e)', () => {
     if (prisma) {
       await prisma.outboxEvent.deleteMany({
         where: { correlationId: { startsWith: run } },
+      });
+      await deleteIdentityData(prisma, {
+        emailContains: email,
+        wineryIds: wineryId ? [wineryId] : [],
       });
       await prisma.userWallet.deleteMany({ where: { user: { email } } });
       await prisma.wineryMember.deleteMany({ where: { user: { email } } });

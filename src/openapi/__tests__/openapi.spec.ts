@@ -89,17 +89,23 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/wineries/pending',
     ];
 
+    // Listas cortas y cerradas que el contrato fija como array sin paginar
+    // (contrato O1 §6: la configuración son menos de 50 parámetros)
+    const UNPAGINATED_ARRAYS = ['GET /v1/organizations/current/settings'];
+
     it('ninguna respuesta declara un array plano', () => {
-      const bare = ops.filter((op) =>
-        Object.values(op.responses ?? {}).some((response) => {
-          const schema = (
-            response as {
-              content?: Record<string, { schema?: SchemaObject }>;
-            }
-          ).content?.['application/json']?.schema;
-          return schema?.type === 'array';
-        }),
-      );
+      const bare = ops
+        .filter((op) => !UNPAGINATED_ARRAYS.includes(key(op)))
+        .filter((op) =>
+          Object.values(op.responses ?? {}).some((response) => {
+            const schema = (
+              response as {
+                content?: Record<string, { schema?: SchemaObject }>;
+              }
+            ).content?.['application/json']?.schema;
+            return schema?.type === 'array';
+          }),
+        );
       expect(bare.map(key)).toEqual([]);
     });
 
@@ -137,6 +143,8 @@ describe('Contrato OpenAPI (OPS-12)', () => {
   describe('seguridad (SE-08)', () => {
     const PUBLIC = [
       'GET /v1/health',
+      'GET /v1/health/live',
+      'GET /v1/health/ready',
       'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/login',
       'POST /v1/auth/logout',

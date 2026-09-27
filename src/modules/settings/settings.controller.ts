@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiForbiddenResponse,
@@ -7,8 +7,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
+import { Audience } from '@modules/auth/decorators/authorization.decorators';
 import { getRequestContext } from '@shared/context/request-context';
 import { SettingsService } from './settings.service';
 import { EffectiveSettingDto } from './dto/effective-setting.dto';
@@ -20,7 +19,7 @@ import { EffectiveSettingDto } from './dto/effective-setting.dto';
  */
 @ApiTags('Configuración')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, TenantGuard)
+@Audience('STAFF')
 @Controller('organizations/current/settings')
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}

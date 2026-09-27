@@ -114,6 +114,16 @@ export class AuditService {
               input.actor?.viaPlatform ?? ctx?.organizationType === 'PLATFORM',
           };
 
+    // El token no trae el nombre: se toma de la cuenta (se guarda tal cual
+    // estaba en el momento de la acción)
+    if (actor?.userId && !actor.fullName) {
+      const user = await tx.user.findUnique({
+        where: { id: actor.userId },
+        select: { fullName: true },
+      });
+      actor.fullName = user?.fullName ?? null;
+    }
+
     const before = sanitizeAuditData(input.before);
     const after = sanitizeAuditData(input.after);
 

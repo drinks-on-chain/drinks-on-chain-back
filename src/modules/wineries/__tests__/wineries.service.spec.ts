@@ -481,7 +481,7 @@ describe('WineriesService', () => {
         action: 'WINERY_APPROVED',
         resource: { type: 'winery', id: 'winery-uuid-1' },
         organizationId: 'winery-uuid-1',
-        before: { certificationStatus: WineryStatusEnum.PENDING },
+        before: { certificationStatus: WineryStatusEnum.INVITED },
         after: { certificationStatus: WineryStatusEnum.ACTIVE },
       });
     });

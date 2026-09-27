@@ -8,6 +8,7 @@ import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { SettingsService } from '../src/modules/settings/settings.service';
 import { SettingsCatalogSync } from '../src/modules/settings/settings-catalog.sync';
 import { SETTINGS_CATALOG } from '../src/modules/settings/settings.catalog';
+import { deleteIdentityData } from './helpers/identity';
 
 /**
  * Configuración con Postgres y Redis reales: catálogo sincronizado, valor
@@ -28,6 +29,7 @@ describe('Configuración (e2e)', () => {
     'puntos.maxPorBodega',
   ];
   let wineryId: string;
+  let signupToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -39,17 +41,31 @@ describe('Configuración (e2e)', () => {
     prisma = app.get(PrismaService);
     settings = app.get(SettingsService);
 
-    const winery = await prisma.winery.create({
-      data: {
+    // Dueña de una bodega: cuenta, alta de la bodega (organización y
+    // membresía de dueña) y sesión con la bodega activa
+    const signup = await request(app.getHttpServer())
+      .post('/v1/auth/signup')
+      .send({
+        email,
+        password: 'Password123!',
+        fullName: 'Dueña Configuración',
+        userRole: UserRoleEnum.WINERY_ADMIN,
+      })
+      .expect(201);
+    signupToken = signup.body.data.tokens.accessToken as string;
+    const winery = await request(app.getHttpServer())
+      .post('/v1/wineries')
+      .set('Authorization', `Bearer ${signupToken}`)
+      .send({
         legalName: `Bodega ${run} S.A.`,
         commercialName: `Bodega ${run}`,
         beverageCategory: WineryCategoryEnum.DISTILLERY,
         taxIdNit: `CFG${Date.now().toString().slice(-9)}`,
         geographicRegion: 'Tarija',
         contactEmail: `contacto_${run}@test.bo`,
-      },
-    });
-    wineryId = winery.id;
+      })
+      .expect(201);
+    wineryId = winery.body.data.id as string;
   });
 
   afterAll(async () => {
@@ -66,6 +82,10 @@ describe('Configuración (e2e)', () => {
           eventType: 'setting.changed',
           createdAt: { gte: startedAt },
         },
+      });
+      await deleteIdentityData(prisma, {
+        emailContains: email,
+        wineryIds: [wineryId],
       });
       await prisma.userWallet.deleteMany({ where: { user: { email } } });
       await prisma.wineryMember.deleteMany({ where: { user: { email } } });
@@ -191,29 +211,12 @@ describe('Configuración (e2e)', () => {
   });
 
   it('GET /v1/organizations/current/settings devuelve el valor efectivo de la bodega', async () => {
-    const signup = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email,
-        password: 'Password123!',
-        fullName: 'Dueña Configuración',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const consumerLikeToken = signup.body.data.tokens.accessToken as string;
-    // Sin bodega activa: 403
+    // El token del registro (sin membresía todavía) no es de personal: 403
     await request(app.getHttpServer())
       .get('/v1/organizations/current/settings')
-      .set('Authorization', `Bearer ${consumerLikeToken}`)
+      .set('Authorization', `Bearer ${signupToken}`)
       .expect(403);
 
-    await prisma.wineryMember.create({
-      data: {
-        userId: signup.body.data.user.id as string,
-        wineryId,
-        memberRole: 'OWNER',
-      },
-    });
     const login = await request(app.getHttpServer())
       .post('/v1/auth/login')
       .send({ email, password: 'Password123!' })

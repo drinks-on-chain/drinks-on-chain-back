@@ -25,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from '../auth/decorators/public.decorator';
+import { Audience } from '../auth/decorators/authorization.decorators';
 import {
   ObjectStorage,
   STORAGE_SERVICE,
@@ -56,6 +57,7 @@ export class UploadsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Audience('STAFF')
   @ApiOperation({
     summary: 'Subir un archivo privado (PDF, JPEG, PNG, WEBP, GIF)',
     description:
@@ -131,6 +133,7 @@ export class UploadsController {
   }
 
   @Get('url')
+  @Audience('STAFF')
   @ApiOperation({
     summary: 'URL firmada nueva de un archivo',
     description:
