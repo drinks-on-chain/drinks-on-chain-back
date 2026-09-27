@@ -8,6 +8,7 @@ import { SETTINGS_CACHE, RedisSettingsCache } from './settings.cache';
 import { SettingsService } from './settings.service';
 import { SettingsCatalogSync } from './settings-catalog.sync';
 import { SettingsController } from './settings.controller';
+import { PlatformSettingsController } from './platform-settings.controller';
 
 /**
  * Configuración en dos niveles (docs/arquitectura/configuracion.md). Usa el
@@ -15,7 +16,7 @@ import { SettingsController } from './settings.controller';
  */
 @Module({
   imports: [PrismaModule, OutboxModule, AuthModule],
-  controllers: [SettingsController],
+  controllers: [SettingsController, PlatformSettingsController],
   providers: [
     {
       provide: SETTINGS_CACHE,

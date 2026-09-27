@@ -6,6 +6,7 @@ import { AuditAction } from '@shared/audit/audit.actions';
 import { AppException } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
+import { assertReason } from '@shared/audit/requires-reason';
 import { OutboxService } from '@shared/outbox/outbox.service';
 import { QUEUE_DEFAULT } from '@shared/queue/queue.constants';
 import { getRequestContext } from '@shared/context/request-context';
@@ -21,6 +22,9 @@ import type {
   EffectiveSettingView,
   ResolvedSetting,
   SettingCatalogEntry,
+  SettingDefinitionView,
+  SettingHistoryView,
+  SettingOverrideView,
   SettingValue,
   SettingsSnapshot,
 } from './settings.types';
@@ -50,15 +54,9 @@ function jsonValue(
   return value === null ? Prisma.JsonNull : (value as Prisma.InputJsonValue);
 }
 
+/** Motivo obligatorio (3–500): queda en el historial y en la bitácora. */
 function checkReason(reason: string | undefined): string {
-  const trimmed = (reason ?? '').trim();
-  if (trimmed.length < 3 || trimmed.length > 500) {
-    throw ValidationException.forField(
-      'reason',
-      'El motivo es obligatorio (entre 3 y 500 caracteres)',
-    );
-  }
-  return trimmed;
+  return assertReason(reason);
 }
 
 /**
@@ -313,11 +311,12 @@ export class SettingsService {
     const actor = getRequestContext()?.userId ?? null;
 
     const reset = await this.prisma.$transaction(async (tx) => {
+      // Una selección con bodegas inexistentes → 422 (como al aplicar)
+      const ids =
+        wineryIds === 'ALL' ? null : await this.targetWineries(tx, wineryIds);
       const existing = await tx.settingOverride.findMany({
-        where: {
-          key,
-          ...(wineryIds === 'ALL' ? {} : { wineryId: { in: wineryIds } }),
-        },
+        where: { key, ...(ids === null ? {} : { wineryId: { in: ids } }) },
+        orderBy: { wineryId: 'asc' },
       });
       for (const override of existing) {
         await tx.settingOverride.delete({ where: { id: override.id } });
@@ -363,6 +362,156 @@ export class SettingsService {
 
     if (reset > 0) await this.invalidateCache();
     return { reset };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Vistas del back office (contrato O1 §6). Leen de la base, no de la caché:
+  // quien administra la configuración debe ver el último cambio.
+  // ---------------------------------------------------------------------------
+
+  /** Todas las definiciones con su estándar general y número de ajustes. */
+  async listDefinitions(): Promise<SettingDefinitionView[]> {
+    const [globals, counts, rows] = await Promise.all([
+      this.prisma.settingGlobalValue.findMany(),
+      this.prisma.settingOverride.groupBy({ by: ['key'], _count: true }),
+      this.prisma.settingDefinition.findMany({
+        select: { key: true, createdAt: true },
+      }),
+    ]);
+    const globalByKey = new Map(globals.map((g) => [g.key, g]));
+    const countByKey = new Map(counts.map((c) => [c.key, c._count]));
+    const installedAt = new Map(rows.map((r) => [r.key, r.createdAt]));
+    const names = await this.userNames(globals.map((g) => g.updatedBy));
+    return SETTINGS_CATALOG.map((entry) =>
+      definitionView(entry, {
+        global: globalByKey.get(entry.key),
+        overridesCount: countByKey.get(entry.key) ?? 0,
+        installedAt: installedAt.get(entry.key),
+        names,
+      }),
+    );
+  }
+
+  /** Definición de `key` para el back office (404 si no existe). */
+  async definitionView(key: string): Promise<SettingDefinitionView> {
+    const entry = this.definition(key);
+    const [global, overridesCount, row] = await Promise.all([
+      this.prisma.settingGlobalValue.findUnique({ where: { key } }),
+      this.prisma.settingOverride.count({ where: { key } }),
+      this.prisma.settingDefinition.findUnique({
+        where: { key },
+        select: { createdAt: true },
+      }),
+    ]);
+    const names = await this.userNames([global?.updatedBy]);
+    return definitionView(entry, {
+      global: global ?? undefined,
+      overridesCount,
+      installedAt: row?.createdAt,
+      names,
+    });
+  }
+
+  /** Ajustes por bodega de `key`, del más reciente al más antiguo. */
+  async listOverrides(
+    key: string,
+    page: { limit: number; offset: number },
+  ): Promise<{ items: SettingOverrideView[]; total: number }> {
+    this.definition(key);
+    const [rows, total] = await Promise.all([
+      this.prisma.settingOverride.findMany({
+        where: { key },
+        include: { winery: { select: { commercialName: true } } },
+        orderBy: [{ updatedAt: 'desc' }, { wineryId: 'asc' }],
+        take: page.limit,
+        skip: page.offset,
+      }),
+      this.prisma.settingOverride.count({ where: { key } }),
+    ]);
+    const names = await this.userNames(rows.map((r) => r.updatedBy));
+    return {
+      total,
+      items: rows.map((row) => ({
+        wineryId: row.wineryId,
+        wineryName: row.winery.commercialName,
+        value: row.value as SettingValue,
+        legalException: row.legalException,
+        reason: row.reason,
+        updatedAt: row.updatedAt.toISOString(),
+        updatedBy: personName(row.updatedBy, names),
+      })),
+    };
+  }
+
+  /**
+   * Historial de `key` (CFG-07), del más reciente al más antiguo. En los
+   * ajustes por bodega, "sin valor propio" se muestra como el estándar que
+   * regía en ese momento (lo que la bodega usaba de verdad).
+   */
+  async history(
+    key: string,
+    page: { limit: number; offset: number },
+  ): Promise<{ items: SettingHistoryView[]; total: number }> {
+    const entry = this.definition(key);
+    const [rows, total, globalChanges, current] = await Promise.all([
+      this.prisma.settingChange.findMany({
+        where: { key },
+        orderBy: [{ changedAt: 'desc' }, { id: 'asc' }],
+        take: page.limit,
+        skip: page.offset,
+      }),
+      this.prisma.settingChange.count({ where: { key } }),
+      this.prisma.settingChange.findMany({
+        where: { key, scope: 'GLOBAL' },
+        orderBy: { changedAt: 'asc' },
+        select: { changedAt: true, before: true, after: true },
+      }),
+      this.prisma.settingGlobalValue.findUnique({ where: { key } }),
+    ]);
+    const currentStandard =
+      current === null ? entry.default : (current.value as SettingValue);
+    const standardAt = (at: Date): SettingValue => {
+      let last: (typeof globalChanges)[number] | undefined;
+      for (const change of globalChanges) {
+        if (change.changedAt <= at) last = change;
+        else break;
+      }
+      if (last) return unboxed(last.after) ?? currentStandard;
+      if (globalChanges.length > 0) {
+        return unboxed(globalChanges[0].before) ?? currentStandard;
+      }
+      return currentStandard;
+    };
+    const valueAt = (boxedValue: Prisma.JsonValue, at: Date): SettingValue => {
+      const value = unboxed(boxedValue);
+      return value === undefined ? standardAt(at) : value;
+    };
+    const names = await this.userNames(rows.map((r) => r.changedBy));
+    return {
+      total,
+      items: rows.map((row) => ({
+        at: row.changedAt.toISOString(),
+        by: personName(row.changedBy, names),
+        scope: row.scope === 'GLOBAL' ? 'GLOBAL' : (row.wineryId ?? 'GLOBAL'),
+        before: valueAt(row.before, row.changedAt),
+        after: valueAt(row.after, row.changedAt),
+        reason: row.reason,
+        legalException: row.legalException,
+      })),
+    };
+  }
+
+  /** Nombres de las personas por id (para `updatedBy` y `by`). */
+  private async userNames(
+    ids: readonly (string | null | undefined)[],
+  ): Promise<Map<string, string>> {
+    const unique = [...new Set(ids.filter((id): id is string => !!id))];
+    if (unique.length === 0) return new Map();
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: unique } },
+      select: { id: true, fullName: true },
+    });
+    return new Map(users.map((u) => [u.id, u.fullName]));
   }
 
   /** Invalida la caché (tras un cambio o desde el worker). No lanza. */
@@ -488,6 +637,67 @@ export class SettingsService {
       });
     }
   }
+}
+
+/** Quien hizo un cambio sin persona (instalación, migración, worker). */
+export const SYSTEM_ACTOR_NAME = 'Sistema';
+
+function personName(userId: string | null, names: Map<string, string>): string {
+  if (!userId) return SYSTEM_ACTOR_NAME;
+  return names.get(userId) ?? 'Persona desconocida';
+}
+
+/** `{ value }` → value; `null` (sin valor propio) → `undefined`. */
+function unboxed(stored: Prisma.JsonValue): SettingValue | undefined {
+  if (stored && typeof stored === 'object' && !Array.isArray(stored)) {
+    if ('value' in stored) return stored.value as SettingValue;
+  }
+  return undefined;
+}
+
+/** Forma pública de una definición (contrato O1 §6). */
+export function definitionView(
+  entry: SettingCatalogEntry,
+  data: {
+    global?: {
+      value: Prisma.JsonValue;
+      updatedAt: Date;
+      updatedBy: string | null;
+    };
+    overridesCount: number;
+    installedAt?: Date;
+    names: Map<string, string>;
+  },
+): SettingDefinitionView {
+  const legalMinimum = entry.legalMinimum ?? null;
+  return {
+    key: entry.key,
+    description: entry.description,
+    type: entry.type,
+    ...(entry.enumValues ? { enumValues: [...entry.enumValues] } : {}),
+    ...(entry.unit ? { unit: entry.unit } : {}),
+    levels: entry.levels,
+    appliesAt: entry.appliesAt,
+    default: entry.default,
+    ...(entry.min !== undefined ? { min: entry.min } : {}),
+    ...(entry.max !== undefined ? { max: entry.max } : {}),
+    legalMinimum: Array.isArray(legalMinimum)
+      ? [...(legalMinimum as readonly string[])]
+      : (legalMinimum as number | null),
+    globalValue:
+      data.global && entry.levels !== 'WINERY'
+        ? (data.global.value as SettingValue)
+        : entry.default,
+    overridesCount: data.overridesCount,
+    updatedAt: (
+      data.global?.updatedAt ??
+      data.installedAt ??
+      new Date()
+    ).toISOString(),
+    updatedBy: data.global?.updatedBy
+      ? personName(data.global.updatedBy, data.names)
+      : null,
+  };
 }
 
 /** Fila de `setting_definitions` para una entrada del catálogo. */

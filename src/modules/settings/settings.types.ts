@@ -79,3 +79,52 @@ export interface SettingsSnapshot {
   /** Claves con un ajuste bajo el mínimo legal (el pasaporte lo indica). */
   legalExceptions: string[];
 }
+
+/** Definición con su estándar general para el back office (contrato O1 §6). */
+export interface SettingDefinitionView {
+  key: string;
+  description: string;
+  type: SettingType;
+  enumValues?: string[];
+  unit?: string;
+  levels: SettingLevels;
+  appliesAt: SettingAppliesAt;
+  default: SettingValue;
+  min?: number;
+  max?: number;
+  legalMinimum: number | string[] | null;
+  /** Estándar general vigente (el valor por defecto si nunca se cambió). */
+  globalValue: SettingValue;
+  /** Bodegas con un ajuste propio. */
+  overridesCount: number;
+  updatedAt: string;
+  /** Nombre de quien cambió el estándar por última vez; `null` = instalación. */
+  updatedBy: string | null;
+}
+
+/** Ajuste de una bodega (`GET /v1/platform/settings/{key}/overrides`). */
+export interface SettingOverrideView {
+  wineryId: string;
+  wineryName: string;
+  value: SettingValue;
+  legalException: boolean;
+  reason: string;
+  updatedAt: string;
+  /** Nombre de quien lo aplicó (`Sistema` si no hay persona). */
+  updatedBy: string;
+}
+
+/** Entrada del historial (`GET /v1/platform/settings/{key}/history`). */
+export interface SettingHistoryView {
+  at: string;
+  /** Nombre de quien lo cambió (`Sistema` si no hay persona). */
+  by: string;
+  /** `GLOBAL` o el id de la bodega. */
+  scope: string;
+  /** Valor antes y después; sin ajuste propio = el estándar vigente en ese momento. */
+  before: SettingValue;
+  after: SettingValue;
+  reason: string;
+  /** Ajuste autorizado bajo el mínimo legal (A-31). Adicional al contrato. */
+  legalException: boolean;
+}
