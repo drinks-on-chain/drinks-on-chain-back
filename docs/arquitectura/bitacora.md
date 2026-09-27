@@ -70,7 +70,7 @@ Atajos:
 
 `AuditService` es global (`AuditModule`): no hace falta importar el módulo. En pruebas unitarias, `createAuditServiceMock(prismaMock)` (`src/shared/audit/__tests__/audit-service.mock.ts`) ejecuta `transaction` con el simulado de Prisma y guarda las entradas en `recorded`.
 
-La transacción debe ser `READ COMMITTED` (la de Prisma por defecto): con aislamiento mayor, la cabeza leída tras el candado podría ser vieja y la inserción fallaría por `seq` repetido (falla, no corrompe).
+Desde el candado hasta la confirmación, las demás escrituras auditadas esperan: por eso `PrismaService` da a las transacciones más margen que el de Prisma por defecto (`maxWait` 10 s, `timeout` 15 s). La transacción debe ser `READ COMMITTED` (la de Prisma por defecto): con aislamiento mayor, la cabeza leída tras el candado podría ser vieja y la inserción fallaría por `seq` repetido (falla, no corrompe).
 
 ## Qué se registra hoy
 
@@ -93,4 +93,4 @@ Pendiente (Ola 1 en adelante): membresías y equipo, invitaciones, solicitudes, 
 ## Pruebas
 
 - Unitarias: `src/shared/audit/__tests__/` (saneado, hash y detección de eslabones rotos, servicio con contexto, interceptor de login).
-- e2e con Postgres: `test/audit.e2e-spec.ts` — 25 escrituras simultáneas con `seq` consecutivos y cadena válida, rollback sin entrada, `UPDATE`/`DELETE`/`TRUNCATE` rechazados por la base, manipulación detectada por `verifyChain`, escritura por HTTP con `X-Client-App` y login correcto y fallido.
+- e2e con Postgres: `test/audit.e2e-spec.ts` — 12 escrituras simultáneas con `seq` consecutivos y cadena válida, rollback sin entrada, `UPDATE`/`DELETE`/`TRUNCATE` rechazados por la base, manipulación detectada por `verifyChain`, escritura por HTTP con `X-Client-App` y login correcto y fallido.
