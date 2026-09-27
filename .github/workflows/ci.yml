@@ -110,6 +110,12 @@ jobs:
       - run: docker build --pull -t drinks-on-chain-back:ci .
       - name: La imagen arranca como usuario no root
         run: test "$(docker image inspect -f '{{.Config.User}}' drinks-on-chain-back:ci)" = node
+      - name: La imagen trae la API y el worker
+        run: |
+          docker run --rm --entrypoint sh drinks-on-chain-back:ci -c \
+            'test -f dist/main.js && test -f dist/worker.js && test -f dist/worker-healthcheck.js'
+          # Sin latido, el healthcheck del worker debe fallar
+          ! docker run --rm --entrypoint node drinks-on-chain-back:ci dist/worker-healthcheck.js
 
   audit:
     name: Auditoría de dependencias

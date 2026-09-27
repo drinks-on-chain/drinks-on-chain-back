@@ -9,13 +9,17 @@
 #   1. Extrae la release en ~/doc-dev/src-<sha> (si ya existe, la reutiliza).
 #   2. Apunta ~/doc-dev/current a esa carpeta (cambio atómico del enlace).
 #   3. docker compose up -d --build --remove-orphans con ~/doc-dev/.env.
-#   4. Espera a que la API esté healthy (HEALTHCHECK de la imagen: /v1/health).
+#   4. Espera a que la API y el worker estén healthy (API: /v1/health;
+#      worker: latido reciente, dist/worker-healthcheck.js). Un servicio que
+#      no exista en el compose de la release (releases antiguas sin worker) se
+#      omite.
 #   5. Si queda sana: escribe ~/doc-dev/DEPLOYED y conserva las 3 últimas
 #      releases. Si no: vuelve al enlace anterior, relanza y sale con error.
 #
 # Idempotente: repetir el mismo <sha> no rompe nada. Un candado evita dos
 # despliegues a la vez. Variables opcionales (entorno o ~/doc-dev/.env):
 #   DOC_DEV_HOME (~/doc-dev) · DEPLOY_HEALTH_TIMEOUT (180) · DEPLOY_KEEP_RELEASES (3)
+#   DEPLOY_HEALTH_SERVICES ("api worker")
 # -----------------------------------------------------------------------------
 set -Eeuo pipefail
 
@@ -48,6 +52,7 @@ docker compose version >/dev/null 2>&1 || die "falta el plugin docker compose"
 
 HEALTH_TIMEOUT="$(env_value DEPLOY_HEALTH_TIMEOUT 180)"
 KEEP="$(env_value DEPLOY_KEEP_RELEASES 3)"
+HEALTH_SERVICES="$(env_value DEPLOY_HEALTH_SERVICES "api worker")"
 [[ "$HEALTH_TIMEOUT" =~ ^[0-9]+$ ]] || die "DEPLOY_HEALTH_TIMEOUT no es un número"
 [[ "$KEEP" =~ ^[0-9]+$ && "$KEEP" -ge 1 ]] || die "DEPLOY_KEEP_RELEASES debe ser >= 1"
 
@@ -68,26 +73,49 @@ switch_link() {
   mv -Tf "$BASE/.current.tmp" "$CURRENT_LINK"
 }
 
+# Servicios de DEPLOY_HEALTH_SERVICES que existen en el compose de la release
+services_to_check() {
+  local dir="$1" defined svc
+  defined="$(compose "$dir" config --services 2>/dev/null || true)"
+  for svc in $HEALTH_SERVICES; do
+    grep -qx "$svc" <<<"$defined" && printf '%s\n' "$svc"
+  done
+  return 0
+}
+
 wait_healthy() {
-  local dir="$1" deadline cid status restarts
+  local dir="$1" deadline cid status restarts svc pending
+  local -a services
+  mapfile -t services < <(services_to_check "$dir")
+  (( ${#services[@]} > 0 )) || { log "ningún servicio que comprobar"; return 1; }
   deadline=$(( $(date +%s) + HEALTH_TIMEOUT ))
   while (( $(date +%s) < deadline )); do
-    cid="$(compose "$dir" ps -q api 2>/dev/null || true)"
-    if [[ -n "$cid" ]]; then
+    pending=0
+    for svc in "${services[@]}"; do
+      cid="$(compose "$dir" ps -q "$svc" 2>/dev/null || true)"
+      if [[ -z "$cid" ]]; then
+        pending=1
+        continue
+      fi
       status="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$cid" 2>/dev/null || echo unknown)"
       restarts="$(docker inspect -f '{{.RestartCount}}' "$cid" 2>/dev/null || echo 0)"
       case "$status" in
-        healthy) return 0 ;;
-        exited|dead) log "la API terminó ($status)"; return 1 ;;
+        healthy) ;;
+        exited|dead) log "$svc terminó ($status)"; return 1 ;;
+        *) pending=1 ;;
       esac
       if (( restarts >= 3 )); then
-        log "la API se ha reiniciado $restarts veces"
+        log "$svc se ha reiniciado $restarts veces"
         return 1
       fi
+    done
+    if (( pending == 0 )); then
+      log "sanos: ${services[*]}"
+      return 0
     fi
     sleep 3
   done
-  log "la API no quedó healthy en ${HEALTH_TIMEOUT}s"
+  log "${services[*]}: no quedaron healthy en ${HEALTH_TIMEOUT}s"
   return 1
 }
 
@@ -134,14 +162,20 @@ if compose "$TARGET" up -d --build --remove-orphans && wait_healthy "$TARGET"; t
 fi
 
 # --- Fallo: volver a la release anterior -----------------------------------------
-log "el despliegue de $SHA no quedó sano; últimos logs de la API:"
-compose "$TARGET" logs --tail 80 api || true
+log "el despliegue de $SHA no quedó sano; últimos logs:"
+mapfile -t CHECKED < <(services_to_check "$TARGET")
+for svc in "${CHECKED[@]}"; do
+  compose "$TARGET" logs --tail 80 "$svc" || true
+done
 
 if [[ -n "$PREVIOUS" && -d "$PREVIOUS" && "$PREVIOUS" != "$(readlink -f "$TARGET")" ]]; then
   log "rollback a $PREVIOUS"
-  # Quitar primero la API fallida: un contenedor en bucle de reinicios puede
-  # hacer fallar la recreación.
-  compose "$TARGET" rm -sf api >/dev/null 2>&1 || true
+  # Quitar primero los contenedores fallidos: uno en bucle de reinicios
+  # puede hacer fallar la recreación.
+  # (sin nombres, `rm -sf` pararía toda la pila, bases de datos incluidas)
+  if (( ${#CHECKED[@]} > 0 )); then
+    compose "$TARGET" rm -sf "${CHECKED[@]}" >/dev/null 2>&1 || true
+  fi
   switch_link "$PREVIOUS"
   if compose "$PREVIOUS" up -d --build --remove-orphans && wait_healthy "$PREVIOUS"; then
     log "rollback completado: sigue desplegada $(basename "$PREVIOUS" | sed 's/^src-//')"

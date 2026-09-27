@@ -3,7 +3,7 @@
 #
 #   cp .env.example .env            # cambia cada change-me
 #   docker compose up -d            # postgres, redis, mailpit, minio
-#   docker compose --profile app up -d --build   # + la API en contenedor
+#   docker compose --profile app up -d --build   # + la API y el worker en contenedor
 #
 # Todos los puertos se publican solo en 127.0.0.1. Las contraseñas salen del
 # .env (docker compose lo lee para interpolar); aquí no se escribe ninguna.
@@ -90,6 +90,34 @@ services:
       - api_uploads:/app/uploads
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Worker (misma imagen que la API, otro comando): outbox → BullMQ, colas y
+  # tareas programadas. Espera a la API sana (ya aplicó las migraciones).
+  worker:
+    profiles: ['app']
+    image: drinks-on-chain-back:local
+    pull_policy: never
+    command: ['node', 'dist/worker.js']
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      RUN_MIGRATIONS: 'false'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
+    healthcheck:
+      test: ['CMD', 'node', 'dist/worker-healthcheck.js']
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 30s
+    depends_on:
+      api:
         condition: service_healthy
       redis:
         condition: service_healthy
