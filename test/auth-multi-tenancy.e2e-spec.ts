@@ -148,8 +148,10 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(200);
 
     expect(response.body.success).toBe(true);
-    expect(response.body.data.fullName).toBe('Consumidor Modificado');
-    expect(response.body.data.preferredLocale).toBe('en');
+    // Contrato O1 §1 / §11 bis: responde como GET /users/me
+    expect(response.body.data.user.fullName).toBe('Consumidor Modificado');
+    expect(response.body.data.user.preferredLocale).toBe('en');
+    expect(response.body.data.memberships).toEqual([]);
   });
 
   // 5. REGISTRO DE WINERY_ADMIN Y ONBOARDING DE BODEGA

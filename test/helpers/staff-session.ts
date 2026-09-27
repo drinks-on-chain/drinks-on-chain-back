@@ -35,6 +35,8 @@ export async function staffToken(
     audience: AudienceEnum.STAFF,
     activeOrganizationId: params.organizationId,
     client: { ip: '127.0.0.1', userAgent: 'e2e' },
+    // Una sesión de plataforma exige el segundo factor (PLT-05)
+    mfaVerified: params.organizationType === 'PLATFORM',
   });
   const winery = params.organizationType === 'WINERY';
   return app.get(AccessTokenService).sign({
