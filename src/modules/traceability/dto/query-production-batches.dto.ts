@@ -1,9 +1,9 @@
 import { IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
 
-export class QueryProductionBatchesDto extends PaginationQueryDto {
+export class QueryProductionBatchesDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({ enum: ProductionProcessEnum })
   @IsOptional()
   @IsEnum(ProductionProcessEnum)

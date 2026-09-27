@@ -1,10 +1,10 @@
 import { IsOptional, IsEnum, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { BeverageTypeEnum } from '@prisma/client';
 
-export class QueryBottlingBatchesDto extends PaginationQueryDto {
+export class QueryBottlingBatchesDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({ enum: BeverageTypeEnum })
   @IsOptional()
   @IsEnum(BeverageTypeEnum)

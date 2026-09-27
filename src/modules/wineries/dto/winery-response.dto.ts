@@ -87,7 +87,7 @@ export class WineryResponseDto {
   @ApiProperty({ example: false })
   isExportCertified!: boolean;
 
-  @ApiProperty({ enum: WineryStatusEnum, example: WineryStatusEnum.PENDING })
+  @ApiProperty({ enum: WineryStatusEnum, example: WineryStatusEnum.INVITED })
   certificationStatus!: WineryStatusEnum;
 
   @ApiPropertyOptional({ example: '2026-09-06T21:00:00.000Z' })

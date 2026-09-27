@@ -6,7 +6,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -25,18 +24,19 @@ import { CreateTerroirDto } from './dto/create-terroir.dto';
 import { UpdateTerroirDto } from './dto/update-terroir.dto';
 import { QueryTerroirsDto } from './dto/query-terroirs.dto';
 import { TerroirResponseDto } from './dto/terroir-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Terroirs y Parcelas')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('terroirs')
 export class TerroirsController {
   constructor(private readonly terroirsService: TerroirsService) {}
@@ -44,7 +44,7 @@ export class TerroirsController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
+  @Roles('OWNER', 'AGRONOMIST')
   @ApiOperation({
     summary: 'Registrar una nueva parcela de cultivo',
     description:
@@ -64,11 +64,7 @@ export class TerroirsController {
   }
 
   @Get()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar parcelas de la bodega',
     description:
@@ -85,11 +81,7 @@ export class TerroirsController {
   }
 
   @Get(':id')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de una parcela',
     description:
@@ -109,7 +101,7 @@ export class TerroirsController {
   }
 
   @Patch(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
+  @Roles('OWNER', 'AGRONOMIST')
   @ApiOperation({
     summary: 'Actualizar datos de una parcela',
     description:

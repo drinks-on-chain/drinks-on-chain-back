@@ -1,4 +1,8 @@
 import {
+  MembershipRoleEnum,
+  MembershipStatusEnum,
+  OrganizationStatusEnum,
+  OrganizationTypeEnum,
   PrismaClient,
   UserRoleEnum,
   WalletPurposeEnum,
@@ -12,6 +16,9 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 const prisma = new PrismaClient();
+
+/** Mismo id que src/modules/organizations/organization.constants.ts y la migración. */
+const PLATFORM_ORGANIZATION_ID = '00000000-0000-4000-8000-000000000001';
 
 async function main() {
   const superadminEmail = (
@@ -48,6 +55,40 @@ async function main() {
   });
 
   console.log(`✅ Superadministrador configurado con ID: ${superadmin.id}`);
+
+  // Organización de plataforma (la crea también la migración) y membresía
+  // SUPERADMIN del superadministrador (contrato O0 §4)
+  await prisma.organization.upsert({
+    where: { id: PLATFORM_ORGANIZATION_ID },
+    update: {},
+    create: {
+      id: PLATFORM_ORGANIZATION_ID,
+      type: OrganizationTypeEnum.PLATFORM,
+      name: 'Drinks on Chain',
+      status: OrganizationStatusEnum.ACTIVE,
+    },
+  });
+  await prisma.membership.upsert({
+    where: {
+      userId_organizationId: {
+        userId: superadmin.id,
+        organizationId: PLATFORM_ORGANIZATION_ID,
+      },
+    },
+    update: {
+      role: MembershipRoleEnum.SUPERADMIN,
+      status: MembershipStatusEnum.ACTIVE,
+      blockedBy: null,
+      blockedReason: null,
+      blockedAt: null,
+    },
+    create: {
+      userId: superadmin.id,
+      organizationId: PLATFORM_ORGANIZATION_ID,
+      role: MembershipRoleEnum.SUPERADMIN,
+    },
+  });
+  console.log(`🏛️  Membresía SUPERADMIN en la organización de plataforma`);
 
   // Verificar si ya tiene billetera custodial
   const existingWallet = await prisma.userWallet.findFirst({

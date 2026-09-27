@@ -2,6 +2,7 @@ import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { AsyncLocalStorage } from 'async_hooks';
+import { runWithRequestContext } from '../context/request-context';
 
 export const correlationLocalStorage = new AsyncLocalStorage<
   Map<string, string>
@@ -23,8 +24,21 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     const store = new Map<string, string>();
     store.set('correlationId', correlationId);
 
+    const clientApp = req.headers['x-client-app'];
     correlationLocalStorage.run(store, () => {
-      next();
+      // Contexto de la petición (src/shared/context/request-context.ts): el
+      // guard de acceso lo completa con la sesión.
+      runWithRequestContext(
+        {
+          correlationId,
+          ip: req.ip ?? null,
+          clientApp:
+            typeof clientApp === 'string' && clientApp.trim().length > 0
+              ? clientApp.trim().slice(0, 50)
+              : null,
+        },
+        () => next(),
+      );
     });
   }
 

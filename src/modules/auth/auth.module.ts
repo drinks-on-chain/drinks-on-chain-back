@@ -1,41 +1,45 @@
 import { Module } from '@nestjs/common';
-import { PassportModule } from '@nestjs/passport';
 import { JwtModule } from '@nestjs/jwt';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
-import { JwtStrategy } from './strategies/jwt.strategy';
-import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { RolesGuard } from './guards/roles.guard';
-import { TenantGuard } from './guards/tenant.guard';
-
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { WalletsModule } from '@modules/wallets/wallets.module';
+import { OrganizationsModule } from '@modules/organizations/organizations.module';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { SessionsModule } from './sessions/sessions.module';
+import { AccessTokenService } from './sessions/access-token.service';
+import { LoginAttemptsService } from './rate-limit/login-attempts.service';
+import { AccessTokenGuard } from './guards/access-token.guard';
+import { AuthorizationGuard } from './guards/authorization.guard';
+import { TenantGuard } from './guards/tenant.guard';
 
+/**
+ * Autenticación y sesión (contrato O0 §5–§6). Los guards se registran como
+ * globales en `AppModule` (acceso → autorización → bodega).
+ */
 @Module({
   imports: [
     PrismaModule,
     WalletsModule,
-    PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.registerAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          expiresIn: configService.get<string>('JWT_EXPIRES_IN') || '7d',
-        },
-      }),
-    }),
+    SessionsModule,
+    OrganizationsModule,
+    // Secreto y caducidad se pasan en cada firma/verificación (AccessTokenService)
+    JwtModule.register({}),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, TenantGuard],
+  providers: [
+    AuthService,
+    AccessTokenService,
+    LoginAttemptsService,
+    AccessTokenGuard,
+    AuthorizationGuard,
+    TenantGuard,
+  ],
   exports: [
     AuthService,
-    JwtModule,
-    PassportModule,
-    JwtAuthGuard,
-    RolesGuard,
+    AccessTokenService,
+    SessionsModule,
+    AccessTokenGuard,
+    AuthorizationGuard,
     TenantGuard,
   ],
 })

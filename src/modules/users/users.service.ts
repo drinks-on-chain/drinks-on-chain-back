@@ -2,8 +2,17 @@ import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { UserRepository } from './repositories/user.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileResponseDto } from './dto/user-profile-response.dto';
+import {
+  MeResponseDto,
+  UserProfileResponseDto,
+} from './dto/user-profile-response.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
+import { MembershipsService } from '@modules/organizations/memberships.service';
+import {
+  RevocationReason,
+  SessionsService,
+} from '@modules/auth/sessions/sessions.service';
+import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 
 @Injectable()
 export class UsersService {
@@ -12,7 +21,48 @@ export class UsersService {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly walletsService: WalletsService,
+    private readonly memberships: MembershipsService,
+    private readonly sessions: SessionsService,
   ) {}
+
+  /**
+   * `GET /v1/users/me` (contrato O0 §5): perfil (con `audience`), membresías y
+   * organización activa de la sesión.
+   */
+  async getMe(principal: AuthenticatedUser): Promise<MeResponseDto> {
+    const [profile, memberships] = await Promise.all([
+      this.getProfile(principal.id),
+      this.memberships.listForUser(principal.id),
+    ]);
+    return {
+      user: {
+        ...profile,
+        audience: memberships.length > 0 ? 'STAFF' : 'CONSUMER',
+      },
+      memberships,
+      activeOrganizationId: principal.organizationId,
+    };
+  }
+
+  /**
+   * Bloquea la cuenta completa (IAM-13): todas sus sesiones se revocan y los
+   * accesos vigentes dejan de valer en la siguiente petición. Lo expondrá el
+   * back office (contrato O1 §5).
+   */
+  async blockAccount(userId: string): Promise<void> {
+    await this.userRepository.update(userId, { isActive: false });
+    const revoked = await this.sessions.revokeAllForUser(
+      userId,
+      RevocationReason.USER_BLOCKED,
+    );
+    this.logger.log(
+      `Cuenta ${userId} bloqueada; ${revoked} sesiones revocadas`,
+    );
+  }
+
+  async unblockAccount(userId: string): Promise<void> {
+    await this.userRepository.update(userId, { isActive: true });
+  }
 
   /**
    * Obtiene el perfil completo del usuario autenticado

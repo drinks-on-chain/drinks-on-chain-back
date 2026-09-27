@@ -2,6 +2,9 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { UserRepository } from '../repositories/user.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
+import { MembershipsService } from '@modules/organizations/memberships.service';
+import { SessionsService } from '@modules/auth/sessions/sessions.service';
+import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { NotFoundException } from '@nestjs/common';
 import {
   UserRoleEnum,
@@ -23,12 +26,22 @@ describe('UsersService', () => {
     getUserPrimaryWallet: jest.fn(),
   };
 
+  const mockMemberships = {
+    listForUser: jest.fn(),
+  };
+
+  const mockSessions = {
+    revokeAllForUser: jest.fn().mockResolvedValue(2),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: UserRepository, useValue: mockUserRepository },
         { provide: WalletsService, useValue: mockWalletsService },
+        { provide: MembershipsService, useValue: mockMemberships },
+        { provide: SessionsService, useValue: mockSessions },
       ],
     }).compile();
 
@@ -124,6 +137,62 @@ describe('UsersService', () => {
         preferredLocale: 'en',
       });
       expect(result.fullName).toBe('Valeria Soliz Updated');
+    });
+  });
+
+  describe('getMe (contrato O0 §5)', () => {
+    it('devuelve { user (con audience), memberships, activeOrganizationId }', async () => {
+      const profile = {
+        id: 'user-uuid-1',
+        email: 'valeria@kohlberg.bo',
+        fullName: 'Valeria',
+        userRole: UserRoleEnum.ENOLOGIST,
+        phoneNumber: null,
+        preferredLocale: 'es',
+        isActive: true,
+        lastLoginAt: null,
+        createdAt: new Date(),
+        wineryMemberships: [],
+        primaryWallet: null,
+      };
+      jest.spyOn(service, 'getProfile').mockResolvedValue(profile);
+      const membership = {
+        id: 'm1',
+        organizationId: 'winery-1',
+        organizationType: 'WINERY' as const,
+        organizationName: 'Bodega',
+        organizationStatus: 'ACTIVE' as const,
+        role: 'ENOLOGIST' as const,
+        status: 'ACTIVE' as const,
+      };
+      mockMemberships.listForUser.mockResolvedValue([membership]);
+
+      const me = await service.getMe({
+        id: 'user-uuid-1',
+        organizationId: 'winery-1',
+      } as AuthenticatedUser);
+
+      expect(me).toEqual({
+        user: { ...profile, audience: 'STAFF' },
+        memberships: [membership],
+        activeOrganizationId: 'winery-1',
+      });
+    });
+  });
+
+  describe('blockAccount (IAM-13)', () => {
+    it('desactiva la cuenta y revoca todas sus sesiones', async () => {
+      mockUserRepository.update.mockResolvedValue({});
+
+      await service.blockAccount('user-uuid-1');
+
+      expect(mockUserRepository.update).toHaveBeenCalledWith('user-uuid-1', {
+        isActive: false,
+      });
+      expect(mockSessions.revokeAllForUser).toHaveBeenCalledWith(
+        'user-uuid-1',
+        'USER_BLOCKED',
+      );
     });
   });
 });

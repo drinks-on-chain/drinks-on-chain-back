@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRoleEnum, WineryMemberRoleEnum } from '@prisma/client';
+import {
+  AudienceEnum,
+  UserRoleEnum,
+  WineryMemberRoleEnum,
+} from '@prisma/client';
+import { MembershipDto } from '@modules/organizations/dto/membership.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
 
 export class WineryMembershipDto {
@@ -35,7 +40,13 @@ export class UserProfileResponseDto {
   @ApiProperty({ example: 'Juan Pérez' })
   fullName!: string;
 
-  @ApiProperty({ enum: UserRoleEnum, example: UserRoleEnum.CONSUMER })
+  @ApiProperty({
+    enum: UserRoleEnum,
+    example: UserRoleEnum.CONSUMER,
+    deprecated: true,
+    description:
+      'Obsoleto (H1): rol global de 0.1; los permisos van por membresía',
+  })
   userRole!: UserRoleEnum;
 
   @ApiPropertyOptional({ example: '+59170012345' })
@@ -58,4 +69,33 @@ export class UserProfileResponseDto {
 
   @ApiPropertyOptional({ type: WalletResponseDto })
   primaryWallet?: WalletResponseDto | null;
+}
+
+/** Perfil de 0.1 más la audiencia (contrato O0 §5). */
+export class MeUserDto extends UserProfileResponseDto {
+  @ApiProperty({
+    enum: AudienceEnum,
+    enumName: 'Audience',
+    example: AudienceEnum.STAFF,
+    description:
+      '`STAFF` si tiene al menos una membresía; `CONSUMER` si no tiene ninguna',
+  })
+  audience!: AudienceEnum;
+}
+
+/** `GET /v1/users/me` (contrato O0 §5). */
+export class MeResponseDto {
+  @ApiProperty({ type: MeUserDto })
+  user!: MeUserDto;
+
+  @ApiProperty({ type: [MembershipDto] })
+  memberships!: MembershipDto[];
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '8d7e2c1a-4b5f-4c3d-9e8f-1a2b3c4d5e6f',
+    description: 'Organización activa de la sesión (null si no tiene)',
+  })
+  activeOrganizationId!: string | null;
 }

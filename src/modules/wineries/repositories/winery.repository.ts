@@ -39,13 +39,13 @@ export class WineryRepository {
     });
   }
 
-  /** Bodegas pendientes de aprobación (una página) y su total. */
+  /** Bodegas pendientes de aprobación (INVITED, una página) y su total. */
   async findPendingWineries(page: {
     take: number;
     skip: number;
   }): Promise<[Winery[], number]> {
     const where: Prisma.WineryWhereInput = {
-      certificationStatus: WineryStatusEnum.PENDING,
+      certificationStatus: WineryStatusEnum.INVITED,
     };
     return Promise.all([
       this.prisma.winery.findMany({

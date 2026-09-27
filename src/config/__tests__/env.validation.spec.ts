@@ -9,9 +9,8 @@ describe('Environment Validation Schema (Joi)', () => {
       'postgresql://postgres:change-me@localhost:5435/drinks_on_chain_db',
     REDIS_URL: 'redis://localhost:6379',
     JWT_SECRET: 'super-secret-key-drinks-on-chain-min-32-chars',
-    JWT_EXPIRES_IN: '7d',
+    JWT_EXPIRES_IN: '900s',
     JWT_REFRESH_SECRET: 'super-secret-refresh-key-min-32-chars',
-    JWT_REFRESH_EXPIRES_IN: '30d',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3002',
   };
 
@@ -93,6 +92,60 @@ describe('Environment Validation Schema (Joi)', () => {
     expect(value.NODE_ENV).toBe('development');
     expect(value.STELLAR_INDEXER_POLL_INTERVAL_MS).toBe(5000);
     expect(value.STORAGE_DRIVER).toBe('local');
+  });
+
+  describe('sesiones y límites (0.5)', () => {
+    it('JWT_EXPIRES_IN por defecto es 900s y acepta duraciones', () => {
+      const minimal: Record<string, unknown> = { ...validEnv };
+      delete minimal.JWT_EXPIRES_IN;
+      expect(envValidationSchema.validate(minimal).value.JWT_EXPIRES_IN).toBe(
+        '900s',
+      );
+      expect(
+        envValidationSchema.validate({ ...validEnv, JWT_EXPIRES_IN: '7d' })
+          .error,
+      ).toBeUndefined();
+      expect(
+        envValidationSchema.validate({ ...validEnv, JWT_EXPIRES_IN: 'siempre' })
+          .error,
+      ).toBeDefined();
+    });
+
+    it('JWT_REFRESH_EXPIRES_IN (obsoleta) se sigue aceptando', () => {
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          JWT_REFRESH_EXPIRES_IN: '30d',
+        }).error,
+      ).toBeUndefined();
+    });
+
+    it('TRUST_PROXY=true se rechaza; 1 se acepta', () => {
+      expect(
+        envValidationSchema.validate({ ...validEnv, TRUST_PROXY: 'true' }).error
+          ?.message,
+      ).toContain('TRUST_PROXY=true');
+      expect(
+        envValidationSchema.validate({ ...validEnv, TRUST_PROXY: '1' }).error,
+      ).toBeUndefined();
+    });
+
+    it('límites y duraciones numéricos', () => {
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          RATE_LIMIT_GLOBAL_PER_MINUTE: 0,
+        }).error,
+      ).toBeDefined();
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          SESSION_TTL_STAFF_DAYS: '7',
+          REFRESH_GRACE_SECONDS: '20',
+          FEATURE_ENFORCE_ACTIVE_ORG: 'false',
+        }).error,
+      ).toBeUndefined();
+    });
   });
 
   describe('CORS_ALLOWED_ORIGINS', () => {

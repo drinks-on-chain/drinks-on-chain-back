@@ -5,7 +5,7 @@
 
 export const WINERY_AGGREGATE = 'winery';
 
-/** Bodega registrada (PENDING) con su membresía de dueño y su billetera. */
+/** Bodega registrada (INVITED) con su membresía de dueño y su billetera. */
 export const WINERY_CREATED = 'winery.created';
 
 export type WineryCreatedPayload = {

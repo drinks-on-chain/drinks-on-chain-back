@@ -5,7 +5,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -23,22 +22,23 @@ import { CreateFermentationLogDto } from '../dto/create-fermentation-log.dto';
 import { CreateEnologicalTreatmentDto } from '../dto/create-enological-treatment.dto';
 import { QueryTanksDto } from '../dto/query-tanks.dto';
 import { FermentationTankResponseDto } from '../dto/fermentation-tank-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Vinificación y Fermentación')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('fermentation-tanks')
 export class FermentationController {
   constructor(private readonly fermentationService: FermentationService) {}
@@ -46,7 +46,7 @@ export class FermentationController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Registrar nueva cuba de fermentación',
     description:
@@ -65,11 +65,7 @@ export class FermentationController {
   }
 
   @Get()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar cubas de fermentación',
     description:
@@ -86,11 +82,7 @@ export class FermentationController {
   }
 
   @Get(':id')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de una cuba de fermentación',
     description:
@@ -112,11 +104,7 @@ export class FermentationController {
   @Post(':id/logs')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.POS_OPERATOR,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR')
   @ApiOperation({
     summary: 'Registrar lectura de control de fermentación (append-only)',
     description:
@@ -138,7 +126,7 @@ export class FermentationController {
   @Post(':id/treatments')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
-  @Roles(UserRoleEnum.ENOLOGIST, UserRoleEnum.WINERY_ADMIN)
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Registrar tratamiento enológico autorizado',
     description:

@@ -58,3 +58,17 @@ export class BlockchainUnavailableException extends AppException {
     );
   }
 }
+
+/**
+ * 429 con `Retry-After` exacto (el filtro global copia `retryAfterSeconds` a
+ * la cabecera). Lo usa el bloqueo progresivo del inicio de sesión (IAM-07).
+ */
+export class RetryAfterException extends AppException {
+  constructor(
+    errorCode: string,
+    message: string,
+    public readonly retryAfterSeconds: number,
+  ) {
+    super(429, errorCode, message);
+  }
+}

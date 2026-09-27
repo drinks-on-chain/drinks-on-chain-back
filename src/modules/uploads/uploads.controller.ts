@@ -4,7 +4,6 @@ import {
   UseInterceptors,
   UploadedFile,
   Query,
-  UseGuards,
   Inject,
   HttpStatus,
   HttpCode,
@@ -19,7 +18,6 @@ import {
   ApiBearerAuth,
   ApiQuery,
 } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import {
   IStorageService,
   STORAGE_SERVICE,
@@ -43,7 +41,6 @@ const MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024; // 15 MB
 
 @ApiTags('Uploads')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('uploads')
 export class UploadsController {
   constructor(

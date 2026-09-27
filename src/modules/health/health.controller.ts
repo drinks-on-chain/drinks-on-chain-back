@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { HealthService } from './health.service';
 import { HealthStatusDataDto } from './dto/health-response.dto';
+import { SkipThrottle } from '@nestjs/throttler';
 import { Public } from '@modules/auth/decorators/public.decorator';
 
 @ApiTags('System')
@@ -11,6 +12,7 @@ export class HealthController {
 
   @Get()
   @Public()
+  @SkipThrottle({ global: true })
   @ApiOperation({
     summary: 'Verificar el estado del servidor, base de datos y Redis',
     description:

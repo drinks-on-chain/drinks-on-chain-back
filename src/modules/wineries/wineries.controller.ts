@@ -6,7 +6,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -32,39 +31,50 @@ import {
   WineryResponseDto,
   WineryMemberItemDto,
 } from './dto/winery-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { SkipTenant } from '@modules/auth/decorators/skip-tenant.decorator';
+import {
+  OrgType,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 import {
   CurrentUser,
   AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import {
+  PaginationQueryDto,
+  WineryScopedPaginationQueryDto,
+} from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 
 @ApiTags('Bodegas y Productores')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('wineries')
 export class WineriesController {
   constructor(private readonly wineriesService: WineriesService) {}
 
+  /** Las rutas `my` de la plataforma necesitan `?wineryId=` también al leer. */
+  private requireTenant(tenantId: string | undefined): string {
+    if (!tenantId) {
+      throw ValidationException.forField(
+        'wineryId',
+        'El personal de plataforma debe indicar la bodega (?wineryId=)',
+      );
+    }
+    return tenantId;
+  }
+
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @SkipTenant()
   @ApiOperation({
     summary: 'Solicitar alta y registro de una nueva bodega',
     description:
-      'Crea una bodega en estado PENDING, asocia al creador como OWNER y asigna una billetera custodial institucional.',
+      'Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Bodega registrada exitosamente en estado PENDING',
+    description: 'Bodega registrada exitosamente en estado INVITED',
     type: WineryResponseDto,
   })
   @ApiConflictResponse({ description: 'El NIT ya se encuentra registrado' })
@@ -77,14 +87,16 @@ export class WineriesController {
 
   @Get()
   @HttpCode(HttpStatus.OK)
-  @SkipTenant()
-  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('PLATFORM')
+  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS', 'SUPPORT')
   @ApiOperation({
-    summary: 'Listar todas las bodegas registradas (Solo Platform Admin)',
+    summary: 'Listar todas las bodegas registradas (solo plataforma)',
     description:
       'Retorna el directorio completo de bodegas con soporte de filtros por estado, categoría y paginación.',
   })
-  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Requiere la organización de plataforma activa',
+  })
   @ApiPaginatedResponse(WineryResponseDto, {
     description: 'Directorio de bodegas (página)',
   })
@@ -96,6 +108,7 @@ export class WineriesController {
 
   @Get('my')
   @HttpCode(HttpStatus.OK)
+  @OrgType('WINERY')
   @ApiOperation({
     summary: 'Obtener datos institucionales de la bodega del usuario',
     description:
@@ -107,13 +120,16 @@ export class WineriesController {
     type: WineryResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
-  async getMyWinery(@TenantId() tenantId: string): Promise<WineryResponseDto> {
-    return this.wineriesService.getMyWinery(tenantId);
+  async getMyWinery(
+    @TenantId() tenantId: string | undefined,
+  ): Promise<WineryResponseDto> {
+    return this.wineriesService.getMyWinery(this.requireTenant(tenantId));
   }
 
   @Patch('my')
   @HttpCode(HttpStatus.OK)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('WINERY')
+  @Roles('OWNER')
   @ApiOperation({
     summary: 'Actualizar datos de la bodega',
     description:
@@ -136,18 +152,26 @@ export class WineriesController {
 
   @Post('my/members')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('WINERY')
+  @Roles('OWNER')
   @ApiOperation({
     summary: 'Incorporar un nuevo miembro operativo a la bodega',
     description:
-      'Asocia a un usuario existente como enólogo, agrónomo, operador o contador de la bodega.',
+      'Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Miembro incorporado exitosamente',
     type: WineryMemberItemDto,
   })
-  @ApiConflictResponse({ description: 'El usuario ya es miembro de la bodega' })
+  @ApiConflictResponse({
+    description:
+      'ORG_ALREADY_MEMBER: el usuario ya es miembro activo de la bodega',
+  })
+  @ApiForbiddenResponse({
+    description:
+      'ORG_BLOCKED_BY_PLATFORM: la plataforma bloqueó esa membresía; el dueño no puede reactivarla',
+  })
   @ApiNotFoundResponse({ description: 'El usuario no existe' })
   async addMember(
     @TenantId() tenantId: string,
@@ -158,7 +182,8 @@ export class WineriesController {
 
   @Post('my/members/create')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('WINERY')
+  @Roles('OWNER')
   @ApiOperation({
     summary:
       'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
@@ -182,6 +207,7 @@ export class WineriesController {
 
   @Get('my/members')
   @HttpCode(HttpStatus.OK)
+  @OrgType('WINERY')
   @ApiOperation({
     summary: 'Listar miembros operativos de la bodega',
     description: 'Retorna la lista de miembros activos en la bodega actual.',
@@ -190,22 +216,27 @@ export class WineriesController {
     description: 'Página de miembros activos de la bodega',
   })
   async getMyMembers(
-    @TenantId() tenantId: string,
-    @Query() query: PaginationQueryDto,
+    @TenantId() tenantId: string | undefined,
+    @Query() query: WineryScopedPaginationQueryDto,
   ): Promise<Paginated<WineryMemberItemDto>> {
-    return this.wineriesService.getMyMembers(tenantId, query);
+    return this.wineriesService.getMyMembers(
+      this.requireTenant(tenantId),
+      query,
+    );
   }
 
   @Get('pending')
   @HttpCode(HttpStatus.OK)
-  @SkipTenant()
-  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('PLATFORM')
+  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS', 'SUPPORT')
   @ApiOperation({
-    summary: 'Listar bodegas pendientes de aprobación (Solo Platform Admin)',
+    summary: 'Listar bodegas pendientes de aprobación (solo plataforma)',
     description:
-      'Obtiene todas las solicitudes de bodegas en estado PENDING para revisión y certificación legal.',
+      'Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.',
   })
-  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Requiere la organización de plataforma activa',
+  })
   @ApiPaginatedResponse(WineryResponseDto, {
     description: 'Página de bodegas pendientes',
   })
@@ -217,10 +248,10 @@ export class WineriesController {
 
   @Post(':id/approve')
   @HttpCode(HttpStatus.OK)
-  @SkipTenant()
-  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('PLATFORM')
+  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
   @ApiOperation({
-    summary: 'Aprobar y certificar una bodega (Solo Platform Admin)',
+    summary: 'Aprobar y certificar una bodega (solo plataforma)',
     description:
       'Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.',
   })
@@ -229,7 +260,9 @@ export class WineriesController {
     description: 'Bodega aprobada y registrada exitosamente',
     type: WineryResponseDto,
   })
-  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Requiere la organización de plataforma activa',
+  })
   @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
   async approveWinery(
     @Param('id', ParseUUIDPipe) wineryId: string,
@@ -241,10 +274,10 @@ export class WineriesController {
 
   @Post(':id/reject')
   @HttpCode(HttpStatus.OK)
-  @SkipTenant()
-  @Roles(UserRoleEnum.PLATFORM_ADMIN)
+  @OrgType('PLATFORM')
+  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
   @ApiOperation({
-    summary: 'Rechazar una solicitud de bodega (Solo Platform Admin)',
+    summary: 'Rechazar una solicitud de bodega (solo plataforma)',
     description:
       'Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.',
   })
@@ -253,7 +286,9 @@ export class WineriesController {
     description: 'Bodega rechazada exitosamente',
     type: WineryResponseDto,
   })
-  @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiForbiddenResponse({
+    description: 'Requiere la organización de plataforma activa',
+  })
   @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
   async rejectWinery(
     @Param('id', ParseUUIDPipe) wineryId: string,

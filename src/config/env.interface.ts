@@ -14,7 +14,20 @@ export interface EnvironmentVariables {
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
   JWT_REFRESH_SECRET: string;
-  JWT_REFRESH_EXPIRES_IN: string;
+
+  // Sesiones y límites (contrato O0 §5, SE-06, IAM-07)
+  SESSION_TTL_STAFF_DAYS?: number;
+  SESSION_TTL_CONSUMER_DAYS?: number;
+  REFRESH_GRACE_SECONDS?: number;
+  FEATURE_ENFORCE_ACTIVE_ORG?: boolean;
+  TRUST_PROXY?: string;
+  RATE_LIMIT_GLOBAL_PER_MINUTE?: number;
+  RATE_LIMIT_AUTH_PER_MINUTE?: number;
+  RATE_LIMIT_LOGIN_PER_MINUTE?: number;
+  RATE_LIMIT_SIGNUP_PER_MINUTE?: number;
+  RATE_LIMIT_REFRESH_PER_MINUTE?: number;
+  LOGIN_LOCK_EMAIL_THRESHOLD?: number;
+  LOGIN_LOCK_IP_THRESHOLD?: number;
 
   // Stellar / Soroban (opcional hasta la Ola 3)
   STELLAR_NETWORK: 'testnet' | 'mainnet' | 'futurenet' | 'standalone';

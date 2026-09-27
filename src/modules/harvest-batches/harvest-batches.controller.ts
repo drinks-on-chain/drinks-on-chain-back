@@ -6,7 +6,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -24,23 +23,24 @@ import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
 import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
 import { QueryHarvestBatchesDto } from './dto/query-harvest-batches.dto';
 import { HarvestBatchResponseDto } from './dto/harvest-batch-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Vendimia y Pesaje')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('harvest-batches')
 export class HarvestBatchesController {
   constructor(private readonly harvestBatchesService: HarvestBatchesService) {}
@@ -48,11 +48,7 @@ export class HarvestBatchesController {
   @Post()
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.AGRONOMIST,
-    UserRoleEnum.ENOLOGIST,
-  )
+  @Roles('OWNER', 'AGRONOMIST', 'ENOLOGIST', 'OPERATOR')
   @ApiOperation({
     summary: 'Registrar ingreso y pesaje de uva en vendimia',
     description:
@@ -77,11 +73,7 @@ export class HarvestBatchesController {
   }
 
   @Get()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar lotes de vendimia',
     description:
@@ -98,11 +90,7 @@ export class HarvestBatchesController {
   }
 
   @Get(':id')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de un lote de vendimia',
     description:
@@ -122,7 +110,7 @@ export class HarvestBatchesController {
   }
 
   @Patch(':id/phyto-status')
-  @Roles(UserRoleEnum.AGRONOMIST, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'AGRONOMIST', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Dictaminar estado fitosanitario del lote',
     description:

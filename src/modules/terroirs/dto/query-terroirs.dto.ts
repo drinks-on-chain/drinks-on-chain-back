@@ -1,9 +1,9 @@
 import { IsOptional, IsString, IsBoolean } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 
-export class QueryTerroirsDto extends PaginationQueryDto {
+export class QueryTerroirsDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({
     description: 'Filtrar por elegibilidad de Denominación de Origen',
   })

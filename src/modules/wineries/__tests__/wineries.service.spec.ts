@@ -6,6 +6,9 @@ import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { OutboxService } from '@shared/outbox/outbox.service';
+import { OrganizationsService } from '@modules/organizations/organizations.service';
+import { MembershipsService } from '@modules/organizations/memberships.service';
+import { SessionsService } from '@modules/auth/sessions/sessions.service';
 import { ConflictException } from '@nestjs/common';
 import {
   WineryCategoryEnum,
@@ -51,6 +54,19 @@ describe('WineriesService', () => {
     executeProducerRegistration: jest.fn(),
   };
 
+  const mockOrganizations = {
+    createForWinery: jest.fn().mockResolvedValue({}),
+    syncWinery: jest.fn().mockResolvedValue({}),
+  };
+
+  const mockMemberships = {
+    addToWinery: jest.fn(),
+  };
+
+  const mockSessions = {
+    revokeForOrganization: jest.fn().mockResolvedValue(0),
+  };
+
   const mockPrisma = {
     user: {
       findUnique: jest.fn(),
@@ -79,6 +95,9 @@ describe('WineriesService', () => {
         { provide: OnchainProducerHook, useValue: mockOnchainProducerHook },
         { provide: PrismaService, useValue: mockPrisma },
         { provide: OutboxService, useValue: mockOutbox },
+        { provide: OrganizationsService, useValue: mockOrganizations },
+        { provide: MembershipsService, useValue: mockMemberships },
+        { provide: SessionsService, useValue: mockSessions },
       ],
     }).compile();
 
@@ -88,7 +107,7 @@ describe('WineriesService', () => {
   });
 
   describe('createWinery', () => {
-    it('debe registrar una bodega en estado PENDING y aprovisionar su billetera', async () => {
+    it('debe registrar una bodega en estado INVITED y aprovisionar su billetera', async () => {
       mockWineryRepository.findByTaxId.mockResolvedValue(null);
       mockWineryRepository.create.mockResolvedValue({
         id: 'winery-uuid-1',
@@ -103,10 +122,10 @@ describe('WineriesService', () => {
         contactEmail: 'contacto@kohlberg.bo',
         contactPhone: null,
         logoUrl: null,
-        certificationStatus: WineryStatusEnum.PENDING,
+        certificationStatus: WineryStatusEnum.INVITED,
         createdAt: new Date(),
       });
-      mockWineryMemberRepository.create.mockResolvedValue({});
+      mockMemberships.addToWinery.mockResolvedValue({});
       mockWalletsService.provisionWineryWallet.mockResolvedValue({
         id: 'wallet-uuid-1',
         stellarPublicAddress:
@@ -128,7 +147,7 @@ describe('WineriesService', () => {
         logoUrl: null,
         stellarPublicKey: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
         dynamicVaultId: 'vault-123',
-        certificationStatus: WineryStatusEnum.PENDING,
+        certificationStatus: WineryStatusEnum.INVITED,
         isExportCertified: false,
         createdAt: new Date(),
         members: [],
@@ -144,18 +163,19 @@ describe('WineriesService', () => {
       });
 
       expect(result.id).toBe('winery-uuid-1');
-      expect(result.certificationStatus).toBe(WineryStatusEnum.PENDING);
+      expect(result.certificationStatus).toBe(WineryStatusEnum.INVITED);
       expect(result.stellarPublicKey).toBe(
         'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
       );
-      expect(mockWineryMemberRepository.create).toHaveBeenCalledWith(
-        {
-          userId: 'user-uuid-1',
-          wineryId: 'winery-uuid-1',
-          memberRole: WineryMemberRoleEnum.OWNER,
-        },
+      expect(mockOrganizations.createForWinery).toHaveBeenCalledWith(
         mockTx,
+        expect.objectContaining({ id: 'winery-uuid-1' }),
       );
+      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(mockTx, {
+        wineryId: 'winery-uuid-1',
+        userId: 'user-uuid-1',
+        role: WineryMemberRoleEnum.OWNER,
+      });
       expect(mockWalletsService.provisionWineryWallet).toHaveBeenCalledWith(
         'user-uuid-1',
         'winery-uuid-1',
@@ -167,7 +187,7 @@ describe('WineriesService', () => {
     it('escribe todo en una transacción junto con el evento winery.created', async () => {
       mockWineryRepository.findByTaxId.mockResolvedValue(null);
       mockWineryRepository.create.mockResolvedValue({ id: 'winery-uuid-1' });
-      mockWineryMemberRepository.create.mockResolvedValue({});
+      mockMemberships.addToWinery.mockResolvedValue({});
       mockWalletsService.provisionWineryWallet.mockResolvedValue({
         id: 'wallet-uuid-1',
         stellarPublicAddress: 'GABC',
@@ -176,7 +196,7 @@ describe('WineriesService', () => {
       mockWineryRepository.update.mockResolvedValue({
         id: 'winery-uuid-1',
         stellarPublicKey: 'GABC',
-        certificationStatus: WineryStatusEnum.PENDING,
+        certificationStatus: WineryStatusEnum.INVITED,
       });
 
       await service.createWinery('user-uuid-1', {
@@ -216,7 +236,7 @@ describe('WineriesService', () => {
     it('si un paso falla, el error sale de la transacción y no se escribe el evento', async () => {
       mockWineryRepository.findByTaxId.mockResolvedValue(null);
       mockWineryRepository.create.mockResolvedValue({ id: 'winery-uuid-1' });
-      mockWineryMemberRepository.create.mockResolvedValue({});
+      mockMemberships.addToWinery.mockResolvedValue({});
       mockWalletsService.provisionWineryWallet.mockRejectedValue(
         new Error('proveedor caído'),
       );
@@ -250,15 +270,14 @@ describe('WineriesService', () => {
     });
   });
 
-  describe('addMember', () => {
-    it('debe agregar exitosamente un miembro operativo a la bodega', async () => {
+  describe('addMember (SE-01)', () => {
+    it('añade la membresía de la bodega en una transacción sin tocar el rol global', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({
         id: 'enologist-user-id',
         fullName: 'Valeria Soliz',
         email: 'valeria@kohlberg.bo',
       });
-      mockWineryMemberRepository.findMembership.mockResolvedValue(null);
-      mockWineryMemberRepository.create.mockResolvedValue({
+      mockMemberships.addToWinery.mockResolvedValue({
         id: 'member-uuid-1',
         userId: 'enologist-user-id',
         wineryId: 'winery-uuid-1',
@@ -276,20 +295,32 @@ describe('WineriesService', () => {
 
       expect(member.fullName).toBe('Valeria Soliz');
       expect(member.memberRole).toBe(WineryMemberRoleEnum.ENOLOGIST);
+      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(mockTx, {
+        wineryId: 'winery-uuid-1',
+        userId: 'enologist-user-id',
+        role: WineryMemberRoleEnum.ENOLOGIST,
+        professionalLicenseNumber: 'ENOL-1234',
+        professionalLicensePdfUrl: undefined,
+      });
+      // SE-01: nunca se reescribe users.user_role desde una bodega
+      expect(mockPrisma.user.update).not.toHaveBeenCalled();
     });
 
-    it('debe arrojar ConflictException si el usuario ya es miembro', async () => {
+    it('propaga el 409 ORG_ALREADY_MEMBER de las membresías', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'enologist-user-id' });
-      mockWineryMemberRepository.findMembership.mockResolvedValue({
-        id: 'existing',
-      });
+      mockMemberships.addToWinery.mockRejectedValue(
+        Object.assign(new Error('ya es miembro'), {
+          statusCode: 409,
+          errorCode: 'ORG_ALREADY_MEMBER',
+        }),
+      );
 
       await expect(
         service.addMember('winery-uuid-1', {
           userId: 'enologist-user-id',
           memberRole: WineryMemberRoleEnum.ENOLOGIST,
         }),
-      ).rejects.toThrow(ConflictException);
+      ).rejects.toMatchObject({ errorCode: 'ORG_ALREADY_MEMBER' });
     });
   });
 
@@ -305,7 +336,7 @@ describe('WineriesService', () => {
         id: 'wallet-new',
         dynamicVaultId: 'vault-new',
       });
-      mockWineryMemberRepository.create.mockResolvedValue({
+      mockMemberships.addToWinery.mockResolvedValue({
         id: 'member-new',
         memberRole: WineryMemberRoleEnum.ENOLOGIST,
         professionalLicenseNumber: null,
@@ -340,12 +371,13 @@ describe('WineriesService', () => {
         WalletPurposeEnum.CONSUMER_NFT,
         mockTx,
       );
-      expect(mockWineryMemberRepository.create).toHaveBeenCalledWith(
+      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(
+        mockTx,
         expect.objectContaining({
           userId: 'user-new',
           wineryId: 'winery-uuid-1',
+          role: WineryMemberRoleEnum.ENOLOGIST,
         }),
-        mockTx,
       );
       expect(mockOutbox.add).toHaveBeenCalledWith(mockTx, {
         type: 'member.added',
@@ -386,7 +418,7 @@ describe('WineriesService', () => {
         taxIdNit: '1028374029',
         countryCode: 'BO',
         stellarPublicKey: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-        certificationStatus: WineryStatusEnum.PENDING,
+        certificationStatus: WineryStatusEnum.INVITED,
       };
       mockWineryRepository.findById.mockResolvedValue(pendingWinery);
       mockOnchainProducerHook.executeProducerRegistration.mockResolvedValue({
@@ -410,6 +442,13 @@ describe('WineriesService', () => {
       );
 
       expect(result.certificationStatus).toBe(WineryStatusEnum.ACTIVE);
+      expect(mockOrganizations.syncWinery).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          id: 'winery-uuid-1',
+          certificationStatus: WineryStatusEnum.ACTIVE,
+        }),
+      );
       expect(result.onchainProducerId).toBe('PROD_BO_1028374029');
       expect(result.onchainRegisterTxHash).toBe('0x_simulated_tx_12345');
       expect(
@@ -420,7 +459,7 @@ describe('WineriesService', () => {
       );
     });
 
-    it('debe arrojar 409 WINERY_NOT_PENDING si la bodega ya no está en estado PENDING', async () => {
+    it('debe arrojar 409 WINERY_NOT_PENDING si la bodega ya no está en estado INVITED', async () => {
       mockWineryRepository.findById.mockResolvedValue({
         id: 'winery-uuid-1',
         certificationStatus: WineryStatusEnum.ACTIVE,
@@ -435,6 +474,37 @@ describe('WineriesService', () => {
     });
   });
 
+  describe('rejectWinery', () => {
+    it('revoca la bodega y su organización y cierra las sesiones que la tienen activa', async () => {
+      mockWineryRepository.findById.mockResolvedValue({
+        id: 'winery-uuid-1',
+        certificationStatus: WineryStatusEnum.INVITED,
+      });
+      mockWineryRepository.update.mockResolvedValue({
+        id: 'winery-uuid-1',
+        commercialName: 'Bodega Kohlberg',
+        certificationStatus: WineryStatusEnum.REVOKED,
+        members: [],
+      });
+
+      const result = await service.rejectWinery('winery-uuid-1', 'admin', {
+        rejectionReason: 'Documentación incompleta',
+      });
+
+      expect(result.certificationStatus).toBe(WineryStatusEnum.REVOKED);
+      expect(mockOrganizations.syncWinery).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          certificationStatus: WineryStatusEnum.REVOKED,
+        }),
+      );
+      expect(mockSessions.revokeForOrganization).toHaveBeenCalledWith(
+        'winery-uuid-1',
+        'ORGANIZATION_REVOKED',
+      );
+    });
+  });
+
   describe('listas paginadas (contrato O0 §2)', () => {
     it('getPendingWineries devuelve { items, total, limit, offset } y pagina en el repositorio', async () => {
       mockWineryRepository.findPendingWineries.mockResolvedValue([
@@ -443,7 +513,7 @@ describe('WineriesService', () => {
             id: 'winery-uuid-2',
             legalName: 'Pendiente S.A.',
             commercialName: 'Bodega Pendiente',
-            certificationStatus: WineryStatusEnum.PENDING,
+            certificationStatus: WineryStatusEnum.INVITED,
           },
         ],
         41,

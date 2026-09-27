@@ -7,7 +7,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
-import { AppException } from '../exceptions/app.exception';
+import { AppException, RetryAfterException } from '../exceptions/app.exception';
 import { ErrorCode, errorCodeForStatus } from '../exceptions/error-codes';
 import {
   ApiErrorResponse,
@@ -47,8 +47,17 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       );
     }
 
-    // 429 siempre con Retry-After (contrato O0 §1). El ThrottlerGuard ya la
-    // pone con el tiempo real de bloqueo; esto cubre cualquier otro origen.
+    // 429 siempre con Retry-After (contrato O0 §1). El ThrottlerGuard y el
+    // bloqueo por intentos la ponen con el tiempo real; esto cubre el resto.
+    if (
+      exception instanceof RetryAfterException &&
+      typeof response.setHeader === 'function'
+    ) {
+      response.setHeader(
+        'Retry-After',
+        String(Math.max(1, Math.ceil(exception.retryAfterSeconds))),
+      );
+    }
     if (
       errorResponse.statusCode === HttpStatus.TOO_MANY_REQUESTS &&
       typeof response.getHeader === 'function' &&

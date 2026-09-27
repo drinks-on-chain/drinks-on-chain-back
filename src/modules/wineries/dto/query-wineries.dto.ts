@@ -7,7 +7,7 @@ export class QueryWineriesDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     enum: WineryStatusEnum,
     description:
-      'Filtrar por estado de certificación (PENDING, ACTIVE, SUSPENDED, REVOKED)',
+      'Filtrar por estado de la bodega (INVITED, ACTIVE, SUSPENDED, REVOKED)',
   })
   @IsOptional()
   @IsEnum(WineryStatusEnum)

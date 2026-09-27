@@ -42,8 +42,42 @@ export const ErrorCode = {
   /** 503 · No se pudo consultar el almacén de idempotencia (Redis). */
   IDEMPOTENCY_STORE_UNAVAILABLE: 'IDEMPOTENCY_STORE_UNAVAILABLE',
 
+  // ── Sesión (contrato O0 §5) ───────────────────────────────
+  /** 401 · Correo o contraseña incorrectos (o cuenta bloqueada: no se distingue). */
+  AUTH_INVALID_CREDENTIALS: 'AUTH_INVALID_CREDENTIALS',
+  /** 401 · Falta el token de acceso, está mal formado o su firma no vale. */
+  AUTH_TOKEN_INVALID: 'AUTH_TOKEN_INVALID',
+  /** 401 · El token de acceso caducó (15 min): renovar con /auth/refresh. */
+  AUTH_TOKEN_EXPIRED: 'AUTH_TOKEN_EXPIRED',
+  /** 401 · Falta el refresco o no es de ninguna sesión. */
+  AUTH_REFRESH_INVALID: 'AUTH_REFRESH_INVALID',
+  /** 401 · Refresco ya rotado presentado otra vez: se revoca la sesión. */
+  AUTH_REFRESH_REUSED: 'AUTH_REFRESH_REUSED',
+  /** 401 · Sesión revocada, o persona o membresía activa bloqueada. */
+  AUTH_SESSION_REVOKED: 'AUTH_SESSION_REVOKED',
+  /** 401 · La sesión caducó (7 días sin uso el personal, 30 los consumidores). */
+  AUTH_SESSION_EXPIRED: 'AUTH_SESSION_EXPIRED',
+  /** 429 · Bloqueo progresivo por intentos fallidos (IAM-07), con `Retry-After`. */
+  AUTH_TOO_MANY_ATTEMPTS: 'AUTH_TOO_MANY_ATTEMPTS',
+  /** 403 · Audiencia, tipo de organización activa o rol insuficientes. */
+  AUTH_INSUFFICIENT_PERMISSIONS: 'AUTH_INSUFFICIENT_PERMISSIONS',
+
+  // ── Organizaciones y membresías (contrato O0 §4–§6) ───────
+  /** 404 · Organización inexistente o sin membresía de la persona. */
+  ORG_NOT_FOUND: 'ORG_NOT_FOUND',
+  /** 403 · La membresía en esa organización está bloqueada. */
+  ORG_MEMBERSHIP_BLOCKED: 'ORG_MEMBERSHIP_BLOCKED',
+  /** 403 · La organización está revocada. */
+  ORG_REVOKED: 'ORG_REVOKED',
+  /** 403 · Ruta del ERP con la bodega activa no ACTIVE (SE-05; con FEATURE_ENFORCE_ACTIVE_ORG). */
+  ORG_NOT_ACTIVE: 'ORG_NOT_ACTIVE',
+  /** 403 · La plataforma bloqueó esa membresía: el dueño no puede reactivarla. */
+  ORG_BLOCKED_BY_PLATFORM: 'ORG_BLOCKED_BY_PLATFORM',
+  /** 409 · La persona ya es miembro activo de la organización. */
+  ORG_ALREADY_MEMBER: 'ORG_ALREADY_MEMBER',
+
   // ── Bodegas ───────────────────────────────────────────────
-  /** 409 · La bodega ya no está en PENDING (aprobar o rechazar dos veces). */
+  /** 409 · La bodega ya no está en INVITED (aprobar o rechazar dos veces). */
   WINERY_NOT_PENDING: 'WINERY_NOT_PENDING',
 
   // ── Trazabilidad ──────────────────────────────────────────

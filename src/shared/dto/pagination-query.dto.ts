@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import type { Paginated } from '../interfaces/api-response.interface';
 
 /** Tamaño de página por defecto (contrato O0 §2). */
@@ -38,6 +38,22 @@ export class PaginationQueryDto {
   @IsInt()
   @Min(0)
   offset: number = 0;
+}
+
+/**
+ * Colección de una bodega (rutas del ERP). `wineryId` solo lo usa el personal
+ * de plataforma para elegir la bodega (contrato O0 §6, OP-07); a un miembro
+ * de bodega que indique otra le responde 404.
+ */
+export class WineryScopedPaginationQueryDto extends PaginationQueryDto {
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description:
+      'Solo personal de plataforma: bodega sobre la que se consulta (sin él, todas)',
+  })
+  @IsOptional()
+  @IsUUID('all', { message: 'wineryId debe ser un UUID' })
+  wineryId?: string;
 }
 
 /** Arma la página `{ items, total, limit, offset }` de una consulta. */

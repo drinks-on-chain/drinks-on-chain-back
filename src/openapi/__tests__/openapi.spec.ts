@@ -139,6 +139,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/health',
       'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/login',
+      'POST /v1/auth/logout',
       'POST /v1/auth/refresh',
       'POST /v1/auth/signup',
     ];

@@ -1,9 +1,9 @@
 import { IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { TankStatusEnum, DestinationTypeEnum } from '@prisma/client';
 
-export class QueryTanksDto extends PaginationQueryDto {
+export class QueryTanksDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({ enum: TankStatusEnum })
   @IsOptional()
   @IsEnum(TankStatusEnum)

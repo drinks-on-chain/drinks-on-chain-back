@@ -41,12 +41,42 @@ export const envValidationSchema = Joi.object({
     'any.required': 'JWT_SECRET is a required environment variable',
     'string.min': 'JWT_SECRET must be at least 32 characters long',
   }),
-  JWT_EXPIRES_IN: Joi.string().default('7d'),
+  // Acceso de 15 min (contrato O0 §5): un valor mayor se recorta a 900 s
+  JWT_EXPIRES_IN: Joi.string()
+    .pattern(/^\d+\s*(ms|s|m|h|d)?$/i)
+    .default('900s'),
+  // Clave de la cadena de refrescos (HMAC), distinta de JWT_SECRET
   JWT_REFRESH_SECRET: Joi.string().min(32).required().messages({
     'any.required': 'JWT_REFRESH_SECRET is a required environment variable',
     'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters long',
   }),
-  JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
+
+  // Obsoleta desde 0.5: la renovación dura 7 días (personal) o 30
+  // (consumidores), ver SESSION_TTL_*. Se acepta para no romper .env antiguos.
+  JWT_REFRESH_EXPIRES_IN: Joi.string().optional(),
+
+  // Sesiones (contrato O0 §5). Sin valores por defecto aquí: los pone el
+  // código (src/modules/auth/sessions/session.config.ts).
+  SESSION_TTL_STAFF_DAYS: Joi.number().integer().min(1).max(90).optional(),
+  SESSION_TTL_CONSUMER_DAYS: Joi.number().integer().min(1).max(365).optional(),
+  REFRESH_GRACE_SECONDS: Joi.number().integer().min(1).max(120).optional(),
+  // SE-05: 403 ORG_NOT_ACTIVE en el ERP con la bodega no ACTIVE (Ola 1)
+  FEATURE_ENFORCE_ACTIVE_ORG: Joi.boolean().optional(),
+
+  // IP real detrás de nginx (SE-06): número de saltos de proxy (1) o lista de Express
+  TRUST_PROXY: Joi.string().allow('').invalid('true').optional().messages({
+    'any.invalid':
+      'TRUST_PROXY=true confiaría en cualquier X-Forwarded-For; usa el número de saltos (1 con nginx)',
+  }),
+  // Límites de peticiones por IP y minuto (SE-06, IAM-07)
+  RATE_LIMIT_GLOBAL_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  RATE_LIMIT_AUTH_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  RATE_LIMIT_LOGIN_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  RATE_LIMIT_SIGNUP_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  RATE_LIMIT_REFRESH_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  // Bloqueo progresivo del login: fallos antes del primer bloqueo
+  LOGIN_LOCK_EMAIL_THRESHOLD: Joi.number().integer().min(1).optional(),
+  LOGIN_LOCK_IP_THRESHOLD: Joi.number().integer().min(1).optional(),
 
   // Stellar / Soroban (opcional hasta la Ola 3)
   STELLAR_NETWORK: Joi.string()

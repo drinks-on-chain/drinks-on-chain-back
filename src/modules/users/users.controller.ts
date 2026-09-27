@@ -3,7 +3,6 @@ import {
   Get,
   Patch,
   Body,
-  UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -17,9 +16,11 @@ import {
 } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileResponseDto } from './dto/user-profile-response.dto';
+import {
+  MeResponseDto,
+  UserProfileResponseDto,
+} from './dto/user-profile-response.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -27,7 +28,6 @@ import {
 
 @ApiTags('Usuarios')
 @ApiBearerAuth()
-@UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
@@ -35,21 +35,21 @@ export class UsersController {
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Obtener el perfil del usuario autenticado',
+    summary: 'Obtener la persona autenticada con sus membresías',
     description:
-      'Retorna los datos de identidad, roles, membresías en bodegas y dirección pública de su billetera custodial.',
+      'Devuelve `{ user, memberships, activeOrganizationId }` (contrato O0 §5): el perfil (con `audience` y la dirección pública de su billetera custodial), todas sus membresías y la organización activa de la sesión.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Perfil de usuario obtenido exitosamente',
-    type: UserProfileResponseDto,
+    description: 'Persona, membresías y organización activa',
+    type: MeResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado o token inválido' })
   @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
   async getProfile(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<UserProfileResponseDto> {
-    return this.usersService.getProfile(user.id);
+  ): Promise<MeResponseDto> {
+    return this.usersService.getMe(user);
   }
 
   @Patch('me')

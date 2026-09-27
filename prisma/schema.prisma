@@ -58,6 +58,9 @@ model OutboxEvent {
 // -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
+/// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
+/// membresías (`memberships`). Solo se conserva para las respuestas y claims
+/// de compatibilidad.
 enum UserRoleEnum {
   PLATFORM_ADMIN
   WINERY_ADMIN
@@ -78,8 +81,9 @@ enum WineryCategoryEnum {
   @@map("winery_category_enum")
 }
 
+/// Estado de la bodega (contrato O1 §0): `INVITED` sustituye a `PENDING`.
 enum WineryStatusEnum {
-  PENDING
+  INVITED
   ACTIVE
   SUSPENDED
   REVOKED
@@ -95,6 +99,67 @@ enum WineryMemberRoleEnum {
   ACCOUNTANT
 
   @@map("winery_member_role_enum")
+}
+
+// -----------------------------------------------------------------------------
+// ORGANIZACIONES, MEMBRESÍAS Y SESIONES (Ola 0 · 0.5 y 0.6; contrato O0 §4–§5)
+// -----------------------------------------------------------------------------
+enum OrganizationTypeEnum {
+  PLATFORM
+  WINERY
+  PICKUP_POINT
+
+  @@map("organization_type_enum")
+}
+
+/// Mismo conjunto que el estado de la bodega (contrato O1 §0).
+enum OrganizationStatusEnum {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+
+  @@map("organization_status_enum")
+}
+
+/// Roles por membresía (EQP-01). Plataforma: SUPERADMIN, ADMIN, OPERATIONS,
+/// SUPPORT · bodega: OWNER, ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT ·
+/// punto de canje: MANAGER, CASHIER. La combinación tipo/rol la valida el código.
+enum MembershipRoleEnum {
+  SUPERADMIN
+  ADMIN
+  OPERATIONS
+  SUPPORT
+  OWNER
+  ENOLOGIST
+  AGRONOMIST
+  OPERATOR
+  ACCOUNTANT
+  MANAGER
+  CASHIER
+
+  @@map("membership_role_enum")
+}
+
+enum MembershipStatusEnum {
+  ACTIVE
+  BLOCKED
+
+  @@map("membership_status_enum")
+}
+
+enum MembershipBlockedByEnum {
+  OWNER
+  PLATFORM
+
+  @@map("membership_blocked_by_enum")
+}
+
+enum AudienceEnum {
+  STAFF
+  CONSUMER
+
+  @@map("audience_enum")
 }
 
 enum WalletTypeEnum {
@@ -203,20 +268,27 @@ enum BeverageTypeEnum {
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
-  id              String       @id @default(uuid()) @db.Uuid
-  email           String       @unique @db.VarChar(255)
-  phoneNumber     String?      @unique @map("phone_number") @db.VarChar(20)
-  passwordHash    String       @map("password_hash") @db.VarChar(255)
-  fullName        String       @map("full_name") @db.VarChar(200)
-  userRole        UserRoleEnum @map("user_role")
-  dynamicUserId   String?      @unique @map("dynamic_user_id") @db.VarChar(200)
-  preferredLocale String       @default("es") @map("preferred_locale") @db.Char(2)
-  isActive        Boolean      @default(true) @map("is_active")
-  lastLoginAt     DateTime?    @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                 String       @id @default(uuid()) @db.Uuid
+  email              String       @unique @db.VarChar(255)
+  phoneNumber        String?      @unique @map("phone_number") @db.VarChar(20)
+  passwordHash       String       @map("password_hash") @db.VarChar(255)
+  fullName           String       @map("full_name") @db.VarChar(200)
+  /// Obsoleto (H1): rol global de 0.1; ya no autoriza nada.
+  userRole           UserRoleEnum @map("user_role")
+  dynamicUserId      String?      @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale    String       @default("es") @map("preferred_locale") @db.Char(2)
+  isActive           Boolean      @default(true) @map("is_active")
+  lastLoginAt        DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  /// Última organización activa elegida (la de por defecto al iniciar sesión).
+  lastOrganizationId String?      @map("last_organization_id") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
+  lastOrganization         Organization?     @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
+  memberships              Membership[]
+  sessions                 Session[]
+  /// Obsoleto (H1): perfil del miembro en la bodega; la autorización usa `memberships`.
   wineryMemberships        WineryMember[]
   wallets                  UserWallet[]
   approvedWineries         Winery[]          @relation("ApprovedByUser")
@@ -243,7 +315,7 @@ model Winery {
   onchainProducerId     String?            @unique @map("onchain_producer_id") @db.VarChar(100)
   onchainRegisterTxHash String?            @map("onchain_register_tx_hash") @db.VarChar(100)
   isExportCertified     Boolean            @default(false) @map("is_export_certified")
-  certificationStatus   WineryStatusEnum   @default(PENDING) @map("certification_status")
+  certificationStatus   WineryStatusEnum   @default(INVITED) @map("certification_status")
   approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(6)
   approvedByUserId      String?            @map("approved_by_user_id") @db.Uuid
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -251,6 +323,8 @@ model Winery {
 
   // Relaciones
   approvedByUser    User?              @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  /// Organización de la bodega (enlace 1:1, mismo id).
+  organization      Organization?
   members           WineryMember[]
   wallets           UserWallet[]
   terroirs          Terroir[]
@@ -263,6 +337,80 @@ model Winery {
   @@map("wineries")
 }
 
+/// Organización genérica (contrato O0 §4). La de una bodega comparte el id con
+/// `wineries` (enlace 1:1 por `winery_id`); su nombre y estado se escriben en la
+/// misma transacción que la bodega. La de plataforma la crea la migración.
+model Organization {
+  id        String                 @id @default(uuid()) @db.Uuid
+  type      OrganizationTypeEnum
+  name      String                 @db.VarChar(300)
+  status    OrganizationStatusEnum @default(ACTIVE)
+  wineryId  String?                @unique @map("winery_id") @db.Uuid
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery          Winery?      @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  memberships     Membership[]
+  activeSessions  Session[]
+  lastUsedByUsers User[]       @relation("UserLastOrganization")
+
+  @@index([type])
+  @@map("organizations")
+}
+
+/// Membresía de una persona en una organización con su rol (EQP-01, EQP-09).
+/// En las bodegas, el id coincide con el de `winery_members` (autoría de la
+/// trazabilidad), que se mantiene en paralelo hasta H1.
+model Membership {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @map("user_id") @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  role           MembershipRoleEnum
+  status         MembershipStatusEnum     @default(ACTIVE)
+  blockedBy      MembershipBlockedByEnum? @map("blocked_by")
+  blockedReason  String?                  @map("blocked_reason") @db.VarChar(500)
+  blockedAt      DateTime?                @map("blocked_at") @db.Timestamptz(6)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, status])
+  @@map("memberships")
+}
+
+/// Sesión (contrato O0 §5): `id` es el claim `sid`. Cada renovación rota el
+/// refresco (se guarda solo su hash; `generation` cuenta las rotaciones). La
+/// familia de refrescos es la sesión entera: una reutilización la revoca.
+model Session {
+  id                   String       @id @default(uuid()) @db.Uuid
+  userId               String       @map("user_id") @db.Uuid
+  activeOrganizationId String?      @map("active_organization_id") @db.Uuid
+  audience             AudienceEnum
+  refreshTokenHash     String       @map("refresh_token_hash") @db.VarChar(64)
+  generation           Int          @default(0)
+  rotatedAt            DateTime?    @map("rotated_at") @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt           DateTime     @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  expiresAt            DateTime     @map("expires_at") @db.Timestamptz(6)
+  revokedAt            DateTime?    @map("revoked_at") @db.Timestamptz(6)
+  revokedReason        String?      @map("revoked_reason") @db.VarChar(50)
+  ip                   String?      @db.VarChar(64)
+  userAgent            String?      @map("user_agent") @db.VarChar(300)
+
+  user               User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  activeOrganization Organization? @relation(fields: [activeOrganizationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([activeOrganizationId, revokedAt])
+  @@map("sessions")
+}
+
+/// Obsoleto (H1): perfil del miembro en la bodega (matrícula) y autoría de la
+/// trazabilidad. La autorización usa `memberships` (mismo id); `is_active` se
+/// mantiene sincronizado con `memberships.status`.
 model WineryMember {
   id                        String               @id @default(uuid()) @db.Uuid
   userId                    String               @map("user_id") @db.Uuid
