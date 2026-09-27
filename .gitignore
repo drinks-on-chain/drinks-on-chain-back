@@ -3,7 +3,7 @@
 /build
 
 # Documentation
-docs/*
+docs/implementation/*
 
 # Node modules
 /node_modules
@@ -46,6 +46,3 @@ postgres_data/
 redis_data/
 
 uploads/
-
-!docs/demo/*
-!docs/endpoints/*
