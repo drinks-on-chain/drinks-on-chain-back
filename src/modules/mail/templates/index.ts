@@ -1,4 +1,5 @@
 import { BRAND } from './layout';
+import { ACCOUNT_TEMPLATES } from './account';
 
 /**
  * Plantilla de correo: asunto, texto plano y cuerpo HTML en Handlebars, con
@@ -36,7 +37,10 @@ const TEST_TEMPLATE: MailTemplate = {
   ].join('\n'),
 };
 
-export const MAIL_TEMPLATES: readonly MailTemplate[] = [TEST_TEMPLATE];
+export const MAIL_TEMPLATES: readonly MailTemplate[] = [
+  TEST_TEMPLATE,
+  ...ACCOUNT_TEMPLATES,
+];
 
 const BY_NAME = new Map(MAIL_TEMPLATES.map((t) => [t.name, t]));
 

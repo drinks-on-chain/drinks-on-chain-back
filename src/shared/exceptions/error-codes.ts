@@ -62,6 +62,48 @@ export const ErrorCode = {
   /** 403 · Audiencia, tipo de organización activa o rol insuficientes. */
   AUTH_INSUFFICIENT_PERMISSIONS: 'AUTH_INSUFFICIENT_PERMISSIONS',
 
+  // ── Cuenta y segundo factor (contrato O1 §1) ──────────────
+  /** 422 · Contraseña nueva corta o común (un detalle por problema). */
+  AUTH_WEAK_PASSWORD: 'AUTH_WEAK_PASSWORD',
+  /** 422 · La contraseña actual no es correcta (`POST /users/me/password`). */
+  AUTH_INVALID_CURRENT_PASSWORD: 'AUTH_INVALID_CURRENT_PASSWORD',
+  /** 422 · Enlace de recuperación desconocido, usado o caducado. */
+  AUTH_RESET_TOKEN_INVALID: 'AUTH_RESET_TOKEN_INVALID',
+  /** 422 · Enlace de verificación del correo desconocido, usado o caducado. */
+  AUTH_EMAIL_TOKEN_INVALID: 'AUTH_EMAIL_TOKEN_INVALID',
+  /** 403 · Organización de plataforma sin haber pasado el TOTP en la sesión. */
+  AUTH_MFA_REQUIRED: 'AUTH_MFA_REQUIRED',
+  /** 401 · Reto de segundo factor (`mfaToken`) desconocido, usado o caducado. */
+  AUTH_MFA_TOKEN_INVALID: 'AUTH_MFA_TOKEN_INVALID',
+  /** 401 · Código TOTP o de recuperación incorrecto. */
+  AUTH_MFA_INVALID_CODE: 'AUTH_MFA_INVALID_CODE',
+  /** 409 · `mfa/verify` sin segundo factor inscrito. */
+  AUTH_MFA_NOT_ENROLLED: 'AUTH_MFA_NOT_ENROLLED',
+  /** 409 · `mfa/enroll` con el segundo factor ya inscrito. */
+  AUTH_MFA_ALREADY_ENROLLED: 'AUTH_MFA_ALREADY_ENROLLED',
+  /** 409 · `mfa/enroll/confirm` sin haber pedido antes el secreto. */
+  AUTH_MFA_ENROLLMENT_NOT_STARTED: 'AUTH_MFA_ENROLLMENT_NOT_STARTED',
+  /** 401 · Aceptar una invitación de una cuenta existente sin su sesión. */
+  AUTH_LOGIN_REQUIRED: 'AUTH_LOGIN_REQUIRED',
+  /** 422 · El captcha (Turnstile) no es válido. */
+  CAPTCHA_INVALID: 'CAPTCHA_INVALID',
+  /** 503 · No se pudo comprobar el captcha con el proveedor. */
+  CAPTCHA_UNAVAILABLE: 'CAPTCHA_UNAVAILABLE',
+  /** 404 · Persona inexistente. */
+  USER_NOT_FOUND: 'USER_NOT_FOUND',
+
+  // ── Invitaciones (contrato O1 §2) ─────────────────────────
+  /** 404 · Token o id de invitación desconocido (o de otra organización). */
+  INVITATION_NOT_FOUND: 'INVITATION_NOT_FOUND',
+  /** 422 · La invitación caducó: hay que reenviarla. */
+  INVITATION_EXPIRED: 'INVITATION_EXPIRED',
+  /** 409 · La invitación ya no está pendiente (aceptada o anulada). */
+  INVITATION_NOT_PENDING: 'INVITATION_NOT_PENDING',
+  /** 409 · Ya hay una invitación pendiente para ese correo en la organización. */
+  INVITATION_ALREADY_PENDING: 'INVITATION_ALREADY_PENDING',
+  /** 403 · La sesión es de otra persona que la invitada. */
+  INVITATION_EMAIL_MISMATCH: 'INVITATION_EMAIL_MISMATCH',
+
   // ── Organizaciones y membresías (contrato O0 §4–§6) ───────
   /** 404 · Organización inexistente o sin membresía de la persona. */
   ORG_NOT_FOUND: 'ORG_NOT_FOUND',
@@ -73,8 +115,18 @@ export const ErrorCode = {
   ORG_NOT_ACTIVE: 'ORG_NOT_ACTIVE',
   /** 403 · La plataforma bloqueó esa membresía: el dueño no puede reactivarla. */
   ORG_BLOCKED_BY_PLATFORM: 'ORG_BLOCKED_BY_PLATFORM',
-  /** 409 · La persona ya es miembro activo de la organización. */
+  /** 409 · La persona ya es miembro (activo o bloqueado) de la organización. */
   ORG_ALREADY_MEMBER: 'ORG_ALREADY_MEMBER',
+  /** 403 · El rol de dueño solo se asigna en el alta o la transferencia. */
+  ORG_OWNER_ROLE_RESERVED: 'ORG_OWNER_ROLE_RESERVED',
+  /** 422 · Límite de colaboradores (activos + invitaciones pendientes). */
+  ORG_MEMBER_LIMIT_REACHED: 'ORG_MEMBER_LIMIT_REACHED',
+  /** 403 · Nadie cambia, bloquea ni degrada su propia membresía o cuenta. */
+  ORG_CANNOT_MODIFY_SELF: 'ORG_CANNOT_MODIFY_SELF',
+
+  // ── Plataforma (contrato O1 §5) ───────────────────────────
+  /** 403 · El superusuario no se bloquea ni se degrada. */
+  PLATFORM_SUPERADMIN_PROTECTED: 'PLATFORM_SUPERADMIN_PROTECTED',
 
   // ── Bodegas ───────────────────────────────────────────────
   /** 409 · La bodega ya no está en INVITED (aprobar o rechazar dos veces). */

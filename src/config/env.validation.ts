@@ -63,6 +63,44 @@ export const envValidationSchema = Joi.object({
   // SE-05: 403 ORG_NOT_ACTIVE en el ERP con la bodega no ACTIVE (Ola 1)
   FEATURE_ENFORCE_ACTIVE_ORG: Joi.boolean().optional(),
 
+  // Segundo factor (PLT-05): clave con la que se cifran los secretos TOTP en
+  // la base. Sin ella (solo fuera de producción real) se deriva de JWT_SECRET
+  // con un aviso al arrancar; ver src/modules/auth/mfa/mfa-crypto.ts.
+  MFA_ENCRYPTION_KEY: Joi.string().min(32).allow('').optional().messages({
+    'string.min':
+      'MFA_ENCRYPTION_KEY must be at least 32 characters long (openssl rand -base64 32)',
+  }),
+  // Captcha de los formularios públicos (Cloudflare Turnstile). En desarrollo
+  // y en la CI, la clave de prueba de Cloudflare que siempre valida.
+  TURNSTILE_SECRET_KEY: Joi.string()
+    .allow('')
+    .optional()
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().required().invalid('').messages({
+        'any.required': 'TURNSTILE_SECRET_KEY is required in production',
+        'any.invalid': 'TURNSTILE_SECRET_KEY is required in production',
+      }),
+    }),
+  // URL base de cada app en los enlaces de los correos (invitación,
+  // recuperación, verificación). Por defecto, las de localhost.
+  APP_URL_ERP: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+  APP_URL_BACKOFFICE: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+  APP_URL_POS: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+  APP_URL_MARKETPLACE: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+
   // IP real detrás de nginx (SE-06): número de saltos de proxy (1) o lista de Express
   TRUST_PROXY: Joi.string().allow('').invalid('true').optional().messages({
     'any.invalid':

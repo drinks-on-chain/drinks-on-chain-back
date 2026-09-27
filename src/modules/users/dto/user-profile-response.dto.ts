@@ -71,7 +71,19 @@ export class UserProfileResponseDto {
   primaryWallet?: WalletResponseDto | null;
 }
 
-/** Perfil de 0.1 más la audiencia (contrato O0 §5). */
+/** Preferencias de comunicación (IAM-09). */
+export class NotificationPrefsDto {
+  @ApiProperty({ example: true })
+  lotProgress!: boolean;
+
+  @ApiProperty({ example: true })
+  redemptionReminders!: boolean;
+}
+
+/**
+ * Perfil de 0.1 más la audiencia (contrato O0 §5) y, desde la Ola 1, las
+ * preferencias (contrato O1 §1).
+ */
 export class MeUserDto extends UserProfileResponseDto {
   @ApiProperty({
     enum: AudienceEnum,
@@ -81,6 +93,15 @@ export class MeUserDto extends UserProfileResponseDto {
       '`STAFF` si tiene al menos una membresía; `CONSUMER` si no tiene ninguna',
   })
   audience!: AudienceEnum;
+
+  @ApiPropertyOptional({ type: NotificationPrefsDto })
+  notificationPrefs?: NotificationPrefsDto;
+
+  @ApiPropertyOptional({
+    example: false,
+    description: 'Consentimiento de promociones (con fecha en el servidor)',
+  })
+  promotionsConsent?: boolean;
 }
 
 /** `GET /v1/users/me` (contrato O0 §5). */

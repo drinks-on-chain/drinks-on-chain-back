@@ -23,6 +23,12 @@ export const RevocationReason = {
   USER_BLOCKED: 'USER_BLOCKED',
   MEMBERSHIP_BLOCKED: 'MEMBERSHIP_BLOCKED',
   ORGANIZATION_REVOKED: 'ORGANIZATION_REVOKED',
+  /** Sesión de plataforma sin segundo factor (abierta antes de exigirlo). */
+  MFA_REQUIRED: 'MFA_REQUIRED',
+  MFA_RESET: 'MFA_RESET',
+  PASSWORD_CHANGED: 'PASSWORD_CHANGED',
+  PASSWORD_RESET: 'PASSWORD_RESET',
+  ROLE_CHANGED: 'ROLE_CHANGED',
 } as const;
 export type RevocationReasonValue =
   (typeof RevocationReason)[keyof typeof RevocationReason];
@@ -81,6 +87,8 @@ export class SessionsService {
     audience: AudienceEnum;
     activeOrganizationId: string | null;
     client: ClientInfo;
+    /** La persona pasó el segundo factor al abrirla (PLT-05). */
+    mfaVerified?: boolean;
   }): Promise<IssuedRefresh> {
     const secret = generateRefreshSecret();
     const now = new Date();
@@ -92,6 +100,7 @@ export class SessionsService {
         refreshTokenHash: hashRefreshSecret(secret),
         generation: 0,
         lastUsedAt: now,
+        mfaVerifiedAt: params.mfaVerified ? now : null,
         expiresAt: new Date(
           now.getTime() + this.ttlSecondsFor(params.audience) * 1000,
         ),
@@ -292,12 +301,22 @@ export class SessionsService {
     await this.revokeWhere({ id: sessionId }, reason);
   }
 
-  /** Revoca todas las sesiones vivas de una persona (bloqueo, logout-all). */
+  /**
+   * Revoca todas las sesiones vivas de una persona (bloqueo, logout-all,
+   * contraseña cambiada); con `exceptSessionId`, todas menos esa.
+   */
   async revokeAllForUser(
     userId: string,
     reason: RevocationReasonValue,
+    exceptSessionId?: string,
   ): Promise<number> {
-    return this.revokeWhere({ userId }, reason);
+    return this.revokeWhere(
+      {
+        userId,
+        ...(exceptSessionId ? { id: { not: exceptSessionId } } : {}),
+      },
+      reason,
+    );
   }
 
   /**

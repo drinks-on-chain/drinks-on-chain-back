@@ -29,6 +29,14 @@ export interface EnvironmentVariables {
   LOGIN_LOCK_EMAIL_THRESHOLD?: number;
   LOGIN_LOCK_IP_THRESHOLD?: number;
 
+  // Cuenta, segundo factor e invitaciones (contrato O1 §1–§2)
+  MFA_ENCRYPTION_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  APP_URL_ERP?: string;
+  APP_URL_BACKOFFICE?: string;
+  APP_URL_POS?: string;
+  APP_URL_MARKETPLACE?: string;
+
   // Stellar / Soroban (opcional hasta la Ola 3)
   STELLAR_NETWORK: 'testnet' | 'mainnet' | 'futurenet' | 'standalone';
   STELLAR_HORIZON_URL: string;
