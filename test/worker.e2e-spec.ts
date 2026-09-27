@@ -1,6 +1,7 @@
 import { Injectable, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { tmpdir } from 'os';
+import Redis from 'ioredis';
 import { join } from 'path';
 import { OutboxStatusEnum } from '@prisma/client';
 import { WorkerModule } from '../src/worker/worker.module';
@@ -20,6 +21,7 @@ import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { CorrelationIdMiddleware } from '../src/shared/middleware/correlation-id.middleware';
 import { WineryCreatedHandler } from '../src/modules/wineries/jobs/winery-created.handler';
 import { heartbeatAgeMs } from '../src/worker-healthcheck';
+import { workerHeartbeatKey } from '../src/shared/queue/queue.constants';
 
 const run = `o0be3w-${Date.now()}`;
 
@@ -91,6 +93,7 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
     heartbeat: {
       file: join(tmpdir(), `${run}.heartbeat`),
       intervalMs: 1000,
+      maxAgeMs: 30000,
     },
   };
 
@@ -286,5 +289,22 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       const age = heartbeatAgeMs(settings.heartbeat.file);
       return age !== null && age < 5000;
     });
+  });
+
+  it('escribe el latido en Redis con caducidad (lo lee /v1/health/ready)', async () => {
+    const client = new Redis(settings.redisUrl);
+    try {
+      const key = workerHeartbeatKey(run);
+      await waitFor(async () => (await client.get(key)) !== null);
+      const beat = JSON.parse((await client.get(key)) ?? '{}') as {
+        at?: string;
+      };
+      expect(Date.now() - Date.parse(beat.at ?? '')).toBeLessThan(5000);
+      const ttl = await client.pttl(key);
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(30000);
+    } finally {
+      client.disconnect();
+    }
   });
 });

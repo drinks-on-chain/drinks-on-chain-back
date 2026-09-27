@@ -14,7 +14,11 @@ describe('HeartbeatService', () => {
   let file: string;
   let deps: {
     prisma: { ping: jest.Mock };
-    queues: { ping: jest.Mock };
+    queues: {
+      ping: jest.Mock;
+      writeHeartbeat: jest.Mock;
+      clearHeartbeat: jest.Mock;
+    };
     relay: { isRunning: jest.Mock; msSinceLastTick: jest.Mock };
     dispatcher: { isRunning: jest.Mock };
   };
@@ -25,7 +29,11 @@ describe('HeartbeatService', () => {
     file = join(dir, 'sub', 'worker.heartbeat');
     deps = {
       prisma: { ping: jest.fn().mockResolvedValue(true) },
-      queues: { ping: jest.fn().mockResolvedValue(true) },
+      queues: {
+        ping: jest.fn().mockResolvedValue(true),
+        writeHeartbeat: jest.fn().mockResolvedValue(undefined),
+        clearHeartbeat: jest.fn().mockResolvedValue(undefined),
+      },
       relay: {
         isRunning: jest.fn().mockReturnValue(true),
         msSinceLastTick: jest.fn().mockReturnValue(500),
@@ -34,7 +42,7 @@ describe('HeartbeatService', () => {
     };
     const settings = {
       relay: { intervalMs: 1000, lockTimeoutMs: 60000 },
-      heartbeat: { file, intervalMs: 10000 },
+      heartbeat: { file, intervalMs: 10000, maxAgeMs: 45000 },
     } as WorkerSettings;
     service = new HeartbeatService(
       deps.prisma as unknown as PrismaService,
@@ -58,6 +66,18 @@ describe('HeartbeatService', () => {
     const age = heartbeatAgeMs(file);
     expect(age).not.toBeNull();
     expect(age as number).toBeLessThan(5000);
+    // Y el mismo latido en Redis, con caducidad (lo lee /v1/health/ready)
+    expect(deps.queues.writeHeartbeat).toHaveBeenCalledWith(
+      readFileSync(file, 'utf8'),
+      45000,
+    );
+  });
+
+  it('si Redis falla al escribir el latido, el archivo se escribe igual', async () => {
+    deps.queues.writeHeartbeat.mockRejectedValueOnce(new Error('READONLY'));
+    const status = await service.beat();
+    expect(status.ok).toBe(true);
+    expect(existsSync(file)).toBe(true);
   });
 
   it.each([
@@ -74,12 +94,14 @@ describe('HeartbeatService', () => {
     const status = await service.beat();
     expect(status.ok).toBe(false);
     expect(existsSync(file)).toBe(false);
+    expect(deps.queues.writeHeartbeat).not.toHaveBeenCalled();
   });
 
   it('stop() borra el latido', async () => {
     await service.beat();
     await service.stop();
     expect(existsSync(file)).toBe(false);
+    expect(deps.queues.clearHeartbeat).toHaveBeenCalled();
   });
 });
 

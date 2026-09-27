@@ -9,6 +9,7 @@ export interface EnvironmentVariables {
 
   // Redis
   REDIS_URL: string;
+  QUEUE_PREFIX: string;
 
   // JWT
   JWT_SECRET: string;

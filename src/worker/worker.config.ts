@@ -70,6 +70,8 @@ export interface WorkerSettings {
   heartbeat: {
     file: string;
     intervalMs: number;
+    /** Vida del latido en Redis (la API lo lee en `/v1/health/ready`). */
+    maxAgeMs?: number;
   };
 }
 
@@ -95,6 +97,7 @@ export function workerSettingsFromConfig(
     heartbeat: {
       file: config.getOrThrow<string>('WORKER_HEARTBEAT_FILE'),
       intervalMs: num('WORKER_HEARTBEAT_INTERVAL_MS'),
+      maxAgeMs: num('WORKER_HEARTBEAT_MAX_AGE_MS'),
     },
   };
 }

@@ -1,8 +1,13 @@
 import { ApiProperty } from '@nestjs/swagger';
 
 export class HealthStatusDataDto {
-  @ApiProperty({ example: 'ok', description: 'Estado general del servicio' })
-  status!: string;
+  @ApiProperty({
+    example: 'ok',
+    enum: ['ok', 'degraded'],
+    description:
+      'Estado general. En `/health`: base de datos y Redis. En `/health/ready`: `ok` si todo está bien; `degraded` si falta una dependencia (503) o solo el worker (200: la API sirve, pero no se procesan colas ni correos)',
+  })
+  status!: 'ok' | 'degraded';
 
   @ApiProperty({
     example: 'connected',
@@ -25,6 +30,14 @@ export class HealthStatusDataDto {
   storage!: 'connected' | 'disconnected' | 'not_configured';
 
   @ApiProperty({
+    example: 'up',
+    enum: ['up', 'down'],
+    description:
+      'Worker (outbox, colas, correo): `up` si su latido en Redis es reciente (`WORKER_HEARTBEAT_MAX_AGE_MS`). No hace fallar la readiness',
+  })
+  worker!: 'up' | 'down';
+
+  @ApiProperty({
     example: 42.15,
     description: 'Segundos de actividad continua',
   })
@@ -42,6 +55,7 @@ export class LivenessDataDto {
   uptime!: number;
 
   @ApiProperty({
+    type: String,
     example: 'a928324',
     nullable: true,
     description: 'Release desplegada (RELEASE_SHA), si se conoce',

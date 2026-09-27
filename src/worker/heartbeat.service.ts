@@ -21,11 +21,16 @@ export interface HeartbeatStatus {
   workers: boolean;
 }
 
+/** Vida del latido en Redis si no se configura (`WORKER_HEARTBEAT_MAX_AGE_MS`). */
+const DEFAULT_HEARTBEAT_MAX_AGE_MS = 60000;
+
 /**
  * Latido del worker: cada `WORKER_HEARTBEAT_INTERVAL_MS` comprueba Postgres,
  * Redis, el relay y los workers de las colas y, si todo está bien, reescribe
- * `WORKER_HEARTBEAT_FILE`. El healthcheck del contenedor
- * (`dist/worker-healthcheck.js`) solo mira que el archivo sea reciente.
+ * `WORKER_HEARTBEAT_FILE` y la clave `<QUEUE_PREFIX>:worker:heartbeat` de
+ * Redis (caduca a los `WORKER_HEARTBEAT_MAX_AGE_MS`). El healthcheck del
+ * contenedor (`dist/worker-healthcheck.js`) mira el archivo; la API mira la
+ * clave de Redis en `/v1/health/ready` (`worker: up | down`).
  */
 @Injectable()
 export class HeartbeatService
@@ -60,6 +65,7 @@ export class HeartbeatService
     this.timer = null;
     // Al parar, el contenedor deja de estar sano de inmediato
     await fs.rm(this.settings.heartbeat.file, { force: true }).catch(() => {});
+    await this.queues.clearHeartbeat().catch(() => {});
   }
 
   async check(): Promise<HeartbeatStatus> {
@@ -85,12 +91,24 @@ export class HeartbeatService
   async beat(): Promise<HeartbeatStatus> {
     const status = await this.check();
     if (status.ok) {
+      const beat = JSON.stringify({
+        at: new Date().toISOString(),
+        pid: process.pid,
+      });
       const file = this.settings.heartbeat.file;
       await fs.mkdir(dirname(file), { recursive: true });
-      await fs.writeFile(
-        file,
-        JSON.stringify({ at: new Date().toISOString(), pid: process.pid }),
-      );
+      await fs.writeFile(file, beat);
+      try {
+        await this.queues.writeHeartbeat(
+          beat,
+          this.settings.heartbeat.maxAgeMs ?? DEFAULT_HEARTBEAT_MAX_AGE_MS,
+        );
+      } catch (error) {
+        // Redis acaba de responder al ping: se reintenta en el próximo latido
+        this.logger.warn(
+          `No se pudo escribir el latido en Redis: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
     if (status.ok !== this.lastOk) {
       if (status.ok) this.logger.log('Worker sano');

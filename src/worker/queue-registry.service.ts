@@ -1,7 +1,11 @@
 import { Inject, Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConnectionOptions, JobsOptions, Queue } from 'bullmq';
 import { buildRedisConnection } from '@shared/queue/redis-connection';
-import { QUEUE_NAMES, QueueName } from '@shared/queue/queue.constants';
+import {
+  QUEUE_NAMES,
+  QueueName,
+  workerHeartbeatKey,
+} from '@shared/queue/queue.constants';
 import { WORKER_SETTINGS, WorkerSettings } from './worker.config';
 
 /**
@@ -64,6 +68,21 @@ export class QueueRegistry implements OnModuleDestroy {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Latido del worker en Redis, con caducidad: si el worker muere o deja de
+   * estar sano, la clave desaparece sola al pasar `ttlMs`.
+   */
+  async writeHeartbeat(value: string, ttlMs: number): Promise<void> {
+    const client = await this.get('default').client;
+    await client.set(workerHeartbeatKey(this.prefix), value, { PX: ttlMs });
+  }
+
+  /** Borra el latido de Redis (parada ordenada del worker). */
+  async clearHeartbeat(): Promise<void> {
+    const client = await this.get('default').client;
+    await client.del(workerHeartbeatKey(this.prefix));
   }
 
   async onModuleDestroy(): Promise<void> {

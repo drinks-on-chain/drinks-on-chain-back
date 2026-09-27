@@ -35,6 +35,11 @@ export const envValidationSchema = Joi.object({
       'any.required': 'REDIS_URL is a required environment variable',
       'string.uri': 'REDIS_URL must be a valid Redis connection string',
     }),
+  // Prefijo de las claves del worker en Redis (el mismo que el del worker):
+  // la readiness lee ahí su latido
+  QUEUE_PREFIX: Joi.string()
+    .pattern(/^[a-zA-Z0-9_-]+$/)
+    .default('doc'),
 
   // JWT
   JWT_SECRET: Joi.string().min(32).required().messages({
