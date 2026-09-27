@@ -17,7 +17,11 @@ export class AuthUserDto {
   @ApiProperty({ example: 'Juan Pérez' })
   fullName!: string;
 
-  @ApiPropertyOptional({ example: '+59170012345', nullable: true })
+  @ApiPropertyOptional({
+    type: String,
+    example: '+59170012345',
+    nullable: true,
+  })
   phoneNumber?: string | null;
 
   @ApiProperty({ example: 'es' })
@@ -42,6 +46,7 @@ export class AuthUserDto {
   userRole!: UserRoleEnum;
 
   @ApiPropertyOptional({
+    type: String,
     example: '8d7e2c1a-4b5f-4c3d-9e8f-1a2b3c4d5e6f',
     nullable: true,
     deprecated: true,
@@ -50,6 +55,7 @@ export class AuthUserDto {
   wineryId?: string | null;
 
   @ApiPropertyOptional({
+    type: String,
     example: 'OWNER',
     nullable: true,
     deprecated: true,

@@ -1123,7 +1123,14 @@
         },
         "responses": {
           "201": {
-            "description": "Log térmico registrado"
+            "description": "Log térmico registrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FermentationLogResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1173,7 +1180,14 @@
         },
         "responses": {
           "201": {
-            "description": "Tratamiento enológico registrado"
+            "description": "Tratamiento enológico registrado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EnologicalTreatmentResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4538,7 +4552,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Estado de reposo inerte"
+            "description": "Estado de reposo inerte",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestStatusResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4848,7 +4869,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Grafo DAG de linaje"
+            "description": "Grafo DAG de linaje",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DagGraphResponseDto"
+                }
+              }
+            }
           },
           "404": {
             "description": "Lote de embotellado no encontrado"
@@ -4881,7 +4909,14 @@
         ],
         "responses": {
           "200": {
-            "description": "Pasaporte digital de trazabilidad pública"
+            "description": "Pasaporte digital de trazabilidad pública",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DagGraphResponseDto"
+                }
+              }
+            }
           },
           "404": {
             "description": "Código de lote no encontrado"
@@ -6493,7 +6528,7 @@
             "example": "Juan Pérez"
           },
           "phoneNumber": {
-            "type": "object",
+            "type": "string",
             "example": "+59170012345",
             "nullable": true
           },
@@ -6525,14 +6560,14 @@
             "description": "Compatibilidad hasta H1: rol de 0.1 equivalente a la organización activa"
           },
           "wineryId": {
-            "type": "object",
+            "type": "string",
             "example": "8d7e2c1a-4b5f-4c3d-9e8f-1a2b3c4d5e6f",
             "nullable": true,
             "deprecated": true,
             "description": "Compatibilidad hasta H1: la bodega activa"
           },
           "memberRole": {
-            "type": "object",
+            "type": "string",
             "example": "OWNER",
             "nullable": true,
             "deprecated": true,
@@ -6568,7 +6603,9 @@
             "example": "LAB-SENASAG-ISO-2026-991"
           },
           "analysisRequestDate": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-10-02"
           },
           "testPerformedAt": {
@@ -6581,7 +6618,8 @@
             "example": 40.05
           },
           "totalAlcoholAbv": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 40.05
           },
           "totalAcidityTartaricGl": {
@@ -6593,39 +6631,49 @@
             "example": 0.22
           },
           "freeSulfurDioxideMgL": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 22
           },
           "totalSulfurDioxideMgL": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 65
           },
           "reducingSugarsGl": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 1.2
           },
           "totalDryExtractGl": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 18.5
           },
           "sugarFreeDryExtractGl": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 17.3
           },
           "overpressureBar": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 0
           },
           "methanolContentMgL": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 48
           },
           "copperContentMgL": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 0.02
           },
           "additionalParams": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
           },
           "laboratoryReportPdfUrl": {
             "type": "string",
@@ -6644,7 +6692,8 @@
             "example": true
           },
           "reviewedByMemberId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "createdAt": {
@@ -6681,11 +6730,13 @@
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "wineAgingBatchId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "productionBatchId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "productType": {
@@ -6710,7 +6761,8 @@
             "example": 40
           },
           "waterDilutionLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 1321
           },
           "totalBottlesPackaged": {
@@ -6722,11 +6774,13 @@
             "example": 75
           },
           "bottleType": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Vidrio Extra-Flint 750ml"
           },
           "labelDesignUrl": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "https://storage.drinksonchain.com/labels/singani.png"
           },
           "bottlingDate": {
@@ -6735,15 +6789,18 @@
             "example": "2026-10-01"
           },
           "releasedByMemberId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "blockchainAnchorTxHash": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "0x1234abcd..."
           },
           "blockchainDataHash": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4e5f6..."
           },
           "isAnchoredOnChain": {
@@ -6751,17 +6808,50 @@
             "example": false
           },
           "anchoredAt": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-10-01T12:00:00.000Z"
           },
           "qrBatchUrl": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "https://drinksonchain.com/trace/batch/KHL-2026-SINGANI-001"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string",
             "example": "2026-10-01T12:00:00.000Z"
+          },
+          "labAnalysis": {
+            "nullable": true,
+            "description": "En la lista y el detalle",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/BatchLabAnalysisResponseDto"
+              }
+            ]
+          },
+          "wineAgingBatch": {
+            "nullable": true,
+            "description": "Solo en el detalle",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineAgingResponseDto"
+              }
+            ]
+          },
+          "productionBatch": {
+            "nullable": true,
+            "description": "Solo en el detalle",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ProductionBatchResponseDto"
+              }
+            ]
           }
         },
         "required": [
@@ -7683,6 +7773,140 @@
           "contactEmail"
         ]
       },
+      "DagGraphResponseDto": {
+        "type": "object",
+        "properties": {
+          "rootBatchId": {
+            "type": "string",
+            "example": "0x5d2e…",
+            "description": "batchId del embotellado"
+          },
+          "internationalLotCode": {
+            "type": "string",
+            "example": "CVJ-2026-SINGANI-001"
+          },
+          "productType": {
+            "type": "string",
+            "example": "SINGANI"
+          },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DagNodeDto"
+            }
+          }
+        },
+        "required": [
+          "rootBatchId",
+          "internationalLotCode",
+          "productType",
+          "nodes"
+        ]
+      },
+      "DagNodeDto": {
+        "type": "object",
+        "properties": {
+          "batchId": {
+            "type": "string",
+            "example": "0x3f1c…",
+            "description": "Hash SHA-256 (0x…) que identifica el nodo en el contrato"
+          },
+          "stage": {
+            "type": "number",
+            "example": 4,
+            "description": "0 parcela, 1 vendimia, 2 vinificación, 3 crianza, 4 destilación, 5 embotellado"
+          },
+          "stageName": {
+            "type": "string",
+            "example": "Distillation",
+            "enum": [
+              "Plot",
+              "Harvest",
+              "Vinification",
+              "Aging",
+              "Distillation",
+              "Bottling"
+            ]
+          },
+          "parents": {
+            "description": "batchId de los padres",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "volumeOrUnits": {
+            "type": "number",
+            "example": 1750,
+            "description": "Hectáreas, kg, litros o botellas según la etapa"
+          },
+          "metrics": {
+            "example": [
+              7020
+            ],
+            "description": "Métricas escaladas ×100 (enteros) para el contrato",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "metadataHash": {
+            "type": "string",
+            "example": "0x9a0b…"
+          },
+          "isCertified": {
+            "type": "boolean",
+            "example": true
+          },
+          "operator": {
+            "$ref": "#/components/schemas/DagOperatorDto"
+          },
+          "details": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Datos de la etapa (números como números JSON; en el embotellado, `labAnalysis` o `null`)"
+          }
+        },
+        "required": [
+          "batchId",
+          "stage",
+          "stageName",
+          "parents",
+          "timestamp",
+          "volumeOrUnits",
+          "metrics",
+          "metadataHash",
+          "isCertified",
+          "operator",
+          "details"
+        ]
+      },
+      "DagOperatorDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "example": "Maestro Destilador"
+          },
+          "role": {
+            "type": "string",
+            "example": "Distiller"
+          },
+          "wineryName": {
+            "type": "string",
+            "example": "Destilería Cinti Viejo"
+          }
+        },
+        "required": [
+          "name",
+          "role",
+          "wineryName"
+        ]
+      },
       "DashboardAlertDto": {
         "type": "object",
         "properties": {
@@ -7903,6 +8127,77 @@
           "appliesAt"
         ]
       },
+      "EnologicalTreatmentResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "fermentationTankId": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "treatmentType": {
+            "type": "string",
+            "enum": [
+              "ACIDITY_CORRECTION",
+              "SO2_ADDITION",
+              "CLARIFICATION",
+              "FILTRATION_AID",
+              "NUTRIENT_ADDITION",
+              "ENZYME_ADDITION",
+              "OAK_CHIPS",
+              "FINING_AGENT",
+              "STABILIZATION",
+              "OTHER"
+            ]
+          },
+          "additiveName": {
+            "type": "string",
+            "example": "Metabisulfito de potasio"
+          },
+          "additiveSupplier": {
+            "type": "string",
+            "nullable": true
+          },
+          "dosageAppliedGPerHl": {
+            "type": "number",
+            "example": 5
+          },
+          "totalAppliedG": {
+            "type": "number",
+            "nullable": true,
+            "example": 505
+          },
+          "regulatoryAuthCode": {
+            "type": "string",
+            "example": "SENASAG-ADT-2026-001"
+          },
+          "appliedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "authorizedByMemberId": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "fermentationTankId",
+          "treatmentType",
+          "additiveName",
+          "dosageAppliedGPerHl",
+          "regulatoryAuthCode",
+          "appliedAt",
+          "authorizedByMemberId"
+        ]
+      },
       "ErrorBodyDto": {
         "type": "object",
         "properties": {
@@ -7949,6 +8244,57 @@
           "message"
         ]
       },
+      "FermentationLogResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "fermentationTankId": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "temperatureCelsius": {
+            "type": "number",
+            "example": 18.5
+          },
+          "specificGravity": {
+            "type": "number",
+            "nullable": true,
+            "example": 1.045
+          },
+          "phValue": {
+            "type": "number",
+            "nullable": true,
+            "example": 3.45
+          },
+          "co2Observations": {
+            "type": "string",
+            "nullable": true,
+            "example": "Desprendimiento moderado"
+          },
+          "recordedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "recordedByUserId": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "fermentationTankId",
+          "temperatureCelsius",
+          "recordedAt",
+          "recordedByUserId"
+        ]
+      },
       "FermentationTankResponseDto": {
         "type": "object",
         "properties": {
@@ -7969,19 +8315,23 @@
             "example": "TK-03"
           },
           "capacityLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 15000
           },
           "material": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Acero inoxidable AISI 316"
           },
           "volumeFilledLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 10100
           },
           "destinationType": {
             "type": "string",
+            "nullable": true,
             "enum": [
               "WINE_AGING",
               "SINGANI_DIST",
@@ -8008,13 +8358,37 @@
             "example": "2026-03-15T14:30:00.000Z"
           },
           "endDate": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-03-29T14:30:00.000Z"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string",
             "example": "2026-03-15T14:30:00.000Z"
+          },
+          "harvestBatch": {
+            "description": "En la lista y el detalle",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HarvestBatchResponseDto"
+              }
+            ]
+          },
+          "logs": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FermentationLogResponseDto"
+            }
+          },
+          "treatments": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnologicalTreatmentResponseDto"
+            }
           }
         },
         "required": [
@@ -8103,7 +8477,8 @@
             "example": 6.8
           },
           "temperatureAtIntakeC": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 16.5
           },
           "phytosanitaryStatus": {
@@ -8117,21 +8492,39 @@
             "example": "APPROVED"
           },
           "phytoInspectionPdfUrl": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "https://storage.drinksonchain.com/inspections/phyto-01.pdf"
           },
           "certifiedByMemberId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
           },
           "notes": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Cosecha matutina manual"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string",
             "example": "2026-09-06T12:00:00.000Z"
+          },
+          "terroir": {
+            "description": "En la lista y el detalle",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TerroirResponseDto"
+              }
+            ]
+          },
+          "fermentationTanks": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FermentationTankResponseDto"
+            }
           }
         },
         "required": [
@@ -8157,7 +8550,11 @@
           "status": {
             "type": "string",
             "example": "ok",
-            "description": "Estado general del servicio"
+            "enum": [
+              "ok",
+              "degraded"
+            ],
+            "description": "Estado general. En `/health`: base de datos y Redis. En `/health/ready`: `ok` si todo está bien; `degraded` si falta una dependencia (503) o solo el worker (200: la API sirve, pero no se procesan colas ni correos)"
           },
           "database": {
             "type": "string",
@@ -8179,6 +8576,15 @@
             ],
             "description": "Estado del almacenamiento de objetos (MinIO/S3 o carpeta local); cuenta en la readiness"
           },
+          "worker": {
+            "type": "string",
+            "example": "up",
+            "enum": [
+              "up",
+              "down"
+            ],
+            "description": "Worker (outbox, colas, correo): `up` si su latido en Redis es reciente (`WORKER_HEARTBEAT_MAX_AGE_MS`). No hace fallar la readiness"
+          },
           "uptime": {
             "type": "number",
             "example": 42.15,
@@ -8190,6 +8596,7 @@
           "database",
           "redis",
           "storage",
+          "worker",
           "uptime"
         ]
       },
@@ -8367,7 +8774,7 @@
             "description": "Segundos de actividad continua"
           },
           "release": {
-            "type": "object",
+            "type": "string",
             "example": "a928324",
             "nullable": true,
             "description": "Release desplegada (RELEASE_SHA), si se conoce"
@@ -8453,7 +8860,8 @@
             "description": "Obsoleto (H1): rol global de 0.1; los permisos van por membresía"
           },
           "phoneNumber": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "+59170012345"
           },
           "preferredLocale": {
@@ -8465,7 +8873,9 @@
             "example": true
           },
           "lastLoginAt": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-09-06T20:00:00.000Z"
           },
           "createdAt": {
@@ -8480,7 +8890,13 @@
             }
           },
           "primaryWallet": {
-            "$ref": "#/components/schemas/WalletResponseDto"
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WalletResponseDto"
+              }
+            ]
           },
           "audience": {
             "example": "STAFF",
@@ -8972,23 +9388,29 @@
             "example": "2026-04-01"
           },
           "processEndDate": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-04-03"
           },
           "inputVolumeLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 10000
           },
           "outputVolumeLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 1750
           },
           "wasteVolumeLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 570
           },
           "initialAlcoholPercentage": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 70.2
           },
           "isDoEligible": {
@@ -8996,7 +9418,9 @@
             "example": true
           },
           "mandatoryRestUntil": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-09-30"
           },
           "restStatus": {
@@ -9011,16 +9435,34 @@
             "example": "RESTING"
           },
           "additionalParams": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
           },
           "notes": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Destilación simple discontinua"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string",
             "example": "2026-04-01T10:00:00.000Z"
+          },
+          "fermentationTank": {
+            "description": "En la lista y el detalle",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FermentationTankResponseDto"
+              }
+            ]
+          },
+          "bottlingBatches": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BottlingBatchResponseDto"
+            }
           }
         },
         "required": [
@@ -9147,6 +9589,61 @@
         "required": [
           "wineryIds",
           "reason"
+        ]
+      },
+      "RestStatusResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
+          },
+          "restStatus": {
+            "type": "string",
+            "enum": [
+              "NOT_REQUIRED",
+              "RESTING",
+              "READY",
+              "BOTTLED",
+              "DISCARDED"
+            ],
+            "example": "RESTING"
+          },
+          "processEndDate": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-04-03T00:00:00.000Z"
+          },
+          "mandatoryRestUntil": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "example": "2026-09-30T00:00:00.000Z"
+          },
+          "daysElapsed": {
+            "type": "number",
+            "example": 42,
+            "minimum": 0
+          },
+          "daysRemaining": {
+            "type": "number",
+            "example": 138,
+            "minimum": 0
+          },
+          "isRestCompleted": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "id",
+          "restStatus",
+          "processEndDate",
+          "mandatoryRestUntil",
+          "daysElapsed",
+          "daysRemaining",
+          "isRestCompleted"
         ]
       },
       "SetSettingOverridesDto": {
@@ -9644,7 +10141,8 @@
             "example": "Cuartel 4 - La Finca El Potrero"
           },
           "cadastreCode": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "CAT-TL-4022"
           },
           "surfaceHectares": {
@@ -9656,15 +10154,19 @@
             "example": 1850
           },
           "latitude": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": -21.48512
           },
           "longitude": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": -64.78921
           },
           "geographicPolygonGeojson": {
-            "type": "object"
+            "type": "object",
+            "additionalProperties": true,
+            "nullable": true
           },
           "rawMaterialType": {
             "type": "string",
@@ -9675,11 +10177,13 @@
             "example": "Moscatel de Alejandría"
           },
           "soilType": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Franco-arcilloso"
           },
           "irrigationSystem": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Riego por goteo"
           },
           "isDoEligible": {
@@ -9687,11 +10191,13 @@
             "example": true
           },
           "doType": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "D.O. Singani"
           },
           "doCertificateUrl": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "https://storage.drinksonchain.com/cert/do-potrero.pdf"
           },
           "isActive": {
@@ -9702,6 +10208,13 @@
             "format": "date-time",
             "type": "string",
             "example": "2026-09-06T12:00:00.000Z"
+          },
+          "harvestBatches": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HarvestBatchResponseDto"
+            }
           }
         },
         "required": [
@@ -10076,7 +10589,8 @@
             "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
           },
           "wineryId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "winery-uuid-1234"
           },
           "stellarPublicAddress": {
@@ -10140,19 +10654,23 @@
             "example": "Barrica"
           },
           "containerMaterial": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Roble Francés tostado medio"
           },
           "containerCode": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "BAR-FR-2024-01"
           },
           "barrelUseCycle": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 1
           },
           "volumeLiters": {
-            "type": "object",
+            "type": "number",
+            "nullable": true,
             "example": 225
           },
           "plannedMonths": {
@@ -10175,13 +10693,29 @@
             "example": "AGING"
           },
           "notes": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Cava subterránea"
           },
           "createdAt": {
             "format": "date-time",
             "type": "string",
             "example": "2026-03-15T14:30:00.000Z"
+          },
+          "fermentationTank": {
+            "description": "En la lista y el detalle",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/FermentationTankResponseDto"
+              }
+            ]
+          },
+          "bottlingBatches": {
+            "description": "Solo en el detalle",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BottlingBatchResponseDto"
+            }
           }
         },
         "required": [
@@ -10226,7 +10760,8 @@
             "example": "ENOLOGIST"
           },
           "professionalLicenseNumber": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "MP-BOL-2024-9981"
           },
           "isActive": {
@@ -10272,7 +10807,8 @@
             "example": "ENOLOGIST"
           },
           "professionalLicenseNumber": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "MP-BOL-2024-9981"
           },
           "isActive": {
@@ -10323,7 +10859,8 @@
             "example": "1028374029"
           },
           "senasagSanitaryReg": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "08-01-03-01-0001"
           },
           "geographicRegion": {
@@ -10335,7 +10872,8 @@
             "example": "BO"
           },
           "address": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "Km 15 Carretera a Bermejo"
           },
           "contactEmail": {
@@ -10343,23 +10881,28 @@
             "example": "contacto@kohlberg.bo"
           },
           "contactPhone": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "+59146642345"
           },
           "logoUrl": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "https://storage.supabase.co/logos/kohlberg.png"
           },
           "stellarPublicKey": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q"
           },
           "onchainProducerId": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "PROD_BO_1028374029"
           },
           "onchainRegisterTxHash": {
-            "type": "object",
+            "type": "string",
+            "nullable": true,
             "example": "0x_simulated_tx_88a1b2c3"
           },
           "isExportCertified": {
@@ -10377,7 +10920,9 @@
             "example": "INVITED"
           },
           "approvedAt": {
-            "type": "object",
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
             "example": "2026-09-06T21:00:00.000Z"
           },
           "createdAt": {

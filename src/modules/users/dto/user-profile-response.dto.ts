@@ -20,7 +20,11 @@ export class WineryMembershipDto {
   })
   memberRole!: WineryMemberRoleEnum;
 
-  @ApiPropertyOptional({ example: 'MP-BOL-2024-9981' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'MP-BOL-2024-9981',
+  })
   professionalLicenseNumber?: string | null;
 
   @ApiProperty({ example: true })
@@ -49,7 +53,11 @@ export class UserProfileResponseDto {
   })
   userRole!: UserRoleEnum;
 
-  @ApiPropertyOptional({ example: '+59170012345' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '+59170012345',
+  })
   phoneNumber?: string | null;
 
   @ApiProperty({ example: 'es' })
@@ -58,7 +66,12 @@ export class UserProfileResponseDto {
   @ApiProperty({ example: true })
   isActive!: boolean;
 
-  @ApiPropertyOptional({ example: '2026-09-06T20:00:00.000Z' })
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-09-06T20:00:00.000Z',
+  })
   lastLoginAt?: Date | null;
 
   @ApiProperty({ example: '2026-09-06T20:00:00.000Z' })
@@ -67,7 +80,7 @@ export class UserProfileResponseDto {
   @ApiProperty({ type: [WineryMembershipDto] })
   wineryMemberships!: WineryMembershipDto[];
 
-  @ApiPropertyOptional({ type: WalletResponseDto })
+  @ApiPropertyOptional({ nullable: true, type: WalletResponseDto })
   primaryWallet?: WalletResponseDto | null;
 }
 

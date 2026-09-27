@@ -21,6 +21,10 @@ import { CreateFermentationTankDto } from '../dto/create-fermentation-tank.dto';
 import { CreateFermentationLogDto } from '../dto/create-fermentation-log.dto';
 import { CreateEnologicalTreatmentDto } from '../dto/create-enological-treatment.dto';
 import { QueryTanksDto } from '../dto/query-tanks.dto';
+import {
+  EnologicalTreatmentResponseDto,
+  FermentationLogResponseDto,
+} from '../dto/fermentation-records-response.dto';
 import { FermentationTankResponseDto } from '../dto/fermentation-tank-response.dto';
 import {
   CurrentUser,
@@ -113,6 +117,7 @@ export class FermentationController {
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Log térmico registrado',
+    type: FermentationLogResponseDto,
   })
   async addLog(
     @TenantId() wineryId: string,
@@ -135,6 +140,7 @@ export class FermentationController {
   @ApiResponse({
     status: HttpStatus.CREATED,
     description: 'Tratamiento enológico registrado',
+    type: EnologicalTreatmentResponseDto,
   })
   async addTreatment(
     @TenantId() wineryId: string,

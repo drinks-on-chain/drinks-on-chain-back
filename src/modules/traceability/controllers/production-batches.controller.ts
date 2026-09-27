@@ -19,7 +19,10 @@ import {
 import { ProductionBatchesService } from '../services/production-batches.service';
 import { CreateDistillationBatchDto } from '../dto/create-distillation-batch.dto';
 import { QueryProductionBatchesDto } from '../dto/query-production-batches.dto';
-import { ProductionBatchResponseDto } from '../dto/production-batch-response.dto';
+import {
+  ProductionBatchResponseDto,
+  RestStatusResponseDto,
+} from '../dto/production-batch-response.dto';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
@@ -70,6 +73,7 @@ export class ProductionBatchesController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Estado de reposo inerte',
+    type: RestStatusResponseDto,
   })
   async getRestStatus(
     @TenantId() wineryId: string | undefined,

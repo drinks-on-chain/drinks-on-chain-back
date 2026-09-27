@@ -8,7 +8,11 @@ export class WalletResponseDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
   userId!: string;
 
-  @ApiPropertyOptional({ example: 'winery-uuid-1234' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'winery-uuid-1234',
+  })
   wineryId?: string | null;
 
   @ApiProperty({

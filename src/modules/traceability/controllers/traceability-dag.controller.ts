@@ -10,6 +10,7 @@ import {
   DagBuilderService,
   DagGraphResult,
 } from '../services/dag-builder.service';
+import { DagGraphResponseDto } from '../dto/dag-response.dto';
 
 import { Public } from '@modules/auth/decorators/public.decorator';
 
@@ -28,6 +29,7 @@ export class TraceabilityDagController {
   @ApiResponse({
     status: 200,
     description: 'Grafo DAG de linaje',
+    type: DagGraphResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Lote de embotellado no encontrado' })
   async getDagByBottlingBatchId(
@@ -46,6 +48,7 @@ export class TraceabilityDagController {
   @ApiResponse({
     status: 200,
     description: 'Pasaporte digital de trazabilidad pública',
+    type: DagGraphResponseDto,
   })
   @ApiNotFoundResponse({ description: 'Código de lote no encontrado' })
   async getPublicPassportByLotCode(
