@@ -49,6 +49,7 @@ import {
   RevocationReason,
   SessionsService,
 } from '@modules/auth/sessions/sessions.service';
+import { ensureLotPrefix, freeSlug } from './winery-codes';
 import {
   MEMBER_ADDED,
   MemberAddedPayload,
@@ -117,9 +118,18 @@ export class WineriesService {
             contactPhone: dto.contactPhone?.trim() ?? null,
             logoUrl: dto.logoUrl?.trim() ?? null,
             certificationStatus: WineryStatusEnum.INVITED,
+            slug: await freeSlug(tx, dto.commercialName.trim()),
           },
           tx,
         );
+        await tx.wineryStatusChange.create({
+          data: {
+            wineryId: winery.id,
+            status: WineryStatusEnum.INVITED,
+            byUserId: userId,
+            byName: await this.userName(tx, userId),
+          },
+        });
 
         // 2. Organización de la bodega (mismo id) y membresía OWNER del creador
         await this.organizations.createForWinery(tx, winery);
@@ -423,13 +433,17 @@ export class WineriesService {
         stellarKey,
       );
 
-    // Estado, organización y bitácora en una transacción
+    // Estado, prefijo de lote, organización, historial y bitácora en una
+    // transacción (una bodega ACTIVE siempre tiene su prefijo, ORG-05)
     const approvedWinery = await this.prisma.$transaction(async (tx) => {
+      await ensureLotPrefix(tx, winery);
+      const now = new Date();
       const updated = await this.wineryRepository.update(
         wineryId,
         {
           certificationStatus: WineryStatusEnum.ACTIVE,
-          approvedAt: new Date(),
+          approvedAt: now,
+          activatedAt: winery.activatedAt ?? now,
           approvedByUser: { connect: { id: adminUserId } },
           onchainProducerId: onchainResult.onchainProducerId,
           onchainRegisterTxHash: onchainResult.txHash,
@@ -437,6 +451,14 @@ export class WineriesService {
         tx,
       );
       await this.organizations.syncWinery(tx, updated);
+      await tx.wineryStatusChange.create({
+        data: {
+          wineryId,
+          status: WineryStatusEnum.ACTIVE,
+          byUserId: adminUserId,
+          byName: await this.userName(tx, adminUserId),
+        },
+      });
       await this.audit.record(tx, {
         action: AuditAction.WINERY_APPROVED,
         resource: { type: 'winery', id: wineryId },
@@ -445,6 +467,7 @@ export class WineriesService {
         after: {
           certificationStatus: updated.certificationStatus,
           approvedAt: updated.approvedAt,
+          lotPrefix: updated.lotPrefix,
           onchainProducerId: updated.onchainProducerId,
           onchainRegisterTxHash: updated.onchainRegisterTxHash,
         },
@@ -490,6 +513,15 @@ export class WineriesService {
         tx,
       );
       await this.organizations.syncWinery(tx, updated);
+      await tx.wineryStatusChange.create({
+        data: {
+          wineryId,
+          status: WineryStatusEnum.REVOKED,
+          byUserId: adminUserId,
+          byName: await this.userName(tx, adminUserId),
+          reason: dto.rejectionReason,
+        },
+      });
       await this.audit.record(tx, {
         action: AuditAction.WINERY_REJECTED,
         resource: { type: 'winery', id: wineryId },
@@ -553,6 +585,17 @@ export class WineriesService {
       total,
       query,
     );
+  }
+
+  private async userName(
+    tx: Prisma.TransactionClient,
+    userId: string,
+  ): Promise<string> {
+    const user = await tx.user.findUnique({
+      where: { id: userId },
+      select: { fullName: true },
+    });
+    return user?.fullName ?? 'Sistema';
   }
 
   private mapToWineryResponse(winery: WineryWithMembers): WineryResponseDto {

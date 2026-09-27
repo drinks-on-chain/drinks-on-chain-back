@@ -27,3 +27,17 @@ export type MemberAddedPayload = {
   walletId: string;
   vaultId: string;
 };
+
+/**
+ * Bodega activada (ORG-05): el dueño aceptó su invitación, la bodega está
+ * `ACTIVE` y tiene su prefijo de lote. La Ola 3 crea aquí su identidad en la
+ * red (doc 06 §3); hasta entonces el worker solo lo registra.
+ */
+export const WINERY_ACTIVATED = 'winery.activated';
+
+export type WineryActivatedPayload = {
+  wineryId: string;
+  lotPrefix: string;
+  ownerUserId: string;
+  activatedAt: string;
+};
