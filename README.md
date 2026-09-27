@@ -41,8 +41,8 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `164/164` tests pasando (35 suites).
-- **Pruebas E2E:** `51/51` tests pasando (6 suites completas).
+- **Pruebas Unitarias:** `211/211` tests pasando (38 suites).
+- **Pruebas E2E:** `91/91` tests pasando (7 suites completas).
 - **Compilación TypeScript:** modo estricto (`strict: true`) sin errores; ESLint 9 sin errores (CI en cada push y PR).
 - **Base de Datos:** 15 modelos relacionales y 15 enums migrados y sincronizados en PostgreSQL (incluido el outbox).
 
