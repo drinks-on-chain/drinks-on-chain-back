@@ -1,134 +1,131 @@
-import { Injectable, Logger, BadRequestException } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'crypto';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { v4 as uuidv4 } from 'uuid';
-import { IStorageService, StoredFileResult } from './storage.interface';
+import {
+  DEFAULT_SIGNED_URL_TTL_SECONDS,
+  MAX_SIGNED_URL_TTL_SECONDS,
+  ObjectStorage,
+  isSafeStorageKey,
+} from './storage.interface';
 
-@Injectable()
-export class LocalStorageService implements IStorageService {
+export interface LocalStorageOptions {
+  /** Carpeta de los archivos (absoluta o relativa al directorio de trabajo). */
+  basePath: string;
+  /** Origen público de la API: las URL firmadas apuntan a `/v1/uploads/local`. */
+  publicBaseUrl: string;
+  /** Secreto del HMAC de las URL firmadas. */
+  signingSecret: string;
+  defaultTtlSeconds?: number;
+}
+
+/** Ruta de la API que sirve los archivos locales con URL firmada. */
+export const LOCAL_FILES_PATH = '/v1/uploads/local';
+
+/**
+ * Driver local (pruebas y desarrollo sin MinIO): archivos en disco, nunca
+ * servidos como estáticos. Se leen con URL firmadas por HMAC
+ * (`?key&expires&signature`) que valida `GET /v1/uploads/local`.
+ */
+export class LocalStorageService implements ObjectStorage {
+  readonly driver = 'local' as const;
   private readonly logger = new Logger(LocalStorageService.name);
-  private readonly uploadBasePath: string;
-  private readonly storageBaseUrl: string;
+  private readonly basePath: string;
+  private readonly publicBaseUrl: string;
+  private readonly defaultTtl: number;
 
-  constructor(private readonly configService: ConfigService) {
-    const rawPath = this.configService.get<string>(
-      'STORAGE_LOCAL_PATH',
-      './uploads',
-    );
-    this.uploadBasePath = path.isAbsolute(rawPath)
-      ? rawPath
-      : path.resolve(process.cwd(), rawPath);
-
-    const rawBaseUrl = this.configService.get<string>(
-      'STORAGE_BASE_URL',
-      `http://localhost:${this.configService.get<number>('PORT', 4000)}/uploads`,
-    );
-    // Eliminar barra final si existe
-    this.storageBaseUrl = rawBaseUrl.replace(/\/+$/, '');
+  constructor(private readonly options: LocalStorageOptions) {
+    this.basePath = path.resolve(process.cwd(), options.basePath);
+    this.publicBaseUrl = options.publicBaseUrl.replace(/\/+$/, '');
+    this.defaultTtl =
+      options.defaultTtlSeconds ?? DEFAULT_SIGNED_URL_TTL_SECONDS;
   }
 
-  /**
-   * Sanitiza el nombre de la carpeta para evitar Directory Traversal (CWE-22)
-   */
-  private sanitizeFolder(folder?: string): string {
-    if (!folder) return 'general';
-    // Permitir únicamente caracteres alfanuméricos, guiones y guiones bajos
-    const sanitized = folder.replace(/[^a-zA-Z0-9_-]/g, '').trim();
-    return sanitized.length > 0 ? sanitized : 'general';
-  }
-
-  /**
-   * Almacena un archivo localmente en disco
-   */
-  async uploadFile(
-    file: Express.Multer.File,
-    folder = 'general',
-  ): Promise<StoredFileResult> {
-    if (!file || !file.buffer) {
-      throw new BadRequestException(
-        'No se ha proporcionado un archivo válido para almacenar.',
-      );
+  /** Ruta en disco de una clave, sin salir de la carpeta base (CWE-22). */
+  resolvePath(key: string): string {
+    if (!isSafeStorageKey(key)) {
+      throw new Error(`Clave de almacenamiento inválida: ${key}`);
     }
-
-    const safeFolder = this.sanitizeFolder(folder);
-    const targetDir = path.join(this.uploadBasePath, safeFolder);
-
-    // Asegurar que el directorio exista recursivamente
-    await fs.mkdir(targetDir, { recursive: true });
-
-    // Sanitizar extensión y armar nombre de archivo único verificando correspondencia con el tipo MIME
-    const allowedExtensionsMap: Record<string, string[]> = {
-      'image/jpeg': ['.jpg', '.jpeg'],
-      'image/png': ['.png'],
-      'image/webp': ['.webp'],
-      'image/svg+xml': ['.svg'],
-      'image/gif': ['.gif'],
-      'application/pdf': ['.pdf'],
-    };
-
-    const rawExt = path.extname(file.originalname).toLowerCase();
-    const validExtensions = allowedExtensionsMap[file.mimetype] || [];
-    // Si la extensión original es válida para el MIME se conserva; de lo contrario se usa la extensión canónica
-    const safeExt = validExtensions.includes(rawExt)
-      ? rawExt
-      : validExtensions[0] || '.bin';
-
-    const uniqueFileName = `${Date.now()}-${uuidv4()}${safeExt}`;
-    const destinationPath = path.join(targetDir, uniqueFileName);
-
-    // Guardar el buffer en disco
-    await fs.writeFile(destinationPath, file.buffer);
-
-    const relativeKey = `${safeFolder}/${uniqueFileName}`;
-    const publicUrl = this.getFileUrl(relativeKey);
-
-    this.logger.log(
-      `Archivo guardado localmente: ${relativeKey} (${file.size} bytes, ${file.mimetype}) -> ${publicUrl}`,
-    );
-
-    return {
-      url: publicUrl,
-      key: relativeKey,
-      originalName: file.originalname,
-      mimeType: file.mimetype,
-      sizeBytes: file.size,
-    };
+    const target = path.resolve(this.basePath, key);
+    if (!target.startsWith(this.basePath + path.sep)) {
+      throw new Error(`Clave fuera del almacenamiento: ${key}`);
+    }
+    return target;
   }
 
-  /**
-   * Elimina un archivo local dado su relative key
-   */
-  async deleteFile(key: string): Promise<void> {
-    if (!key) return;
+  async put(key: string, body: Buffer): Promise<void> {
+    const target = this.resolvePath(key);
+    await fs.mkdir(path.dirname(target), { recursive: true });
+    await fs.writeFile(target, body, { mode: 0o600 });
+  }
+
+  async getSignedUrl(
+    key: string,
+    ttlSeconds = this.defaultTtl,
+  ): Promise<{ url: string; expiresAt: Date }> {
+    this.resolvePath(key);
+    const ttl = Math.min(Math.max(1, ttlSeconds), MAX_SIGNED_URL_TTL_SECONDS);
+    const expires = Math.floor(Date.now() / 1000) + ttl;
+    const params = new URLSearchParams({
+      key,
+      expires: String(expires),
+      signature: this.sign(key, expires),
+    });
+    return Promise.resolve({
+      url: `${this.publicBaseUrl}${LOCAL_FILES_PATH}?${params.toString()}`,
+      expiresAt: new Date(expires * 1000),
+    });
+  }
+
+  /** Comprueba la firma y la caducidad de una URL local. */
+  verifySignature(key: string, expires: number, signature: string): boolean {
+    if (!Number.isInteger(expires) || expires < Date.now() / 1000) return false;
+    if (!isSafeStorageKey(key)) return false;
+    const expected = Buffer.from(this.sign(key, expires));
+    const received = Buffer.from(signature ?? '');
+    return (
+      expected.length === received.length && timingSafeEqual(expected, received)
+    );
+  }
+
+  async exists(key: string): Promise<boolean> {
     try {
-      // Normalizar y sanitizar el key asegurando que permanezca dentro de uploadBasePath (CWE-22)
-      const safeKey = key.replace(/\.\./g, '').replace(/^\/+/, '');
-      const filePath = path.resolve(this.uploadBasePath, safeKey);
-
-      // Prevenir escape de directorio raíz
-      if (!filePath.startsWith(path.resolve(this.uploadBasePath))) {
-        this.logger.warn(
-          `Intento de acceso a ruta fuera del directorio permitido: ${key}`,
-        );
-        return;
-      }
-
-      await fs.unlink(filePath);
-      this.logger.log(`Archivo eliminado: ${safeKey}`);
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo eliminar el archivo local: ${key}`,
-        (error as Error).message,
-      );
+      const stat = await fs.stat(this.resolvePath(key));
+      return stat.isFile();
+    } catch {
+      return false;
     }
   }
 
-  /**
-   * Retorna la URL pública accesible del archivo
-   */
-  getFileUrl(key: string): string {
-    const cleanKey = key.replace(/^\/+/, '');
-    return `${this.storageBaseUrl}/${cleanKey}`;
+  async delete(key: string): Promise<void> {
+    try {
+      await fs.unlink(this.resolvePath(key));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        this.logger.warn({
+          message: `No se pudo borrar ${key}`,
+          error: (error as Error).message,
+        });
+      }
+    }
+  }
+
+  async ensureReady(): Promise<void> {
+    await fs.mkdir(this.basePath, { recursive: true });
+  }
+
+  async ping(): Promise<boolean> {
+    try {
+      await fs.access(this.basePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private sign(key: string, expires: number): string {
+    return createHmac('sha256', this.options.signingSecret)
+      .update(`${key}\n${expires}`)
+      .digest('base64url');
   }
 }

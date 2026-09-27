@@ -83,6 +83,12 @@ jobs:
       SMTP_HOST: localhost
       SMTP_PORT: '1025'
       MAILPIT_API_URL: http://localhost:8025
+      # Subidas: el e2e repite el flujo contra MinIO con el driver s3
+      S3_E2E: 'true'
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: doc-ci-uploads
+      S3_ACCESS_KEY: ci-minio
+      S3_SECRET_KEY: ci-only-minio-password
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -90,6 +96,11 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+      # MinIO necesita `server <dir>` como argumento: no cabe en `services`
+      - name: MinIO (almacenamiento S3 compatible)
+        run: |
+          docker run -d --name minio -p 9000:9000             -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-only-minio-password             cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1             server /tmp/data
+          curl -sf --retry 30 --retry-connrefused --retry-delay 1 http://localhost:9000/minio/health/live
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
       - name: Migraciones aplicables desde cero

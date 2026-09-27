@@ -1,164 +1,228 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { ConfigService } from '@nestjs/config';
 import * as request from 'supertest';
-import * as path from 'path';
-import * as fs from 'fs';
+import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
-import { deleteIdentityData } from './helpers/identity';
-import { UserRoleEnum } from '@prisma/client';
+import { STORAGE_SERVICE } from '../src/shared/storage/storage.interface';
+import { createObjectStorage } from '../src/shared/storage/storage.module';
 
-describe('Uploads & File Storage System (e2e)', () => {
+const PNG = Buffer.from([
+  0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
+]);
+const PDF = Buffer.from('%PDF-1.4 informe fitosanitario de prueba');
+
+/**
+ * Subidas privadas (OPS-06, SE-04) con el driver local: solo personal con
+ * organización, tipo real por firma, prefijo por organización, sin carpeta
+ * pública y lectura por URL firmada. Con S3_E2E=true se repite el flujo
+ * contra MinIO (driver s3), como en la CI.
+ */
+describe.each(
+  [
+    ['local', {}],
+    ...(process.env.S3_E2E === 'true'
+      ? [['s3', { STORAGE_DRIVER: 's3' }] as const]
+      : []),
+  ].map(([name, env]) => [name, env] as [string, Record<string, string>]),
+)('Subidas y almacenamiento privado · driver %s (e2e)', (driver, env) => {
   let app: INestApplication;
   let prisma: PrismaService;
-  let authToken: string;
+  let staffToken: string;
+  let consumerToken: string;
+  let wineryId: string;
 
-  const timestamp = Date.now();
-  const testEmail = `uploader_${timestamp}@test.bo`;
-  const uploadDir = path.resolve(process.cwd(), './uploads');
+  const run = `upl-${driver}-${Date.now()}`;
+  const staffEmail = `staff_${run}@test.bo`;
+  const consumerEmail = `consumer_${run}@test.bo`;
+  const password = 'Password123!';
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
-
-    app = moduleFixture.createNestApplication<NestExpressApplication>();
-
-    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
+    })
+      .overrideProvider(STORAGE_SERVICE)
+      .useFactory({
+        inject: [ConfigService],
+        factory: (config: ConfigService) =>
+          createObjectStorage({
+            get: (key: string, def?: unknown) =>
+              env[key] ?? config.get(key) ?? def,
+            getOrThrow: (key: string) => env[key] ?? config.getOrThrow(key),
+          } as unknown as ConfigService),
+      })
+      .compile();
+    app = moduleFixture.createNestApplication();
     configureApp(app);
-
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    (app as NestExpressApplication).useStaticAssets(uploadDir, {
-      prefix: '/uploads/',
-    });
-
     await app.init();
-    prisma = app.get<PrismaService>(PrismaService);
+    prisma = app.get(PrismaService);
 
-    // Registrar un usuario de prueba para autenticación
-    const signupRes = await request(app.getHttpServer())
+    const staff = await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
-        email: testEmail,
-        password: 'Password123!',
-        fullName: 'Test Uploader User',
-        userRole: UserRoleEnum.CONSUMER,
-      });
+        email: staffEmail,
+        password,
+        fullName: 'Personal Bodega',
+        userRole: UserRoleEnum.WINERY_ADMIN,
+      })
+      .expect(201);
+    const winery = await prisma.winery.create({
+      data: {
+        legalName: `Bodega ${run}`,
+        commercialName: `Bodega ${run}`,
+        beverageCategory: WineryCategoryEnum.WINERY,
+        taxIdNit: `UP${Date.now().toString().slice(-10)}`,
+        geographicRegion: 'Tarija',
+        contactEmail: `c_${run}@test.bo`,
+        members: {
+          create: { userId: staff.body.data.user.id, memberRole: 'OWNER' },
+        },
+      },
+    });
+    wineryId = winery.id;
+    const login = await request(app.getHttpServer())
+      .post('/v1/auth/login')
+      .send({ email: staffEmail, password })
+      .expect(200);
+    staffToken = login.body.data.tokens.accessToken;
 
-    authToken = signupRes.body.data.tokens.accessToken;
+    const consumer = await request(app.getHttpServer())
+      .post('/v1/auth/signup')
+      .send({
+        email: consumerEmail,
+        password,
+        fullName: 'Consumidor',
+        userRole: UserRoleEnum.CONSUMER,
+      })
+      .expect(201);
+    consumerToken = consumer.body.data.tokens.accessToken;
   });
 
   afterAll(async () => {
     if (prisma) {
-      await deleteIdentityData(prisma, { emailContains: testEmail });
+      const emails = [staffEmail, consumerEmail];
       await prisma.userWallet.deleteMany({
-        where: { user: { email: testEmail } },
+        where: { user: { email: { in: emails } } },
       });
-      await prisma.user.deleteMany({
-        where: { email: testEmail },
-      });
-      await prisma.$disconnect();
+      await prisma.wineryMember.deleteMany({ where: { wineryId } });
+      await prisma.winery.deleteMany({ where: { id: wineryId } });
+      await prisma.user.deleteMany({ where: { email: { in: emails } } });
     }
-    if (app) {
-      await app.close();
-    }
+    await app?.close();
   });
 
-  describe('Seguridad y Validaciones de Subida', () => {
-    it('debe rechazar la subida si no se proporciona token de autenticación (401 Unauthorized)', async () => {
+  it('sin token → 401; consumidor → 403', async () => {
+    await request(app.getHttpServer())
+      .post('/v1/uploads')
+      .attach('file', PNG, 'a.png')
+      .expect(401);
+    const res = await request(app.getHttpServer())
+      .post('/v1/uploads')
+      .set('Authorization', `Bearer ${consumerToken}`)
+      .attach('file', PNG, 'a.png');
+    expect(res.status).toBe(403);
+  });
+
+  it('sin archivo → 422 VALIDATION_ERROR en file', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/uploads')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(422);
+    expect(res.body.error.details).toEqual([
+      { field: 'file', message: expect.stringContaining('archivo') },
+    ]);
+  });
+
+  it('rechaza SVG, scripts y archivos disfrazados (422 FILE_TYPE_NOT_ALLOWED)', async () => {
+    for (const [content, name, type] of [
+      ['<svg xmlns="http://www.w3.org/2000/svg"/>', 'x.svg', 'image/svg+xml'],
+      ['console.log(1)', 'exploit.js', 'application/javascript'],
+      ['<html><script>alert(1)</script></html>', 'foto.png', 'image/png'],
+    ]) {
       const res = await request(app.getHttpServer())
         .post('/v1/uploads')
-        .attach('file', Buffer.from('test data'), 'test.png');
-
-      expect(res.status).toBe(401);
-      expect(res.body.success).toBe(false);
-    });
-
-    it('debe rechazar la petición si no se envía ningún archivo en multipart (422 VALIDATION_ERROR en file)', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/v1/uploads')
-        .set('Authorization', `Bearer ${authToken}`);
-
-      expect(res.status).toBe(422);
-      expect(res.body.success).toBe(false);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-      expect(res.body.error.details).toEqual([
-        { field: 'file', message: expect.stringContaining('archivo') },
-      ]);
-    });
-
-    it('debe rechazar archivos con tipos MIME no autorizados como scripts o ejecutables (422 VALIDATION_ERROR en file)', async () => {
-      const res = await request(app.getHttpServer())
-        .post('/v1/uploads')
-        .set('Authorization', `Bearer ${authToken}`)
-        .attach('file', Buffer.from('console.log("malicious");'), {
-          filename: 'exploit.js',
-          contentType: 'application/javascript',
+        .set('Authorization', `Bearer ${staffToken}`)
+        .attach('file', Buffer.from(content), {
+          filename: name,
+          contentType: type,
         });
-
       expect(res.status).toBe(422);
-      expect(res.body.success).toBe(false);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-      expect(res.body.error.details).toEqual([
-        {
-          field: 'file',
-          message: expect.stringContaining('Tipo de archivo no permitido'),
-        },
-      ]);
-    });
+      expect(res.body.error.code).toBe('FILE_TYPE_NOT_ALLOWED');
+      expect(res.body.error.details[0].field).toBe('file');
+    }
   });
 
-  describe('Flujos de Almacenamiento y Acceso Estático', () => {
-    let uploadedPdfUrl: string;
+  it('sube un PDF privado bajo el prefijo de la bodega y se lee con la URL firmada', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/v1/uploads?folder=../../inspections')
+      .set('Authorization', `Bearer ${staffToken}`)
+      .attach('file', PDF, 'inspeccion-vendimia.pdf')
+      .expect(201);
+    const { key, url, mimeType, expiresAt } = res.body.data;
+    expect(key).toMatch(
+      new RegExp(
+        `^org/${wineryId}/inspections/\\d{4}/\\d{2}/[0-9a-f-]+\\.pdf$`,
+      ),
+    );
+    expect(mimeType).toBe('application/pdf');
+    expect(new Date(expiresAt).getTime()).toBeGreaterThan(Date.now());
 
-    it('debe subir exitosamente un informe técnico en PDF y retornar URL pública', async () => {
-      const pdfBuffer = Buffer.from('%PDF-1.4 informe fitosanitario de prueba');
-      const res = await request(app.getHttpServer())
-        .post('/v1/uploads?folder=inspections')
-        .set('Authorization', `Bearer ${authToken}`)
-        .attach('file', pdfBuffer, 'inspeccion-vendimia.pdf');
+    // Ya no hay carpeta pública
+    await request(app.getHttpServer()).get(`/uploads/${key}`).expect(404);
 
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.url).toBeDefined();
-      expect(res.body.data.url).toContain('/uploads/inspections/');
-      expect(res.body.data.url).toMatch(/\.pdf$/);
-      expect(res.body.data.mimeType).toBe('application/pdf');
-      expect(res.body.data.originalName).toBe('inspeccion-vendimia.pdf');
+    // La URL firmada da el archivo
+    const signed = new URL(url);
+    let body: Buffer;
+    if (driver === 'local') {
+      const got = await request(app.getHttpServer())
+        .get(`${signed.pathname}${signed.search}`)
+        .buffer(true)
+        .parse((r, cb) => {
+          const chunks: Buffer[] = [];
+          r.on('data', (c: Buffer) => chunks.push(c));
+          r.on('end', () => cb(null, Buffer.concat(chunks)));
+        })
+        .expect(200);
+      expect(got.headers['content-type']).toContain('application/pdf');
+      expect(got.headers['x-content-type-options']).toBe('nosniff');
+      body = got.body as Buffer;
 
-      uploadedPdfUrl = res.body.data.url;
-    });
+      // Firma alterada o de otra clave → 403
+      signed.searchParams.set('key', `org/${wineryId}/otra.pdf`);
+      await request(app.getHttpServer())
+        .get(`${signed.pathname}${signed.search}`)
+        .expect(403);
+    } else {
+      const got = await fetch(url);
+      expect(got.status).toBe(200);
+      body = Buffer.from(await got.arrayBuffer());
+      // Sin firma, el objeto es privado
+      const unsigned = await fetch(`${signed.origin}${signed.pathname}`);
+      expect(unsigned.status).toBe(403);
+    }
+    expect(body.equals(PDF)).toBe(true);
 
-    it('debe subir exitosamente una imagen de etiqueta (PNG) y sanitizar directorios maliciosos', async () => {
-      const pngBuffer = Buffer.from('fake-png-content');
-      const res = await request(app.getHttpServer())
-        .post('/v1/uploads?folder=../../labels/safe')
-        .set('Authorization', `Bearer ${authToken}`)
-        .attach('file', pngBuffer, 'etiqueta-botella.png');
+    // URL nueva para el mismo archivo; otra organización → 404
+    const again = await request(app.getHttpServer())
+      .get('/v1/uploads/url')
+      .query({ key })
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(200);
+    expect(again.body.data.key).toBe(key);
+    await request(app.getHttpServer())
+      .get('/v1/uploads/url')
+      .query({
+        key: key.replace(wineryId, '00000000-0000-0000-0000-000000000000'),
+      })
+      .set('Authorization', `Bearer ${staffToken}`)
+      .expect(404);
 
-      expect(res.status).toBe(201);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.url).toBeDefined();
-      // No debe contener ..
-      expect(res.body.data.url).not.toContain('..');
-      expect(res.body.data.url).toContain('/uploads/labelssafe/');
-      expect(res.body.data.mimeType).toBe('image/png');
-    });
-
-    it('debe permitir la descarga o visualización estática vía GET del archivo subido', async () => {
-      expect(uploadedPdfUrl).toBeDefined();
-
-      // Extraer ruta relativa a partir de la URL (ej. /uploads/inspections/...)
-      const relativePath = new URL(uploadedPdfUrl).pathname;
-
-      const res = await request(app.getHttpServer()).get(relativePath);
-
-      expect(res.status).toBe(200);
-      expect(res.headers['content-type']).toContain('application/pdf');
-    });
+    await expect(
+      prisma.auditEvent.findFirst({
+        where: { action: 'FILE_UPLOADED', organizationId: wineryId },
+      }),
+    ).resolves.toMatchObject({ resourceType: 'file' });
   });
 });
