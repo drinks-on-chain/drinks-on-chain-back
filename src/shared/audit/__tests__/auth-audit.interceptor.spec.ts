@@ -6,6 +6,7 @@ import {
 import { lastValueFrom, of, throwError } from 'rxjs';
 import { AuthAuditInterceptor } from '../auth-audit.interceptor';
 import type { AuditService } from '../audit.service';
+import { AppException } from '@shared/exceptions/app.exception';
 
 function httpContext(req: Record<string, unknown>): ExecutionContext {
   return {
@@ -71,6 +72,28 @@ describe('AuthAuditInterceptor', () => {
         action: 'AUTH_LOGIN_FAILED',
         actor: { userId: null },
         after: { email: 'x@test.bo', status: 401 },
+      }),
+    );
+  });
+
+  it('también registra los 401 de AppException (sin HttpException)', async () => {
+    const error = new AppException(401, 'AUTH_INVALID_CREDENTIALS', 'x');
+    await expect(
+      lastValueFrom(
+        interceptor.intercept(
+          httpContext({
+            method: 'POST',
+            originalUrl: '/v1/auth/login',
+            body: { email: 'y@test.bo' },
+          }),
+          { handle: () => throwError(() => error) },
+        ),
+      ),
+    ).rejects.toBe(error);
+    expect(audit.recordStandalone).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'AUTH_LOGIN_FAILED',
+        after: { email: 'y@test.bo', status: 401 },
       }),
     );
   });

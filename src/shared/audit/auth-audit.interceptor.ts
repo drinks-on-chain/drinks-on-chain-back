@@ -28,6 +28,17 @@ function loggedUser(
   return { id, fullName: typeof fullName === 'string' ? fullName : null };
 }
 
+/** Estado HTTP de un error (HttpException de Nest o AppException propia). */
+function statusOf(error: unknown): number | undefined {
+  if (error instanceof HttpException) return error.getStatus();
+  if (typeof error === 'object' && error !== null) {
+    const e = error as { statusCode?: unknown; status?: unknown };
+    if (typeof e.statusCode === 'number') return e.statusCode;
+    if (typeof e.status === 'number') return e.status;
+  }
+  return undefined;
+}
+
 /**
  * Inicio de sesión correcto y fallido en la bitácora (docs-back/07 §4.1,
  * "Seguridad"), observando `POST /v1/auth/login` desde fuera del módulo de
@@ -78,8 +89,7 @@ export class AuthAuditInterceptor implements NestInterceptor {
         );
       }),
       catchError((error: unknown) => {
-        const status =
-          error instanceof HttpException ? error.getStatus() : undefined;
+        const status = statusOf(error);
         // Solo credenciales rechazadas; los 422/429 no son intentos válidos
         if (status !== 401 && status !== 403) {
           return throwError(() => error);

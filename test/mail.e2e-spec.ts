@@ -4,6 +4,8 @@ import { join } from 'path';
 import { WorkerModule } from '../src/worker/worker.module';
 import { WORKER_SETTINGS, WorkerSettings } from '../src/worker/worker.config';
 import { QueueRegistry } from '../src/worker/queue-registry.service';
+import { OutboxRelayService } from '../src/worker/outbox-relay.service';
+import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { MailModule } from '../src/modules/mail/mail.module';
 import { MailService } from '../src/modules/mail/mail.service';
@@ -33,9 +35,40 @@ interface MailpitMessage {
 }
 
 /**
+ * Reclama el evento del outbox del correo (PENDING → DONE) y lo publica en la
+ * cola `email` con `jobId` = id del evento, igual que el relay. Si otro relay
+ * se adelantó, ya está en camino: no hace nada.
+ */
+async function publishOwnEvent(
+  prisma: PrismaService,
+  queues: QueueRegistry,
+  emailMessageId: string,
+): Promise<void> {
+  const event = await prisma.outboxEvent.findFirstOrThrow({
+    where: { aggregateType: 'email_message', aggregateId: emailMessageId },
+  });
+  const { count } = await prisma.outboxEvent.updateMany({
+    where: { id: event.id, status: 'PENDING' },
+    data: { status: 'DONE', processedAt: new Date() },
+  });
+  if (count === 0) return;
+  const data: OutboxJobData = {
+    outboxEventId: event.id,
+    eventType: event.eventType,
+    aggregateType: event.aggregateType,
+    aggregateId: event.aggregateId,
+    payload: event.payload as Record<string, unknown>,
+    correlationId: event.correlationId,
+    occurredAt: event.createdAt.toISOString(),
+  };
+  await queues.get('email').add(event.eventType, data, { jobId: event.id });
+}
+
+/**
  * Correo de extremo a extremo con Postgres, Redis y Mailpit reales: la API
- * encola (fila + outbox en una transacción), el worker publica en la cola
- * `email`, el procesador lo envía por SMTP y el mensaje se lee en Mailpit.
+ * encola (fila + outbox en una transacción), el evento se publica en la cola
+ * `email`, el procesador del worker lo envía por SMTP y el mensaje se lee en
+ * Mailpit.
  */
 describe('Correo por la cola hasta Mailpit (e2e)', () => {
   let moduleRef: TestingModule;
@@ -68,6 +101,18 @@ describe('Correo por la cola hasta Mailpit (e2e)', () => {
     })
       .overrideProvider(WORKER_SETTINGS)
       .useValue(settings)
+      // Sin relay propio: otro e2e con su relay en marcha a la vez podría
+      // quedarse con eventos ajenos. El evento de este correo lo publica la
+      // prueba como lo haría el relay (ver publishOwnEvent).
+      .overrideProvider(OutboxRelayService)
+      .useValue({
+        onApplicationBootstrap: () => undefined,
+        onModuleDestroy: async () => undefined,
+        start: () => undefined,
+        stop: async () => undefined,
+        isRunning: () => true,
+        msSinceLastTick: () => 0,
+      })
       .compile();
     await moduleRef.init();
     prisma = moduleRef.get(PrismaService);
@@ -108,6 +153,13 @@ describe('Correo por la cola hasta Mailpit (e2e)', () => {
       idempotencyKey: `${run}:prueba`,
     });
     expect(again.id).toBe(message.id);
+    await expect(
+      prisma.outboxEvent.count({
+        where: { aggregateType: 'email_message', aggregateId: message.id },
+      }),
+    ).resolves.toBe(1);
+
+    await publishOwnEvent(prisma, queues, message.id);
 
     const sent = await waitFor(async () => {
       const row = await prisma.emailMessage.findUnique({

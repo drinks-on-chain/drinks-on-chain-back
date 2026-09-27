@@ -1,5 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { Prisma, SettingDefinition } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { canonicalJson } from '@shared/utils/canonical-json';
 import { SETTINGS_CATALOG } from './settings.catalog';
 import { definitionRow } from './settings.service';
 
@@ -22,7 +24,7 @@ export class SettingsCatalogSync implements OnApplicationBootstrap {
     try {
       const result = await this.sync();
       this.logger.log({
-        message: `Catálogo de configuración sincronizado (${result.upserted} parámetros)`,
+        message: `Catálogo de configuración sincronizado (${result.upserted} escritos, ${result.unchanged} sin cambios)`,
         ...result,
       });
     } catch (error) {
@@ -33,10 +35,31 @@ export class SettingsCatalogSync implements OnApplicationBootstrap {
     }
   }
 
-  async sync(): Promise<{ upserted: number; deactivated: number }> {
+  /**
+   * Solo escribe lo que cambió: con el catálogo al día (lo normal) no abre
+   * ninguna transacción, así que varias réplicas arrancando a la vez no se
+   * bloquean entre sí.
+   */
+  async sync(): Promise<{
+    upserted: number;
+    unchanged: number;
+    deactivated: number;
+  }> {
     const keys = SETTINGS_CATALOG.map((entry) => entry.key);
+    const current = await this.prisma.settingDefinition.findMany();
+    const byKey = new Map(current.map((row) => [row.key, row]));
+    const pending = SETTINGS_CATALOG.filter((entry) => {
+      const row = byKey.get(entry.key);
+      return !row || !sameDefinition(row, definitionRow(entry));
+    });
+    const stale = current.filter(
+      (row) => row.isActive && !keys.includes(row.key),
+    );
+    if (pending.length === 0 && stale.length === 0) {
+      return { upserted: 0, unchanged: keys.length, deactivated: 0 };
+    }
     return this.prisma.$transaction(async (tx) => {
-      for (const entry of SETTINGS_CATALOG) {
+      for (const entry of pending) {
         const row = definitionRow(entry);
         const { key: _key, ...update } = row;
         await tx.settingDefinition.upsert({
@@ -46,10 +69,42 @@ export class SettingsCatalogSync implements OnApplicationBootstrap {
         });
       }
       const { count } = await tx.settingDefinition.updateMany({
-        where: { key: { notIn: keys }, isActive: true },
+        where: { key: { in: stale.map((r) => r.key) } },
         data: { isActive: false },
       });
-      return { upserted: keys.length, deactivated: count };
+      return {
+        upserted: pending.length,
+        unchanged: keys.length - pending.length,
+        deactivated: count,
+      };
     });
   }
+}
+
+/** Compara la fila guardada con la del catálogo (campos que se copian). */
+function sameDefinition(
+  row: SettingDefinition,
+  expected: Prisma.SettingDefinitionCreateInput,
+): boolean {
+  const norm = (v: unknown) => canonicalJson(v ?? null);
+  return (
+    row.description === expected.description &&
+    row.type === expected.type &&
+    norm(row.enumValues) === norm(expected.enumValues) &&
+    (row.unit ?? null) === (expected.unit ?? null) &&
+    row.levels === expected.levels &&
+    row.appliesAt === expected.appliesAt &&
+    norm(row.defaultValue) === norm(jsonOrNull(expected.defaultValue)) &&
+    (row.min ?? null) === (expected.min ?? null) &&
+    (row.max ?? null) === (expected.max ?? null) &&
+    row.integer === expected.integer &&
+    row.nullable === expected.nullable &&
+    norm(row.legalMinimum) === norm(jsonOrNull(expected.legalMinimum)) &&
+    row.isActive === true
+  );
+}
+
+/** `Prisma.JsonNull` / `DbNull` → `null` para comparar. */
+function jsonOrNull(value: unknown): unknown {
+  return value === Prisma.JsonNull || value === Prisma.DbNull ? null : value;
 }

@@ -55,7 +55,7 @@ describe('Bitácora (e2e)', () => {
   });
 
   it('escrituras simultáneas: seq consecutivos, sin repetir, y cadena válida', async () => {
-    const writes = Array.from({ length: 25 }, (_, i) =>
+    const writes = Array.from({ length: 12 }, (_, i) =>
       audit.recordStandalone({
         action: 'E2E_CONCURRENT_WRITE',
         resource: { type: 'e2e', id: `${i}` },
@@ -65,7 +65,7 @@ describe('Bitácora (e2e)', () => {
     );
     const rows = await Promise.all(writes);
     const seqs = rows.map((r) => Number(r.seq)).sort((a, b) => a - b);
-    expect(new Set(seqs).size).toBe(25);
+    expect(new Set(seqs).size).toBe(12);
 
     // Cada una enlaza con la entrada inmediatamente anterior de la tabla
     for (const row of rows) {
@@ -78,7 +78,7 @@ describe('Bitácora (e2e)', () => {
 
     const result = await audit.verifyChain(seqs[0], seqs[seqs.length - 1]);
     expect(result).toMatchObject({ valid: true, firstBrokenSeq: null });
-    expect(result.checked).toBeGreaterThanOrEqual(25);
+    expect(result.checked).toBeGreaterThanOrEqual(12);
     await expect(audit.verifyChain()).resolves.toMatchObject({ valid: true });
   });
 

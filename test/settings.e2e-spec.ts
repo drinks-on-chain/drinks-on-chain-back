@@ -69,7 +69,8 @@ describe('Configuración (e2e)', () => {
   });
 
   afterAll(async () => {
-    if (prisma) {
+    // Sin bodega (falló el beforeAll) no se borra nada: un where vacío borraría todo
+    if (prisma && wineryId) {
       await prisma.settingOverride.deleteMany({ where: { wineryId } });
       await prisma.settingGlobalValue.deleteMany({
         where: { key: { in: touchedKeys } },
@@ -104,8 +105,18 @@ describe('Configuración (e2e)', () => {
         where: { key: { in: keys }, isActive: true },
       }),
     ).resolves.toBe(keys.length);
+    // Con el catálogo al día no escribe nada; si una fila se desvía, la corrige
+    await expect(app.get(SettingsCatalogSync).sync()).resolves.toEqual({
+      upserted: 0,
+      unchanged: keys.length,
+      deactivated: 0,
+    });
+    await prisma.settingDefinition.update({
+      where: { key: 'canje.ventanaDias' },
+      data: { max: 1 },
+    });
     await expect(app.get(SettingsCatalogSync).sync()).resolves.toMatchObject({
-      upserted: keys.length,
+      upserted: 1,
     });
     const reposo = await prisma.settingDefinition.findUnique({
       where: { key: 'trazabilidad.singani.reposoMinimoDias' },

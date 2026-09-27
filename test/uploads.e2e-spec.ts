@@ -102,7 +102,8 @@ describe.each(
   });
 
   afterAll(async () => {
-    if (prisma) {
+    // Sin bodega (falló el beforeAll) no se borra nada: un where vacío borraría todo
+    if (prisma && wineryId) {
       const emails = [staffEmail, consumerEmail];
       await deleteIdentityData(prisma, {
         emailContains: run,
