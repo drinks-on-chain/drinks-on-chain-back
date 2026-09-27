@@ -22,7 +22,7 @@ export class LocalStorageService implements IStorageService {
 
     const rawBaseUrl = this.configService.get<string>(
       'STORAGE_BASE_URL',
-      `http://localhost:${this.configService.get<number>('PORT', 3000)}/uploads`,
+      `http://localhost:${this.configService.get<number>('PORT', 4000)}/uploads`,
     );
     // Eliminar barra final si existe
     this.storageBaseUrl = rawBaseUrl.replace(/\/+$/, '');
