@@ -25,11 +25,15 @@ import { TraceabilityModule } from './modules/traceability/traceability.module';
 import { StorageModule } from './shared/storage/storage.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { IdempotencyModule } from './shared/idempotency/idempotency.module';
+import { RequestContextModule } from './shared/context/request-context.module';
+import { AuditModule } from './shared/audit/audit.module';
 
 @Module({
   imports: [
     AppConfigModule,
     PrismaModule,
+    RequestContextModule,
+    AuditModule,
     StorageModule,
     IdempotencyModule,
     HealthModule,

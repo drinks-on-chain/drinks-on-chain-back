@@ -56,6 +56,44 @@ model OutboxEvent {
 }
 
 // -----------------------------------------------------------------------------
+// BITÁCORA (AUD-01, AUD-02; docs/arquitectura/bitacora.md)
+// Solo inserción: un trigger rechaza UPDATE, DELETE y TRUNCATE. Cada entrada
+// guarda el SHA-256 de su contenido canónico, que incluye el de la anterior.
+// Sin claves foráneas: la bitácora sobrevive a lo que registra.
+// -----------------------------------------------------------------------------
+model AuditEvent {
+  id                  String   @id @db.Uuid
+  seq                 BigInt   @unique
+  occurredAt          DateTime @map("occurred_at") @db.Timestamptz(3)
+  actorUserId         String?  @map("actor_user_id") @db.Uuid
+  actorFullName       String?  @map("actor_full_name") @db.VarChar(200)
+  actorRole           String?  @map("actor_role") @db.VarChar(50)
+  actorOrganizationId String?  @map("actor_organization_id") @db.Uuid
+  actorViaPlatform    Boolean  @default(false) @map("actor_via_platform")
+  sourceApp           String   @map("source_app") @db.VarChar(20)
+  sourceIp            String?  @map("source_ip") @db.VarChar(64)
+  sourceDeviceId      String?  @map("source_device_id") @db.VarChar(100)
+  sessionId           String?  @map("session_id") @db.VarChar(100)
+  action              String   @db.VarChar(100)
+  resourceType        String   @map("resource_type") @db.VarChar(100)
+  resourceId          String?  @map("resource_id") @db.VarChar(100)
+  organizationId      String?  @map("organization_id") @db.Uuid
+  before              Json?    @db.JsonB
+  after               Json?    @db.JsonB
+  reason              String?  @db.Text
+  correlationId       String?  @map("correlation_id") @db.VarChar(100)
+  hash                String   @db.Char(64)
+  prevHash            String?  @map("prev_hash") @db.Char(64)
+
+  @@index([occurredAt])
+  @@index([actorUserId, seq])
+  @@index([organizationId, seq])
+  @@index([action, seq])
+  @@index([resourceType, resourceId])
+  @@map("audit_events")
+}
+
+// -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
 /// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
