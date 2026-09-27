@@ -46,5 +46,3 @@ postgres_data/
 redis_data/
 
 uploads/
-# Archivos subidos en la CI
-uploads-ci/
