@@ -42,8 +42,9 @@ export class SignupDto {
   @ApiPropertyOptional({
     enum: [UserRoleEnum.CONSUMER, UserRoleEnum.WINERY_ADMIN],
     default: UserRoleEnum.CONSUMER,
+    deprecated: true,
     description:
-      'Rol del usuario para registro público (CONSUMER o WINERY_ADMIN). Roles administrativos y operativos no están permitidos en registro público.',
+      'Obsoleto (H1): el registro de personal (`WINERY_ADMIN`) se retira al cerrar la Ola 1; las bodegas entran por solicitud de alta o alta directa y su equipo por invitación. Tras H1 la ruta queda solo para consumidores (`CONSUMER`, Ola 4). Roles administrativos y operativos no están permitidos en registro público.',
   })
   @IsOptional()
   @IsEnum(UserRoleEnum, { message: 'Rol de usuario no válido' })

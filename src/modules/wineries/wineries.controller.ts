@@ -33,8 +33,10 @@ import {
 } from './dto/winery-response.dto';
 import {
   OrgType,
+  RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
+import { DeprecatedRoute } from '@shared/decorators/deprecated-route.decorator';
 import {
   CurrentUser,
   AuthenticatedUser,
@@ -67,10 +69,12 @@ export class WineriesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @DeprecatedRoute('/v1/public/winery-applications')
   @ApiOperation({
-    summary: 'Solicitar alta y registro de una nueva bodega',
+    deprecated: true,
+    summary: 'Solicitar alta y registro de una nueva bodega (obsoleta, H1)',
     description:
-      'Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1). Sustituida por el formulario público `POST /v1/public/winery-applications` y el alta directa `POST /v1/platform/wineries`. Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -109,6 +113,7 @@ export class WineriesController {
   @Get('my')
   @HttpCode(HttpStatus.OK)
   @OrgType('WINERY')
+  @RequireActiveOrg({ allow: ['SUSPENDED'] })
   @ApiOperation({
     summary: 'Obtener datos institucionales de la bodega del usuario',
     description:
@@ -130,6 +135,7 @@ export class WineriesController {
   @HttpCode(HttpStatus.OK)
   @OrgType('WINERY')
   @Roles('OWNER')
+  @RequireActiveOrg()
   @ApiOperation({
     summary: 'Actualizar datos de la bodega',
     description:
@@ -154,10 +160,13 @@ export class WineriesController {
   @HttpCode(HttpStatus.CREATED)
   @OrgType('WINERY')
   @Roles('OWNER')
+  @RequireActiveOrg()
+  @DeprecatedRoute('/v1/organizations/current/invitations')
   @ApiOperation({
-    summary: 'Incorporar un nuevo miembro operativo a la bodega',
+    deprecated: true,
+    summary: 'Incorporar un nuevo miembro operativo a la bodega (obsoleta, H1)',
     description:
-      'Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); el equipo se forma por invitación (`POST /v1/organizations/current/invitations`). Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -184,11 +193,14 @@ export class WineriesController {
   @HttpCode(HttpStatus.CREATED)
   @OrgType('WINERY')
   @Roles('OWNER')
+  @RequireActiveOrg()
+  @DeprecatedRoute('/v1/organizations/current/invitations')
   @ApiOperation({
+    deprecated: true,
     summary:
-      'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
+      'Registrar y dar de alta a un nuevo miembro operativo en la bodega (obsoleta, H1)',
     description:
-      'Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); el equipo se forma por invitación (`POST /v1/organizations/current/invitations`, la persona elige su contraseña). Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -208,9 +220,13 @@ export class WineriesController {
   @Get('my/members')
   @HttpCode(HttpStatus.OK)
   @OrgType('WINERY')
+  @RequireActiveOrg()
+  @DeprecatedRoute('/v1/organizations/current/members')
   @ApiOperation({
-    summary: 'Listar miembros operativos de la bodega',
-    description: 'Retorna la lista de miembros activos en la bodega actual.',
+    deprecated: true,
+    summary: 'Listar miembros operativos de la bodega (obsoleta, H1)',
+    description:
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por `GET /v1/organizations/current/members`. Retorna la lista de miembros activos en la bodega actual.',
   })
   @ApiPaginatedResponse(WineryMemberItemDto, {
     description: 'Página de miembros activos de la bodega',
@@ -229,10 +245,13 @@ export class WineriesController {
   @HttpCode(HttpStatus.OK)
   @OrgType('PLATFORM')
   @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS', 'SUPPORT')
+  @DeprecatedRoute('/v1/platform/winery-applications')
   @ApiOperation({
-    summary: 'Listar bodegas pendientes de aprobación (solo plataforma)',
+    deprecated: true,
+    summary:
+      'Listar bodegas pendientes de aprobación (solo plataforma; obsoleta, H1)',
     description:
-      'Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por la bandeja de solicitudes (`GET /v1/platform/winery-applications`) y el directorio (`GET /v1/platform/wineries?status=INVITED`). Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.',
   })
   @ApiForbiddenResponse({
     description: 'Requiere la organización de plataforma activa',
@@ -250,10 +269,12 @@ export class WineriesController {
   @HttpCode(HttpStatus.OK)
   @OrgType('PLATFORM')
   @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
+  @DeprecatedRoute('/v1/platform/winery-applications/{id}/approve')
   @ApiOperation({
-    summary: 'Aprobar y certificar una bodega (solo plataforma)',
+    deprecated: true,
+    summary: 'Aprobar y certificar una bodega (solo plataforma; obsoleta, H1)',
     description:
-      'Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por la aprobación de solicitudes y la activación al aceptar el dueño su invitación. Asigna el prefijo de lote. Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -276,10 +297,12 @@ export class WineriesController {
   @HttpCode(HttpStatus.OK)
   @OrgType('PLATFORM')
   @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
+  @DeprecatedRoute('/v1/platform/winery-applications/{id}/reject')
   @ApiOperation({
-    summary: 'Rechazar una solicitud de bodega (solo plataforma)',
+    deprecated: true,
+    summary: 'Rechazar una solicitud de bodega (solo plataforma; obsoleta, H1)',
     description:
-      'Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.',
+      'Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por `POST /v1/platform/winery-applications/{id}/reject` y `POST /v1/platform/wineries/{id}/revoke`. Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

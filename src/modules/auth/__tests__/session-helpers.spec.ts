@@ -49,7 +49,16 @@ describe('session.config', () => {
     expect(settings.staffSessionTtlSeconds).toBe(7 * 86400);
     expect(settings.consumerSessionTtlSeconds).toBe(30 * 86400);
     expect(settings.refreshGraceSeconds).toBe(20);
-    expect(settings.enforceActiveOrganization).toBe(false);
+    // SE-05 activo por defecto desde la Ola 1; `false` lo deja en aviso
+    expect(settings.enforceActiveOrganization).toBe(true);
+    expect(
+      sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: false }))
+        .enforceActiveOrganization,
+    ).toBe(false);
+    expect(
+      sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: 'false' }))
+        .enforceActiveOrganization,
+    ).toBe(false);
     expect(
       sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: true }))
         .enforceActiveOrganization,

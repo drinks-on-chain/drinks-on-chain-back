@@ -86,7 +86,7 @@ export class AuthController {
   })
   @ApiOperation({
     summary: 'Registrar un nuevo usuario en la plataforma',
-    description: `Crea la cuenta (contraseña con bcrypt), su billetera custodial y abre una sesión. ${SET_COOKIE_DESCRIPTION}.`,
+    description: `Crea la cuenta (contraseña con bcrypt), su billetera custodial y abre una sesión. ${SET_COOKIE_DESCRIPTION}. **Obsoleto para personal (H1)**: \`userRole: WINERY_ADMIN\` se retira al cerrar la Ola 1 (cada uso deja un aviso en los logs); después la ruta queda solo para consumidores (Ola 4).`,
   })
   @ApiResponse({
     status: HttpStatus.CREATED,

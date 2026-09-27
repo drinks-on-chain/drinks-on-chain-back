@@ -17,7 +17,10 @@ export interface SessionSettings {
   refreshGraceSeconds: number;
   /** `NODE_ENV`: sin `Secure` en la cookie solo en desarrollo con localhost. */
   nodeEnv: string;
-  /** SE-05: 403 ORG_NOT_ACTIVE en el ERP con la bodega no ACTIVE (Ola 1). */
+  /**
+   * SE-05: 403 ORG_NOT_ACTIVE en el ERP con la bodega no ACTIVE. Activo por
+   * defecto desde la Ola 1; `FEATURE_ENFORCE_ACTIVE_ORG=false` lo deja en aviso.
+   */
   enforceActiveOrganization: boolean;
 }
 
@@ -56,8 +59,13 @@ function positiveNumber(value: unknown, fallback: number): number {
   return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
-function isTrue(value: unknown): boolean {
-  return String(value ?? '').toLowerCase() === 'true';
+/** Interruptor booleano del entorno: sin definir (o vacío) vale `fallback`. */
+function flag(value: unknown, fallback: boolean): boolean {
+  const text = String(value ?? '')
+    .trim()
+    .toLowerCase();
+  if (text === '') return fallback;
+  return text === 'true';
 }
 
 export function sessionSettingsFromConfig(
@@ -86,7 +94,10 @@ export function sessionSettingsFromConfig(
       DEFAULT_REFRESH_GRACE_SECONDS,
     ),
     nodeEnv: config.get<string>('NODE_ENV') ?? 'development',
-    enforceActiveOrganization: isTrue(config.get('FEATURE_ENFORCE_ACTIVE_ORG')),
+    enforceActiveOrganization: flag(
+      config.get('FEATURE_ENFORCE_ACTIVE_ORG'),
+      true,
+    ),
   };
 }
 

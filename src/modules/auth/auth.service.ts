@@ -153,6 +153,12 @@ export class AuthService {
       );
     }
 
+    if (targetRole !== UserRoleEnum.CONSUMER) {
+      this.logger.warn(
+        `Ruta obsoleta (se retira en H1): POST /v1/auth/signup con userRole ${targetRole} (registro de personal); usar la solicitud de alta o la invitación`,
+      );
+    }
+
     const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
     const user = await this.prisma.user.create({
       data: {
