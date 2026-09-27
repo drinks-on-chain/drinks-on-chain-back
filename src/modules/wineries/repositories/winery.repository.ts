@@ -6,8 +6,12 @@ import { Winery, WineryStatusEnum, Prisma } from '@prisma/client';
 export class WineryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: Prisma.WineryCreateInput): Promise<Winery> {
-    return this.prisma.winery.create({ data });
+  /** `tx`: cliente de una transacción en curso (OP-01). */
+  async create(
+    data: Prisma.WineryCreateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Winery> {
+    return (tx ?? this.prisma).winery.create({ data });
   }
 
   async findById(id: string) {
@@ -53,8 +57,12 @@ export class WineryRepository {
     ]);
   }
 
-  async update(id: string, data: Prisma.WineryUpdateInput): Promise<Winery> {
-    return this.prisma.winery.update({
+  async update(
+    id: string,
+    data: Prisma.WineryUpdateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Winery> {
+    return (tx ?? this.prisma).winery.update({
       where: { id },
       data,
     });

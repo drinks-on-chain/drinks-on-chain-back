@@ -31,6 +31,17 @@ export class MockDynamicWalletProvider implements IWalletProvider {
     };
   }
 
+  async activateCustodialVault(
+    vaultId: string,
+    ownerIdentifier: string,
+    purpose: WalletPurposeEnum,
+  ): Promise<{ activated: boolean; provider: string }> {
+    this.logger.log(
+      `[SIMULATED WALLET] Bóveda ${vaultId} activada para ${ownerIdentifier} (${purpose})`,
+    );
+    return { activated: true, provider: 'DYNAMIC_SIMULATED' };
+  }
+
   async signTransactionPlaceholder(
     vaultId: string,
     _transactionPayload: unknown,

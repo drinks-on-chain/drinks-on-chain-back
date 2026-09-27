@@ -39,6 +39,15 @@ import {
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { ConflictException as AppConflictException } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
+import { OutboxService } from '@shared/outbox/outbox.service';
+import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
+import {
+  MEMBER_ADDED,
+  MemberAddedPayload,
+  WINERY_AGGREGATE,
+  WINERY_CREATED,
+  WineryCreatedPayload,
+} from './wineries.events';
 
 type WineryWithMembers = Winery & {
   members?: (WineryMember & {
@@ -56,10 +65,16 @@ export class WineriesService {
     private readonly walletsService: WalletsService,
     private readonly onchainProducerHook: OnchainProducerHook,
     private readonly prisma: PrismaService,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
-   * Solicitud de onboarding de una nueva bodega (Estado inicial: PENDING)
+   * Solicitud de onboarding de una nueva bodega (Estado inicial: PENDING).
+   *
+   * Bodega, membresía de dueño, billetera, claves de la bodega y el evento
+   * `winery.created` del outbox se escriben en una sola transacción (OP-01):
+   * si un paso falla no queda nada a medias. La activación de la bóveda en el
+   * proveedor la hace el worker a partir del evento.
    */
   async createWinery(
     userId: string,
@@ -72,41 +87,73 @@ export class WineriesService {
       );
     }
 
-    // 1. Crear bodega en estado PENDING
-    const winery = await this.wineryRepository.create({
-      legalName: dto.legalName.trim(),
-      commercialName: dto.commercialName.trim(),
-      beverageCategory: dto.beverageCategory,
-      taxIdNit: dto.taxIdNit.trim(),
-      senasagSanitaryReg: dto.senasagSanitaryReg?.trim() ?? null,
-      geographicRegion: dto.geographicRegion.trim(),
-      countryCode: dto.countryCode?.trim() ?? 'BO',
-      address: dto.address?.trim() ?? null,
-      contactEmail: dto.contactEmail.toLowerCase().trim(),
-      contactPhone: dto.contactPhone?.trim() ?? null,
-      logoUrl: dto.logoUrl?.trim() ?? null,
-      certificationStatus: WineryStatusEnum.PENDING,
-    });
+    const { updatedWinery, wineryWallet } = await this.prisma.$transaction(
+      async (tx) => {
+        // 1. Crear bodega en estado PENDING
+        const winery = await this.wineryRepository.create(
+          {
+            legalName: dto.legalName.trim(),
+            commercialName: dto.commercialName.trim(),
+            beverageCategory: dto.beverageCategory,
+            taxIdNit: dto.taxIdNit.trim(),
+            senasagSanitaryReg: dto.senasagSanitaryReg?.trim() ?? null,
+            geographicRegion: dto.geographicRegion.trim(),
+            countryCode: dto.countryCode?.trim() ?? 'BO',
+            address: dto.address?.trim() ?? null,
+            contactEmail: dto.contactEmail.toLowerCase().trim(),
+            contactPhone: dto.contactPhone?.trim() ?? null,
+            logoUrl: dto.logoUrl?.trim() ?? null,
+            certificationStatus: WineryStatusEnum.PENDING,
+          },
+          tx,
+        );
 
-    // 2. Vincular al usuario creador como OWNER / WINERY_ADMIN
-    await this.wineryMemberRepository.create({
-      userId,
-      wineryId: winery.id,
-      memberRole: WineryMemberRoleEnum.OWNER,
-    });
+        // 2. Vincular al usuario creador como OWNER / WINERY_ADMIN
+        await this.wineryMemberRepository.create(
+          {
+            userId,
+            wineryId: winery.id,
+            memberRole: WineryMemberRoleEnum.OWNER,
+          },
+          tx,
+        );
 
-    // 3. Aprovisionar billetera custodial institucional para la bodega
-    const wineryWallet = await this.walletsService.provisionWineryWallet(
-      userId,
-      winery.id,
-      WalletPurposeEnum.PRODUCER_SIGNING,
+        // 3. Aprovisionar billetera custodial institucional para la bodega
+        const wallet = await this.walletsService.provisionWineryWallet(
+          userId,
+          winery.id,
+          WalletPurposeEnum.PRODUCER_SIGNING,
+          tx,
+        );
+
+        // 4. Actualizar las claves públicas y vault de la bodega
+        const updated = await this.wineryRepository.update(
+          winery.id,
+          {
+            stellarPublicKey: wallet.stellarPublicAddress,
+            dynamicVaultId: wallet.dynamicVaultId,
+          },
+          tx,
+        );
+
+        // 5. Efectos externos por el outbox (los procesa el worker)
+        await this.outbox.add<WineryCreatedPayload>(tx, {
+          type: WINERY_CREATED,
+          aggregateType: WINERY_AGGREGATE,
+          aggregateId: winery.id,
+          queue: QUEUE_CHAIN,
+          payload: {
+            wineryId: winery.id,
+            ownerUserId: userId,
+            walletId: wallet.id,
+            vaultId: wallet.dynamicVaultId,
+            stellarPublicKey: wallet.stellarPublicAddress,
+          },
+        });
+
+        return { updatedWinery: updated, wineryWallet: wallet };
+      },
     );
-
-    // 4. Actualizar las claves públicas y vault de la bodega
-    const updatedWinery = await this.wineryRepository.update(winery.id, {
-      stellarPublicKey: wineryWallet.stellarPublicAddress,
-      dynamicVaultId: wineryWallet.dynamicVaultId,
-    });
 
     this.logger.log(
       `Bodega creada en estado PENDING: ${updatedWinery.id} ("${updatedWinery.commercialName}") con Stellar Key: ${wineryWallet.stellarPublicAddress}`,
@@ -214,7 +261,10 @@ export class WineriesService {
   }
 
   /**
-   * Crea un nuevo usuario y lo incorpora directamente como miembro operativo de la bodega
+   * Crea un nuevo usuario y lo incorpora directamente como miembro operativo de la bodega.
+   *
+   * Usuario, billetera, membresía y el evento `member.added` del outbox van en
+   * una sola transacción (OP-01). La activación de la bóveda la hace el worker.
    */
   async createAndAddMember(
     wineryId: string,
@@ -240,30 +290,53 @@ export class WineriesService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email.toLowerCase().trim(),
-        passwordHash,
-        fullName: dto.fullName.trim(),
-        userRole,
-        phoneNumber: dto.phoneNumber?.trim() ?? null,
-        preferredLocale: 'es',
-        isActive: true,
-      },
-    });
+    const { user, member } = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: dto.email.toLowerCase().trim(),
+          passwordHash,
+          fullName: dto.fullName.trim(),
+          userRole,
+          phoneNumber: dto.phoneNumber?.trim() ?? null,
+          preferredLocale: 'es',
+          isActive: true,
+        },
+      });
 
-    // Aprovisionar billetera custodial para el nuevo miembro
-    await this.walletsService.provisionUserWallet(
-      user.id,
-      WalletPurposeEnum.CONSUMER_NFT,
-    );
+      // Aprovisionar billetera custodial para el nuevo miembro
+      const wallet = await this.walletsService.provisionUserWallet(
+        createdUser.id,
+        WalletPurposeEnum.CONSUMER_NFT,
+        tx,
+      );
 
-    const member = await this.wineryMemberRepository.create({
-      userId: user.id,
-      wineryId,
-      memberRole: dto.memberRole,
-      professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
-      professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+      const createdMember = await this.wineryMemberRepository.create(
+        {
+          userId: createdUser.id,
+          wineryId,
+          memberRole: dto.memberRole,
+          professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
+          professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+        },
+        tx,
+      );
+
+      await this.outbox.add<MemberAddedPayload>(tx, {
+        type: MEMBER_ADDED,
+        aggregateType: WINERY_AGGREGATE,
+        aggregateId: wineryId,
+        queue: QUEUE_CHAIN,
+        payload: {
+          wineryId,
+          userId: createdUser.id,
+          memberId: createdMember.id,
+          memberRole: createdMember.memberRole,
+          walletId: wallet.id,
+          vaultId: wallet.dynamicVaultId,
+        },
+      });
+
+      return { user: createdUser, member: createdMember };
     });
 
     this.logger.log(

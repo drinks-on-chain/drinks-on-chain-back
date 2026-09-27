@@ -6,14 +6,18 @@ import { Prisma, WineryMember, WineryMemberRoleEnum } from '@prisma/client';
 export class WineryMemberRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: {
-    userId: string;
-    wineryId: string;
-    memberRole: WineryMemberRoleEnum;
-    professionalLicenseNumber?: string;
-    professionalLicensePdfUrl?: string;
-  }): Promise<WineryMember> {
-    return this.prisma.wineryMember.create({
+  /** `tx`: cliente de una transacción en curso (OP-01). */
+  async create(
+    data: {
+      userId: string;
+      wineryId: string;
+      memberRole: WineryMemberRoleEnum;
+      professionalLicenseNumber?: string;
+      professionalLicensePdfUrl?: string;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<WineryMember> {
+    return (tx ?? this.prisma).wineryMember.create({
       data: {
         userId: data.userId,
         wineryId: data.wineryId,

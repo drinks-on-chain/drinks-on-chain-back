@@ -18,6 +18,17 @@ export interface IWalletProvider {
   ): Promise<CustodialVaultResult>;
 
   /**
+   * Efecto externo del alta de la bóveda (registro/activación en el proveedor).
+   * Lo ejecuta el worker a partir de los eventos del outbox `winery.created` y
+   * `member.added` (OP-01); debe ser idempotente. Simulado hasta la Ola 3.
+   */
+  activateCustodialVault(
+    vaultId: string,
+    ownerIdentifier: string,
+    purpose: WalletPurposeEnum,
+  ): Promise<{ activated: boolean; provider: string }>;
+
+  /**
    * Placeholder / Hook listo para firmar transacciones on-chain en fases futuras.
    */
   signTransactionPlaceholder(

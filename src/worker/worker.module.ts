@@ -1,7 +1,8 @@
-import { Module, Type } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DiscoveryModule } from '@nestjs/core';
 import { PrismaModule } from '@shared/prisma/prisma.module';
+import { WineriesJobsModule } from '@modules/wineries/jobs/wineries-jobs.module';
 import {
   WORKER_SETTINGS,
   workerEnvValidationSchema,
@@ -18,7 +19,7 @@ import { OutboxCleanupTask } from './tasks/outbox-cleanup.task';
  * Módulos de dominio con procesadores de trabajos. Para añadir los de un
  * módulo nuevo, crea su `<modulo>-jobs.module.ts` y añádelo aquí.
  */
-const JOB_MODULES: Type[] = [];
+const JOB_MODULES = [WineriesJobsModule];
 
 /**
  * Módulo raíz del proceso `worker` (src/worker.ts): sin HTTP. Publica el
