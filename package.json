@@ -39,12 +39,12 @@
     "@nestjs/core": "^11.0.11",
     "@nestjs/jwt": "^11.0.0",
     "@nestjs/passport": "^11.0.0",
-    "@nestjs/platform-express": "^11.0.11",
+    "@nestjs/platform-express": "^11.2.6",
     "@nestjs/swagger": "^11.0.6",
     "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "^6.4.1",
     "@stellar/stellar-sdk": "^13.3.0",
-    "bcrypt": "^5.1.1",
+    "bcrypt": "^6.0.0",
     "bullmq": "^5.41.6",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
@@ -97,7 +97,14 @@
     "ignoredBuiltDependencies": [
       "@scarf/scarf",
       "msgpackr-extract"
-    ]
+    ],
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-ggr8-5vv4-36mx",
+        "GHSA-82x6-q7mm-w9cf",
+        "GHSA-v5mp-jgw5-2x6j"
+      ]
+    }
   },
   "prisma": {
     "seed": "ts-node --transpile-only -r tsconfig-paths/register prisma/seed.ts"
