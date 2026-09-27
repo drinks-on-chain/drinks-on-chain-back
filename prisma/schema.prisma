@@ -215,6 +215,45 @@ model SettingChange {
 }
 
 // -----------------------------------------------------------------------------
+// CORREO (CMP-01; docs/arquitectura/correo-y-archivos.md)
+// Cada correo es una fila: la API la crea con su evento del outbox en la misma
+// transacción y el worker la envía por SMTP (cola `email`).
+// -----------------------------------------------------------------------------
+enum EmailStatusEnum {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+
+  @@map("email_status_enum")
+}
+
+model EmailMessage {
+  id                String          @id @default(uuid()) @db.Uuid
+  // Misma clave = mismo correo (p. ej. "invitation:<id>"): no se duplica
+  idempotencyKey    String?         @unique @map("idempotency_key") @db.VarChar(200)
+  template          String          @db.VarChar(100)
+  toAddress         String          @map("to_address") @db.VarChar(255)
+  locale            String          @default("es") @db.VarChar(5)
+  // Variables de la plantilla; se borran al enviarlo (pueden llevar enlaces con token)
+  variables         Json?           @db.JsonB
+  subject           String?         @db.VarChar(300)
+  status            EmailStatusEnum @default(QUEUED)
+  attempts          Int             @default(0)
+  lastError         String?         @map("last_error") @db.Text
+  providerMessageId String?         @map("provider_message_id") @db.VarChar(300)
+  organizationId    String?         @map("organization_id") @db.Uuid
+  correlationId     String?         @map("correlation_id") @db.VarChar(100)
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([toAddress, createdAt])
+  @@map("email_messages")
+}
+
+// -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
 /// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las

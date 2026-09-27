@@ -29,6 +29,7 @@ import { RequestContextModule } from './shared/context/request-context.module';
 import { AuditModule } from './shared/audit/audit.module';
 import { RedisModule } from './shared/redis/redis.module';
 import { SettingsModule } from './modules/settings/settings.module';
+import { MailModule } from './modules/mail/mail.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { SettingsModule } from './modules/settings/settings.module';
     TraceabilityModule,
     UploadsModule,
     SettingsModule,
+    MailModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →

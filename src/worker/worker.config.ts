@@ -2,6 +2,7 @@ import * as Joi from 'joi';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
+import { mailEnvValidationSchema } from '@modules/mail/mail.transport';
 
 /**
  * Variables de entorno del proceso `worker`. No necesita secretos de JWT ni
@@ -44,6 +45,9 @@ export const workerEnvValidationSchema = Joi.object({
   ),
   WORKER_HEARTBEAT_INTERVAL_MS: Joi.number().integer().min(1000).default(10000),
   WORKER_HEARTBEAT_MAX_AGE_MS: Joi.number().integer().min(1000).default(60000),
+
+  // Correo (cola `email`): SMTP y remitente; por defecto, Mailpit en local
+  ...mailEnvValidationSchema,
 });
 
 export const WORKER_SETTINGS = Symbol('WORKER_SETTINGS');
