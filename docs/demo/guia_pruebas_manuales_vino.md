@@ -62,15 +62,15 @@ curl -X POST http://localhost:3000/v1/uploads?folder=inspections \
 Por motivos de seguridad, el rol `PLATFORM_ADMIN` no puede registrarse públicamente. Se inicializa mediante el seeder idempotente y se realiza login con las credenciales de `.env`:
 
 ```bash
-# 1.1 Ejecutar Seeder (solo la primera vez o tras reiniciar la BD)
-# pnpm prisma:seed
+# 1.1 Ejecutar la semilla (idempotente) con SUPERADMIN_EMAIL y SUPERADMIN_PASSWORD en .env
+# pnpm seed
 
-# 1.2 Login del Superadmin
+# 1.2 Login del Superadmin (valores de SUPERADMIN_EMAIL y SUPERADMIN_PASSWORD)
 curl -X POST http://localhost:3000/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{
-    "email": "admin.master@drinksonchain.bo",
-    "password": "Password123!"
+    "email": "<SUPERADMIN_EMAIL>",
+    "password": "<SUPERADMIN_PASSWORD>"
   }'
 ```
 *Guarda el `accessToken` como `{{ADMIN_TOKEN}}`.*

@@ -69,4 +69,10 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `deploy.sh` se instala solo en `~/doc-dev/bin` al terminar un despliegue sano · 2026-09-27
   - [ ] Publicar MinIO para el navegador en el servidor de desarrollo (nginx → `minio:9000` y `S3_PUBLIC_ENDPOINT`) (coordinación)
   - [ ] Antivirus y cuotas por rol de las subidas (SE-04, resto)
-- [ ] **0.10 Datos de demostración** (OPS-09) — semilla determinista alineada con los mocks del frontend.
+- [x] **0.10 Datos de demostración** (OPS-09) — semilla determinista alineada con los mocks del frontend. · 2026-09-27 (README, "Datos de demostración")
+  - [x] Semilla idempotente en TypeScript compilada en la imagen (`node dist/seed.js`, `pnpm seed`), `prisma/seed.ts` retirado · 2026-09-27
+  - [x] Superusuario solo desde `SUPERADMIN_*` (sin contraseña por defecto); datos de demostración con `SEED_DEMO=true` y `SEED_DEMO_PASSWORD` · 2026-09-27
+  - [x] Fixtures de `@drinks-on-chain/mocks` 0.3.0-rc.2 copiados (`pnpm seed:sync`): personal interno, 6 bodegas en todos los estados con sus membresías y bloqueos, trazabilidad completa del ERP con los mismos ids, códigos y fechas · 2026-09-27
+  - [x] e2e: dos ejecuciones sobre un esquema vacío sin duplicados y una dueña de demo que inicia sesión y ve sus parcelas · 2026-09-27
+  - [ ] Ejecutarla en el servidor de desarrollo con contraseñas generadas allí (coordinación)
+  - [ ] `lotPrefix`, perfiles públicos, invitaciones y ajustes por bodega de los mocks cuando existan en el modelo (Ola 1)
