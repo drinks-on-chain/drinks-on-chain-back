@@ -230,7 +230,10 @@ export class PlatformUsersController {
     description:
       'Enlace de un solo uso (60 min) al Backoffice si es personal de plataforma o al ERP si no. Nunca se envían contraseñas.',
   })
-  @ApiAcceptedResponse({ description: 'Enviado (`data: null`)' })
+  @ApiAcceptedResponse({
+    description: 'Enviado (`data: null`)',
+    schema: { type: 'object', nullable: true, example: null },
+  })
   @ApiForbiddenResponse(FORBIDDEN)
   @ApiNotFoundResponse({
     description: 'USER_NOT_FOUND',

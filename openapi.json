@@ -31,7 +31,16 @@
         },
         "responses": {
           "202": {
-            "description": "Petición recibida (`data: null`)"
+            "description": "Petición recibida (`data: null`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "nullable": true,
+                  "example": null
+                }
+              }
+            }
           },
           "422": {
             "description": "VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)",
@@ -104,6 +113,16 @@
               }
             }
           },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
           "429": {
             "description": "AUTH_TOO_MANY_ATTEMPTS o TOO_MANY_REQUESTS, con Retry-After",
             "content": {
@@ -150,6 +169,16 @@
         "responses": {
           "204": {
             "description": "Sesión cerrada"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Cerrar la sesión actual",
@@ -225,6 +254,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Empezar a inscribir el segundo factor",
@@ -272,6 +311,16 @@
           },
           "409": {
             "description": "AUTH_MFA_ALREADY_ENROLLED o AUTH_MFA_ENROLLMENT_NOT_STARTED (falta /mfa/enroll)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -344,6 +393,16 @@
               }
             }
           },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
           "429": {
             "description": "AUTH_TOO_MANY_ATTEMPTS con `Retry-After`",
             "content": {
@@ -397,6 +456,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "summary": "Renovar la sesión (rotativa)",
@@ -423,7 +492,16 @@
         },
         "responses": {
           "202": {
-            "description": "Petición recibida (`data: null`)"
+            "description": "Petición recibida (`data: null`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "nullable": true,
+                  "example": null
+                }
+              }
+            }
           },
           "422": {
             "description": "VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)",
@@ -585,6 +663,16 @@
           },
           "404": {
             "description": "ORG_NOT_FOUND: sin membresía en esa organización",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -805,7 +893,14 @@
             }
           },
           "422": {
-            "description": "Reglas D.O. incumplidas (ej: reposo inerte < 180 días)"
+            "description": "Reglas D.O. incumplidas (ej: reposo inerte < 180 días)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1034,6 +1129,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1131,6 +1236,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1185,6 +1300,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/EnologicalTreatmentResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
             }
@@ -1475,6 +1600,16 @@
           },
           "404": {
             "description": "Lote de vendimia no encontrado"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1634,6 +1769,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1703,6 +1848,16 @@
           },
           "409": {
             "description": "INVITATION_NOT_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1910,6 +2065,16 @@
           },
           "409": {
             "description": "El lote ya tiene un informe oficial registrado"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2495,6 +2660,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2564,6 +2739,16 @@
           },
           "409": {
             "description": "CONFLICT: no está bloqueada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -3936,6 +4121,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4090,6 +4285,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4150,6 +4355,16 @@
           },
           "404": {
             "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4233,6 +4448,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4272,7 +4497,16 @@
         },
         "responses": {
           "202": {
-            "description": "Enviado (`data: null`)"
+            "description": "Enviado (`data: null`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "nullable": true,
+                  "example": null
+                }
+              }
+            }
           },
           "403": {
             "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
@@ -4286,6 +4520,16 @@
           },
           "404": {
             "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4480,6 +4724,16 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ProductionBatchResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
             }
@@ -4752,6 +5006,16 @@
           },
           "403": {
             "description": "Sin permisos de agrónomo o administrador de bodega"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -4840,6 +5104,16 @@
           },
           "404": {
             "description": "Parcela no encontrada"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5357,6 +5631,16 @@
                 }
               }
             }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5571,6 +5855,16 @@
           },
           "409": {
             "description": "El NIT ya se encuentra registrado"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5641,6 +5935,16 @@
           },
           "403": {
             "description": "No autorizado para modificar datos de la bodega"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5789,6 +6093,16 @@
           },
           "409": {
             "description": "ORG_ALREADY_MEMBER: el usuario ya es miembro activo de la bodega"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5830,6 +6144,16 @@
           },
           "409": {
             "description": "El correo electrónico ya se encuentra registrado"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -5979,6 +6303,16 @@
           },
           "404": {
             "description": "Bodega no encontrada"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -6032,6 +6366,16 @@
           },
           "404": {
             "description": "Bodega no encontrada"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -7525,7 +7869,7 @@
             "example": "SUPPORT"
           },
           "reason": {
-            "type": "object",
+            "type": "string",
             "description": "Motivo (3–500 caracteres); queda en la bitácora",
             "nullable": true
           }
@@ -9179,7 +9523,7 @@
         "type": "object",
         "properties": {
           "reason": {
-            "type": "object",
+            "type": "string",
             "description": "Motivo (3–500 caracteres); queda en la bitácora",
             "example": "La bodega lo pidió por soporte",
             "nullable": true
@@ -9234,7 +9578,7 @@
             ]
           },
           "reason": {
-            "type": "object",
+            "type": "string",
             "description": "Motivo (3–500 caracteres); queda en la bitácora",
             "nullable": true
           }

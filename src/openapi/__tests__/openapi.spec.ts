@@ -209,6 +209,38 @@ describe('Contrato OpenAPI (OPS-12)', () => {
     });
   });
 
+  it('toda operación con cuerpo declara su 422 VALIDATION_ERROR', () => {
+    const withBody = ops.filter((op) => op.requestBody);
+    expect(withBody.length).toBeGreaterThan(0);
+    for (const op of withBody) {
+      const response = op.responses['422'] as
+        { content?: Record<string, { schema?: unknown }> } | undefined;
+      expect({
+        op: key(op),
+        schema: response?.content?.['application/json']?.schema,
+      }).toEqual({
+        op: key(op),
+        schema: { $ref: '#/components/schemas/ApiErrorResponseDto' },
+      });
+    }
+  });
+
+  it('toda respuesta 2xx en JSON declara su esquema', () => {
+    const missing = ops.flatMap((op) =>
+      Object.entries(op.responses)
+        .filter(([code]) => code.startsWith('2') && code !== '204')
+        .filter(([, response]) => {
+          const content = (
+            response as { content?: Record<string, { schema?: unknown }> }
+          ).content;
+          if (content && !content['application/json']) return false; // CSV…
+          return !content?.['application/json']?.schema;
+        })
+        .map(([code]) => `${key(op)} ${code}`),
+    );
+    expect(missing).toEqual([]);
+  });
+
   it('las altas del ERP declaran Idempotency-Key (UUID, opcional)', () => {
     const idempotent = ops
       .filter((op) =>

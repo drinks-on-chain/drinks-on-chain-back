@@ -41,7 +41,44 @@ export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
     extraModels: [ApiErrorResponseDto],
   });
   markPublicOperations(document);
+  addValidationErrorResponses(document);
   return sortOpenApiDocument(document);
+}
+
+/**
+ * Toda operación con cuerpo pasa por el `ValidationPipe` global: si no
+ * declara su 422, se añade el `VALIDATION_ERROR` común (`details` por campo).
+ */
+export function addValidationErrorResponses(document: OpenAPIObject): void {
+  for (const pathItem of Object.values(document.paths)) {
+    for (const operation of Object.values(pathItem) as Array<
+      Record<string, unknown>
+    >) {
+      if (!operation || typeof operation !== 'object') continue;
+      if (!('requestBody' in operation)) continue;
+      const responses = (operation.responses ?? {}) as Record<
+        string,
+        { description?: string; content?: unknown }
+      >;
+      const content = {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/ApiErrorResponseDto' },
+        },
+      };
+      const declared = responses['422'];
+      if (declared) {
+        // Un 422 de negocio declarado sin cuerpo: mismo envoltorio de error
+        declared.content ??= content;
+        continue;
+      }
+      responses['422'] = {
+        description:
+          'VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)',
+        content,
+      };
+      operation.responses = responses;
+    }
+  }
 }
 
 /** Las operaciones `@Public()` no llevan candado (`security: []`). */

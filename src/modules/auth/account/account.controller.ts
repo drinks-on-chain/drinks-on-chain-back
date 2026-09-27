@@ -43,7 +43,10 @@ export class AccountController {
     description:
       'Siempre 202 (no revela si el correo tiene cuenta). Si la tiene y está activa, envía un enlace de un solo uso que caduca en 60 minutos a la app de `X-Client-App` (ERP por defecto). Con captcha (Turnstile) y campo trampa `website`.',
   })
-  @ApiAcceptedResponse({ description: 'Petición recibida (`data: null`)' })
+  @ApiAcceptedResponse({
+    description: 'Petición recibida (`data: null`)',
+    schema: { type: 'object', nullable: true, example: null },
+  })
   @ApiUnprocessableEntityResponse({
     description: 'VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)',
     type: ApiErrorResponseDto,
@@ -101,7 +104,10 @@ export class AccountController {
     description:
       'Siempre 202. Si el correo tiene una cuenta activa sin verificar, envía un enlace nuevo (el anterior deja de valer). Con captcha y campo trampa `website`.',
   })
-  @ApiAcceptedResponse({ description: 'Petición recibida (`data: null`)' })
+  @ApiAcceptedResponse({
+    description: 'Petición recibida (`data: null`)',
+    schema: { type: 'object', nullable: true, example: null },
+  })
   @ApiUnprocessableEntityResponse({
     description: 'VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)',
     type: ApiErrorResponseDto,

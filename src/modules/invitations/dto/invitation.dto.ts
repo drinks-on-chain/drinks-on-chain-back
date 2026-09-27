@@ -22,6 +22,7 @@ const trim = ({ value }: { value: unknown }) =>
 /** Motivo opcional de una acción del back office (3–500 si llega; AUD-05). */
 export class OptionalReasonDto {
   @ApiPropertyOptional({
+    type: String,
     description: 'Motivo (3–500 caracteres); queda en la bitácora',
     example: 'La bodega lo pidió por soporte',
     nullable: true,
@@ -193,6 +194,7 @@ export class CreateInvitationDto {
 /** `POST /v1/platform/organizations/{organizationId}/invitations`. */
 export class PlatformCreateInvitationDto extends CreateInvitationDto {
   @ApiPropertyOptional({
+    type: String,
     description: 'Motivo (3–500 caracteres); queda en la bitácora',
     nullable: true,
   })
@@ -222,6 +224,7 @@ export class CreatePlatformUserDto {
   role!: InternalRole;
 
   @ApiPropertyOptional({
+    type: String,
     description: 'Motivo (3–500 caracteres); queda en la bitácora',
     nullable: true,
   })
