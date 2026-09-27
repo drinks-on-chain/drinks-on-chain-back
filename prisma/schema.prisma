@@ -85,11 +85,14 @@ model AuditEvent {
   hash                String   @db.Char(64)
   prevHash            String?  @map("prev_hash") @db.Char(64)
 
+  // Filtros del back office y de la bitácora del dueño (AUD-03, AUD-04),
+  // ordenados por seq descendente
   @@index([occurredAt])
   @@index([actorUserId, seq])
+  @@index([actorOrganizationId, seq])
   @@index([organizationId, seq])
   @@index([action, seq])
-  @@index([resourceType, resourceId])
+  @@index([resourceType, resourceId, seq])
   @@map("audit_events")
 }
 

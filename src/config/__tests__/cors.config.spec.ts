@@ -129,14 +129,14 @@ describe('cors.config', () => {
       );
     });
 
-    it('exposes the correlation and retry headers', async () => {
+    it('exposes the correlation, retry and download headers', async () => {
       const res = await request(app.getHttpServer())
         .get('/ping')
         .set('Origin', allowed)
         .expect(200);
 
       expect(res.headers['access-control-expose-headers']).toBe(
-        'X-Correlation-ID,Retry-After',
+        'X-Correlation-ID,Retry-After,Content-Disposition',
       );
     });
 

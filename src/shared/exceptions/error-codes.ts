@@ -88,6 +88,10 @@ export const ErrorCode = {
   /** 422 · Valor más laxo que el mínimo legal sin excepción autorizada (A-31). */
   SETTING_BELOW_LEGAL_MINIMUM: 'SETTING_BELOW_LEGAL_MINIMUM',
 
+  // ── Bitácora (contrato O1 §7) ─────────────────────────────
+  /** 422 · La exportación CSV supera 50 000 filas: acotar fechas o filtros. */
+  AUDIT_EXPORT_TOO_LARGE: 'AUDIT_EXPORT_TOO_LARGE',
+
   // ── Archivos (SE-04) ──────────────────────────────────────
   /** 422 · El contenido del archivo no corresponde a un tipo permitido. */
   FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',

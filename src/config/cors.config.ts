@@ -18,6 +18,8 @@ export const CORS_ALLOWED_HEADERS = [
 export const CORS_EXPOSED_HEADERS = [
   'X-Correlation-ID',
   'Retry-After',
+  // Nombre del archivo de las descargas (exportación CSV de la bitácora)
+  'Content-Disposition',
 ] as const;
 
 export const CORS_METHODS = [
