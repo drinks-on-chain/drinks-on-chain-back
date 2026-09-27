@@ -40,6 +40,7 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `POST /auth/logout` y `/auth/logout-all` (204, borran la cookie) · 2026-09-27
   - [x] Revocación inmediata (IAM-13): lista de `sid` en Redis + comprobación de sesión, persona y membresía en cada petición; bloquear membresía o cuenta revoca sus sesiones · 2026-09-27
   - [x] Límite global por IP real (`TRUST_PROXY=1`) y por ruta en `/auth/*`; bloqueo progresivo del login por correo e IP en Redis (429 con `Retry-After`) · 2026-09-27
+  - [x] IP real del cliente detrás del proxy de las apps (O1-OPS-1): cabeceras `X-DOC-Client-IP` firmadas con HMAC y `PROXY_SHARED_SECRET` (varios secretos para rotar), ±60 s · 2026-09-27
 - [x] **0.6 Organizaciones y membresías** (EQP-01, EQP-09, IAM-08, SE-01, OP-05, OP-07) · 2026-09-27
   - [x] Tablas `organizations` (bodega = mismo id) y `memberships`; estado de bodega `INVITED` (antes `PENDING`, contrato O1 §0) · 2026-09-27
   - [x] Migración de datos probada sobre una copia con datos: `PLATFORM_ADMIN` → `SUPERADMIN`, `winery_members` → membresías `WINERY` (mismo id); seeder idempotente · 2026-09-27
