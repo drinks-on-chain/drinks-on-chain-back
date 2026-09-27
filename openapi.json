@@ -1292,11 +1292,208 @@
         ]
       }
     },
+    "/v1/organizations/current/audit": {
+      "get": {
+        "description": "Mismos filtros que la del back office salvo la organización, de la más reciente a la más antigua (seq descendente).",
+        "operationId": "OrganizationAuditController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Desde: AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Hasta (incluido): AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "description": "Persona que actuó",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "description": "Código de acción (UPPER_SNAKE_CASE)",
+            "schema": {
+              "example": "SETTING_CHANGED",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceType",
+            "required": false,
+            "in": "query",
+            "description": "Tipo de recurso",
+            "schema": {
+              "example": "setting",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "required": false,
+            "in": "query",
+            "description": "Id del recurso",
+            "schema": {
+              "example": "canje.ventanaDias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "wineryId",
+            "required": false,
+            "in": "query",
+            "description": "Solo personal de plataforma: bodega consultada",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entradas, de la más reciente a la más antigua",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEventDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (sin bodega activa o sin ser su dueño) u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: wineryId de otra bodega (dueño) · ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bitácora de mi bodega (dueño)",
+        "tags": [
+          "Bitácora"
+        ]
+      }
+    },
     "/v1/organizations/current/settings": {
       "get": {
         "description": "Valor efectivo de cada parámetro para la bodega activa: su ajuste si existe (source WINERY) o el estándar general (source GLOBAL). No paginada: son menos de 50.",
         "operationId": "SettingsController_getCurrent_v1",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "wineryId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "Solo personal de plataforma: bodega consultada (obligatoria para ellos)"
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -1315,7 +1512,7 @@
             "description": "Sin sesión"
           },
           "403": {
-            "description": "Sin una bodega activa"
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (sin una bodega activa) u ORG_NOT_ACTIVE (bodega no activa, SE-05)"
           }
         },
         "security": [
@@ -1327,6 +1524,949 @@
         "tags": [
           "Configuración"
         ]
+      }
+    },
+    "/v1/platform/audit": {
+      "get": {
+        "description": "Entradas con filtros por fecha (AAAA-MM-DD = día completo UTC, o ISO), persona, organización afectada, acción y recurso, de la más reciente a la más antigua (seq descendente).",
+        "operationId": "PlatformAuditController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Desde: AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Hasta (incluido): AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "description": "Persona que actuó",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "description": "Código de acción (UPPER_SNAKE_CASE)",
+            "schema": {
+              "example": "SETTING_CHANGED",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceType",
+            "required": false,
+            "in": "query",
+            "description": "Tipo de recurso",
+            "schema": {
+              "example": "setting",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "required": false,
+            "in": "query",
+            "description": "Id del recurso",
+            "schema": {
+              "example": "canje.ventanaDias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "required": false,
+            "in": "query",
+            "description": "Organización afectada",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Entradas, de la más reciente a la más antigua",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/AuditEventDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Consultar la bitácora",
+        "tags": [
+          "Back office · Bitácora"
+        ]
+      }
+    },
+    "/v1/platform/audit/export": {
+      "get": {
+        "description": "Mismos filtros que la consulta, en orden cronológico. Máximo 50.000 filas (más → 422 AUDIT_EXPORT_TOO_LARGE). UTF-8 con BOM, separador coma, CRLF; las celdas que empiezan como una fórmula (= + - @) llevan un apóstrofo delante. Se envía por partes (streaming).",
+        "operationId": "PlatformAuditController_export_v1",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Desde: AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Hasta (incluido): AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "description": "Persona que actuó",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "description": "Código de acción (UPPER_SNAKE_CASE)",
+            "schema": {
+              "example": "SETTING_CHANGED",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceType",
+            "required": false,
+            "in": "query",
+            "description": "Tipo de recurso",
+            "schema": {
+              "example": "setting",
+              "type": "string"
+            }
+          },
+          {
+            "name": "resourceId",
+            "required": false,
+            "in": "query",
+            "description": "Id del recurso",
+            "schema": {
+              "example": "canje.ventanaDias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "organizationId",
+            "required": false,
+            "in": "query",
+            "description": "Organización afectada",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Archivo CSV (Content-Disposition: attachment)",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR en los filtros o AUDIT_EXPORT_TOO_LARGE",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Exportar la bitácora a CSV",
+        "tags": [
+          "Back office · Bitácora"
+        ]
+      }
+    },
+    "/v1/platform/audit/verify": {
+      "get": {
+        "description": "Recalcula el hash de cada entrada del tramo (fechas incluidas; sin ellas, toda la bitácora) y su enlace con la anterior. firstBrokenSeq = primera entrada manipulada, borrada o intercalada.",
+        "operationId": "PlatformAuditController_verify_v1",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Desde: AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Hasta (incluido): AAAA-MM-DD (día completo, UTC) o fecha y hora ISO 8601",
+            "schema": {
+              "example": "2026-09-27",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuditVerifyResultDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Verificar la cadena de la bitácora (ADMIN)",
+        "tags": [
+          "Back office · Bitácora"
+        ]
+      }
+    },
+    "/v1/platform/dashboard": {
+      "get": {
+        "description": "Solicitudes por estado, bodegas por estado, invitaciones pendientes y por caducar, miembros bloqueados, alertas y los 5 últimos eventos de la bitácora. Los bloques de tokenización, canjes y soporte se añaden en sus olas (cambio aditivo).",
+        "operationId": "DashboardController_get_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Tablero del back office",
+        "tags": [
+          "Back office · Tablero"
+        ]
+      }
+    },
+    "/v1/platform/settings": {
+      "get": {
+        "description": "Todas las definiciones del catálogo con el estándar vigente, el número de bodegas con ajuste propio y el último cambio. No paginada: son menos de 50.",
+        "operationId": "PlatformSettingsController_list_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SettingDefinitionDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Parámetros con su estándar general",
+        "tags": [
+          "Back office · Configuración"
+        ]
+      }
+    },
+    "/v1/platform/settings/{key}": {
+      "put": {
+        "description": "Valida tipo, límites, niveles y el mínimo legal (el estándar nunca baja de él). Deja historial y bitácora (SETTING_CHANGED) con el antes, el después y el motivo, e invalida la caché.",
+        "operationId": "PlatformSettingsController_update_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "description": "Clave del parámetro",
+            "schema": {
+              "example": "trazabilidad.singani.reposoMinimoDias",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingDefinitionDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SETTING_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (value, reason), SETTING_LEVEL_NOT_ALLOWED (parámetro solo por bodega) o SETTING_BELOW_LEGAL_MINIMUM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar el estándar general (ADMIN)",
+        "tags": [
+          "Back office · Configuración"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/settings/{key}/history": {
+      "get": {
+        "description": "Estándar y ajustes por bodega, del más reciente al más antiguo, con autor, motivo y valores antes y después.",
+        "operationId": "PlatformSettingsController_history_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "description": "Clave del parámetro",
+            "schema": {
+              "example": "trazabilidad.singani.reposoMinimoDias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cambios, del más reciente al más antiguo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SettingHistoryEntryDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SETTING_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Historial de cambios de un parámetro (CFG-07)",
+        "tags": [
+          "Back office · Configuración"
+        ]
+      }
+    },
+    "/v1/platform/settings/{key}/overrides": {
+      "get": {
+        "operationId": "PlatformSettingsController_overrides_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "description": "Clave del parámetro",
+            "schema": {
+              "example": "trazabilidad.singani.reposoMinimoDias",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Ajustes, del más reciente al más antiguo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/SettingOverrideDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SETTING_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ajustes por bodega de un parámetro",
+        "tags": [
+          "Back office · Configuración"
+        ]
+      },
+      "put": {
+        "description": "`wineryIds: 'ALL'` = todas las bodegas no revocadas. Un valor más laxo que el mínimo legal exige `legalException: true` (solo administración), que queda marcado en el ajuste, el historial y la bitácora (SETTING_OVERRIDE_SET, una entrada por bodega).",
+        "operationId": "PlatformSettingsController_setOverrides_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "description": "Clave del parámetro",
+            "schema": {
+              "example": "trazabilidad.singani.reposoMinimoDias",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetSettingOverridesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOverridesUpdatedDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SETTING_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (value, reason, wineryIds: bodegas inexistentes), SETTING_LEVEL_NOT_ALLOWED (parámetro solo general) o SETTING_BELOW_LEGAL_MINIMUM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aplicar un ajuste a una selección de bodegas o a todas (ADMIN)",
+        "tags": [
+          "Back office · Configuración"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/settings/{key}/overrides/reset": {
+      "post": {
+        "description": "Borra los ajustes de la selección (o de todas las bodegas con ALL). Una entrada SETTING_OVERRIDE_RESET por ajuste borrado.",
+        "operationId": "PlatformSettingsController_reset_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "path",
+            "description": "Clave del parámetro",
+            "schema": {
+              "example": "trazabilidad.singani.reposoMinimoDias",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetSettingOverridesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingOverridesResetDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS: sin la organización de plataforma activa o rol sin permiso",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "SETTING_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (reason, wineryIds)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Volver al estándar (ADMIN)",
+        "tags": [
+          "Back office · Configuración"
+        ],
+        "x-requires-reason": "always"
       }
     },
     "/v1/production-batches": {
@@ -3087,6 +4227,199 @@
         ],
         "description": "`STAFF` si tiene al menos una membresía; `CONSUMER` si no tiene ninguna"
       },
+      "AuditActorDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "null = el sistema"
+          },
+          "fullName": {
+            "type": "string",
+            "nullable": true,
+            "example": "Jorge Salinas"
+          },
+          "role": {
+            "type": "string",
+            "nullable": true,
+            "example": "ADMIN"
+          },
+          "organizationId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Organización desde la que actuó"
+          },
+          "viaPlatform": {
+            "type": "boolean",
+            "description": "Actuó el back office (organización de plataforma)"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName",
+          "role",
+          "organizationId",
+          "viaPlatform"
+        ]
+      },
+      "AuditEventDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seq": {
+            "type": "number",
+            "minimum": 1,
+            "example": 42
+          },
+          "occurredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/AuditActorDto"
+          },
+          "source": {
+            "$ref": "#/components/schemas/AuditSourceDto"
+          },
+          "action": {
+            "type": "string",
+            "example": "SETTING_CHANGED"
+          },
+          "resource": {
+            "$ref": "#/components/schemas/AuditResourceDto"
+          },
+          "organizationId": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "Organización afectada"
+          },
+          "before": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true,
+            "description": "Valores antes (sin datos sensibles)"
+          },
+          "after": {
+            "type": "object",
+            "nullable": true,
+            "additionalProperties": true,
+            "description": "Valores después (sin datos sensibles)"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          },
+          "correlationId": {
+            "type": "string",
+            "nullable": true
+          },
+          "hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "SHA-256 del contenido canónico"
+          },
+          "prevHash": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        },
+        "required": [
+          "id",
+          "seq",
+          "occurredAt",
+          "actor",
+          "source",
+          "action",
+          "resource",
+          "organizationId",
+          "before",
+          "after",
+          "reason",
+          "correlationId",
+          "hash",
+          "prevHash"
+        ]
+      },
+      "AuditResourceDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "setting"
+          },
+          "id": {
+            "type": "string",
+            "nullable": true,
+            "example": "canje.ventanaDias"
+          }
+        },
+        "required": [
+          "type",
+          "id"
+        ]
+      },
+      "AuditSourceDto": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "type": "string",
+            "enum": [
+              "ERP",
+              "MARKETPLACE",
+              "BACKOFFICE",
+              "POS",
+              "PUBLIC",
+              "API",
+              "WORKER"
+            ],
+            "description": "Cabecera X-Client-App (API sin ella; WORKER el sistema)"
+          },
+          "ip": {
+            "type": "string",
+            "nullable": true
+          },
+          "deviceId": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "app",
+          "ip",
+          "deviceId"
+        ]
+      },
+      "AuditVerifyResultDto": {
+        "type": "object",
+        "properties": {
+          "valid": {
+            "type": "boolean"
+          },
+          "checked": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Entradas comprobadas"
+          },
+          "firstBrokenSeq": {
+            "type": "number",
+            "nullable": true,
+            "description": "Primera entrada rota (null si la cadena es válida)"
+          }
+        },
+        "required": [
+          "valid",
+          "checked",
+          "firstBrokenSeq"
+        ]
+      },
       "AuthResponseDto": {
         "type": "object",
         "properties": {
@@ -4250,6 +5583,164 @@
           "contactEmail"
         ]
       },
+      "DashboardAlertDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "applications-unassigned",
+            "description": "Estable por tipo de alerta"
+          },
+          "level": {
+            "type": "string",
+            "enum": [
+              "INFO",
+              "WARNING",
+              "CRITICAL"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "link": {
+            "type": "string",
+            "nullable": true,
+            "example": "/solicitudes",
+            "description": "Ruta sugerida dentro del back office"
+          }
+        },
+        "required": [
+          "id",
+          "level",
+          "message",
+          "createdAt",
+          "link"
+        ]
+      },
+      "DashboardApplicationsDto": {
+        "type": "object",
+        "properties": {
+          "unverified": {
+            "type": "number",
+            "minimum": 0
+          },
+          "received": {
+            "type": "number",
+            "minimum": 0
+          },
+          "inReview": {
+            "type": "number",
+            "minimum": 0
+          },
+          "meetingScheduled": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "unverified",
+          "received",
+          "inReview",
+          "meetingScheduled"
+        ]
+      },
+      "DashboardDto": {
+        "type": "object",
+        "properties": {
+          "applications": {
+            "$ref": "#/components/schemas/DashboardApplicationsDto"
+          },
+          "wineries": {
+            "$ref": "#/components/schemas/DashboardWineriesDto"
+          },
+          "invitations": {
+            "$ref": "#/components/schemas/DashboardInvitationsDto"
+          },
+          "team": {
+            "$ref": "#/components/schemas/DashboardTeamDto"
+          },
+          "alerts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardAlertDto"
+            }
+          },
+          "recentAudit": {
+            "maxItems": 5,
+            "description": "Los 5 eventos más recientes de la bitácora",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuditEventDto"
+            }
+          }
+        },
+        "required": [
+          "applications",
+          "wineries",
+          "invitations",
+          "team",
+          "alerts",
+          "recentAudit"
+        ]
+      },
+      "DashboardInvitationsDto": {
+        "type": "object",
+        "properties": {
+          "pending": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Pendientes y no vencidas"
+          },
+          "expiringIn24h": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Pendientes que caducan en menos de 24 h"
+          }
+        },
+        "required": [
+          "pending",
+          "expiringIn24h"
+        ]
+      },
+      "DashboardTeamDto": {
+        "type": "object",
+        "properties": {
+          "blockedMembers": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Membresías bloqueadas (bodegas y plataforma)"
+          }
+        },
+        "required": [
+          "blockedMembers"
+        ]
+      },
+      "DashboardWineriesDto": {
+        "type": "object",
+        "properties": {
+          "invited": {
+            "type": "number",
+            "minimum": 0
+          },
+          "active": {
+            "type": "number",
+            "minimum": 0
+          },
+          "suspended": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "invited",
+          "active",
+          "suspended"
+        ]
+      },
       "EffectiveSettingDto": {
         "type": "object",
         "properties": {
@@ -4952,6 +6443,434 @@
           "rejectionReason"
         ]
       },
+      "ResetSettingOverridesDto": {
+        "type": "object",
+        "properties": {
+          "wineryIds": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ALL"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "minItems": 1,
+                "maxItems": 1000
+              }
+            ],
+            "description": "'ALL' = todas las bodegas no revocadas, o una selección"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "wineryIds",
+          "reason"
+        ]
+      },
+      "SetSettingOverridesDto": {
+        "type": "object",
+        "properties": {
+          "wineryIds": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "ALL"
+                ]
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "minItems": 1,
+                "maxItems": 1000
+              }
+            ],
+            "description": "'ALL' = todas las bodegas no revocadas, o una selección"
+          },
+          "value": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "description": "Valor del ajuste (tipo según el parámetro)",
+            "example": 210
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          },
+          "legalException": {
+            "type": "boolean",
+            "description": "Autoriza un valor bajo el mínimo legal (A-31). Solo administración; queda marcado",
+            "default": false
+          }
+        },
+        "required": [
+          "wineryIds",
+          "value",
+          "reason"
+        ]
+      },
+      "SettingDefinitionDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "trazabilidad.singani.reposoMinimoDias"
+          },
+          "description": {
+            "type": "string",
+            "example": "Reposo mínimo tras la destilación"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "NUMBER",
+              "BOOLEAN",
+              "STRING",
+              "LIST",
+              "OBJECT",
+              "NUMBER_OR_UNLIMITED",
+              "ENUM"
+            ]
+          },
+          "enumValues": {
+            "example": [
+              "BURN",
+              "EXTEND"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "unit": {
+            "type": "string",
+            "example": "días"
+          },
+          "levels": {
+            "type": "string",
+            "enum": [
+              "GLOBAL",
+              "GLOBAL_AND_WINERY",
+              "WINERY"
+            ],
+            "description": "GLOBAL = solo estándar general · GLOBAL_AND_WINERY = estándar y ajuste por bodega · WINERY = solo por bodega"
+          },
+          "appliesAt": {
+            "type": "string",
+            "enum": [
+              "LOT",
+              "COLLECTION",
+              "IMMEDIATE"
+            ]
+          },
+          "default": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "example": 180
+          },
+          "min": {
+            "type": "number",
+            "example": 0
+          },
+          "max": {
+            "type": "number",
+            "example": 3650
+          },
+          "legalMinimum": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ],
+            "description": "Piso legal (A-31): un ajuste por bodega más laxo exige excepción legal",
+            "example": 180
+          },
+          "globalValue": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "example": 180,
+            "description": "Estándar general vigente"
+          },
+          "overridesCount": {
+            "type": "number",
+            "minimum": 0,
+            "example": 1
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string",
+            "nullable": true,
+            "description": "Nombre de quien cambió el estándar por última vez; null = instalación"
+          }
+        },
+        "required": [
+          "key",
+          "description",
+          "type",
+          "levels",
+          "appliesAt",
+          "default",
+          "legalMinimum",
+          "globalValue",
+          "overridesCount",
+          "updatedAt",
+          "updatedBy"
+        ]
+      },
+      "SettingHistoryEntryDto": {
+        "type": "object",
+        "properties": {
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "by": {
+            "type": "string",
+            "description": "Nombre de quien lo cambió (Sistema sin persona)"
+          },
+          "scope": {
+            "type": "string",
+            "example": "GLOBAL",
+            "description": "'GLOBAL' o el id de la bodega"
+          },
+          "before": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "description": "Valor antes; en un ajuste por bodega sin valor propio, el estándar que regía"
+          },
+          "after": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "description": "Valor después"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "legalException": {
+            "type": "boolean",
+            "description": "Ajuste autorizado bajo el mínimo legal (A-31); adicional al contrato"
+          }
+        },
+        "required": [
+          "at",
+          "by",
+          "scope",
+          "before",
+          "after",
+          "reason",
+          "legalException"
+        ]
+      },
+      "SettingOverrideDto": {
+        "type": "object",
+        "properties": {
+          "wineryId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "wineryName": {
+            "type": "string",
+            "example": "Altos de Calamuchita"
+          },
+          "value": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "example": 210
+          },
+          "legalException": {
+            "type": "boolean",
+            "description": "Autorizado bajo el mínimo legal por administración (A-31)"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": "string",
+            "description": "Nombre de quien lo aplicó"
+          }
+        },
+        "required": [
+          "wineryId",
+          "wineryName",
+          "value",
+          "legalException",
+          "reason",
+          "updatedAt",
+          "updatedBy"
+        ]
+      },
+      "SettingOverridesResetDto": {
+        "type": "object",
+        "properties": {
+          "reset": {
+            "type": "number",
+            "minimum": 0,
+            "example": 2
+          }
+        },
+        "required": [
+          "reset"
+        ]
+      },
+      "SettingOverridesUpdatedDto": {
+        "type": "object",
+        "properties": {
+          "updated": {
+            "type": "number",
+            "minimum": 0,
+            "example": 2
+          }
+        },
+        "required": [
+          "updated"
+        ]
+      },
       "SignedUrlResponseDto": {
         "type": "object",
         "properties": {
@@ -5155,6 +7074,47 @@
         },
         "required": [
           "phytosanitaryStatus"
+        ]
+      },
+      "UpdateSettingDto": {
+        "type": "object",
+        "properties": {
+          "value": {
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ],
+            "description": "Nuevo estándar general (tipo según el parámetro)",
+            "example": 200
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "value",
+          "reason"
         ]
       },
       "UpdateTerroirDto": {

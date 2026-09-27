@@ -81,6 +81,10 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/bottling',
       'GET /v1/fermentation-tanks',
       'GET /v1/harvest-batches',
+      'GET /v1/organizations/current/audit',
+      'GET /v1/platform/audit',
+      'GET /v1/platform/settings/{key}/history',
+      'GET /v1/platform/settings/{key}/overrides',
       'GET /v1/production-batches',
       'GET /v1/terroirs',
       'GET /v1/wine-aging',
@@ -91,7 +95,10 @@ describe('Contrato OpenAPI (OPS-12)', () => {
 
     // Listas cortas y cerradas que el contrato fija como array sin paginar
     // (contrato O1 §6: la configuración son menos de 50 parámetros)
-    const UNPAGINATED_ARRAYS = ['GET /v1/organizations/current/settings'];
+    const UNPAGINATED_ARRAYS = [
+      'GET /v1/organizations/current/settings',
+      'GET /v1/platform/settings',
+    ];
 
     it('ninguna respuesta declara un array plano', () => {
       const bare = ops
