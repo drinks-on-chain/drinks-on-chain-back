@@ -128,14 +128,14 @@ resend(@Body() dto: ResendDto) { … }     // en el DTO: @OptionalReasonProperty
 
 | Bloque | Fuente |
 |---|---|
-| `applications` por estado | `winery_applications` (parte B de la Ola 1). Mientras la tabla no exista (`to_regclass`), o si la consulta falla, cuenta cero y lo avisa en los logs. Espera las columnas del contrato `status` y `created_at` |
+| `applications` por estado | `winery_applications` (parte B de la Ola 1; `groupBy` de Prisma por `status`) |
 | `wineries` por estado | `wineries.certification_status` |
-| `invitations.pending` / `expiringIn24h` | `invitations` (parte A de la Ola 1), igual que las solicitudes: `status = 'PENDING'` y `expires_at` futuro (una pendiente vencida cuenta como caducada) |
+| `invitations.pending` / `expiringIn24h` | `invitations` (parte A de la Ola 1): `status = 'PENDING'` y `expires_at` futuro (una pendiente vencida cuenta como caducada) |
 | `team.blockedMembers` | Membresías `BLOCKED` (bodegas y plataforma) |
-| `alerts` | Una por tipo, `id` estable: `emails-failed` (CRITICAL, correos `FAILED` de los últimos 7 días), `applications-unassigned` (WARNING, solicitudes `RECEIVED` de hace más de 48 h, enlace `/solicitudes`), `invitations-expiring` (INFO, caducan en menos de 24 h, enlace `/bodegas`) |
+| `alerts` | Una por tipo, `id` estable: `emails-failed` (CRITICAL, correos `FAILED` de los últimos 7 días), `applications-unassigned` (WARNING, solicitudes `RECEIVED` sin asignar de hace más de 48 h, enlace `/solicitudes`), `invitations-expiring` (INFO, caducan en menos de 24 h, enlace `/bodegas`) |
 | `recentAudit` | Las 5 entradas con mayor `seq` |
 
-Cuando las partes A y B añadan sus modelos a Prisma, las dos consultas en SQL pasan a consultas tipadas (misma forma de respuesta).
+Todo con consultas tipadas de Prisma sobre los modelos de las partes A y B (antes, SQL detrás de `to_regclass`; misma forma de respuesta).
 
 ## Límites conocidos
 

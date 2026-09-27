@@ -74,6 +74,9 @@ Revocar = `sessions.revoked_at` + marca `auth:revoked:<sid>` en Redis durante la
 | Bloquear una membresía (`MembershipsService.block`) | Las de esa persona con esa organización activa | `MEMBERSHIP_BLOCKED` |
 | Bloquear la cuenta (`UsersService.blockAccount`) | Todas las de la persona | `USER_BLOCKED` |
 | Rechazar (revocar) una bodega | Todas las que la tienen activa | `ORGANIZATION_REVOKED` |
+| Suspender una bodega (Ola 1 · 1.5) | Todas las que la tienen activa | `ORGANIZATION_SUSPENDED` |
+| Cambiar el rol de un miembro de bodega (dueño o plataforma) | Las de esa persona con esa bodega activa | `ROLE_CHANGED` |
+| Transferencia de titularidad aceptada | Las del dueño anterior con esa bodega activa | `OWNERSHIP_TRANSFERRED` |
 | Reutilización de un refresco | Esa sesión | `REFRESH_REUSED` |
 | `logout` / `logout-all` | Esa / todas | `LOGOUT` / `LOGOUT_ALL` |
 | Contraseña restablecida (`reset-password`) | Todas las de la persona | `PASSWORD_RESET` |
@@ -93,7 +96,7 @@ Guards globales (`AppModule`, en este orden): límite de peticiones → **`Acces
 | `@Audience('STAFF')` | claim `aud` |
 | `@OrgType('WINERY')` | tipo de la organización activa |
 | `@Roles('OWNER', 'ENOLOGIST')` | rol en la organización activa |
-| `@RequireActiveOrg()` | SE-05: bodega activa en estado `ACTIVE`. En la Ola 0 solo aviso en logs; con `FEATURE_ENFORCE_ACTIVE_ORG=true`, 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: <estado> }]` |
+| `@RequireActiveOrg({ allow? })` | SE-05: bodega activa en estado `ACTIVE` (o uno de `allow`). **Activo por defecto desde la Ola 1**: 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: <estado> }]`; `FEATURE_ENFORCE_ACTIVE_ORG=false` lo deja en aviso (ver [`organizaciones.md`](organizaciones.md#bodega-no-activa-en-el-erp-se-05)) |
 
 - **Rutas de bodega** (`@OrgType('WINERY')`: todo el ERP y `wineries/my*`): la bodega es la activa; si la petición apunta a otra (`wineryId` en ruta, query o cuerpo) → **404**. El personal de plataforma pasa sin rol de bodega: `SUPERADMIN`, `ADMIN` y `OPERATIONS` leen y escriben, `SUPPORT` solo lee; eligen la bodega con `?wineryId=` y **las escrituras lo exigen** (422 con `details[{ field: 'wineryId' }]`, OP-07); una bodega inexistente → 404 `ORG_NOT_FOUND`.
 - **Rutas de plataforma** (`GET /wineries`, `/wineries/pending`: todo el personal de plataforma; `approve`/`reject`: `SUPERADMIN`, `ADMIN`, `OPERATIONS`).
@@ -104,7 +107,7 @@ Matriz de roles de bodega en el ERP (docs-back/05 §3; la plataforma, como arrib
 | Ruta | OWNER | ENOLOGIST | AGRONOMIST | OPERATOR | ACCOUNTANT |
 |---|---|---|---|---|---|
 | Parcelas: alta y edición | ✅ | — | ✅ | — | — |
-| Parcelas: lectura | ✅ | ✅ | ✅ | — | ✅ |
+| Parcelas: lectura | ✅ | ✅ | ✅ | ✅ (mínima, §11 bis) | ✅ |
 | Vendimia (pesaje): alta | ✅ | ✅ | ✅ | ✅ | — |
 | Vendimia: lectura | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dictamen fitosanitario | ✅ | ✅ | ✅ | — | — |
@@ -115,7 +118,7 @@ Matriz de roles de bodega en el ERP (docs-back/05 §3; la plataforma, como arrib
 | Crianza, destilación, embotellado: lectura | ✅ | ✅ | — | — | ✅ |
 | Laboratorio: alta | ✅ | ✅ | — | — | — |
 | Laboratorio: lectura | ✅ | ✅ | ✅ | — | ✅ |
-| `PATCH /wineries/my`, alta de miembros | ✅ | — | — | — | — |
+| `PATCH /wineries/my`, alta de miembros (obsoletas, H1) | ✅ | — | — | — | — |
 | `GET /wineries/my`, `/my/members` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Cambios frente a 0.1: el operario de planta ya no es `POS_OPERATOR` (OP-05) y pesa y registra lecturas; el contador lee; el dueño dictamina; los consumidores ya no leen análisis de laboratorio por el ERP (llegará con el visor público).
@@ -140,7 +143,7 @@ Cambios frente a 0.1: el operario de planta ya no es `POS_OPERATOR` (OP-05) y pe
 | `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Audiencia, tipo de organización o rol insuficientes |
 | `ORG_NOT_FOUND` | 404 | Sin membresía en la organización / bodega inexistente |
 | `ORG_MEMBERSHIP_BLOCKED` / `ORG_REVOKED` | 403 | `switch-organization` a una membresía bloqueada / organización revocada |
-| `ORG_NOT_ACTIVE` | 403 | ERP con bodega no `ACTIVE` (solo con `FEATURE_ENFORCE_ACTIVE_ORG`) |
+| `ORG_NOT_ACTIVE` | 403 | ERP con bodega no `ACTIVE` (activo por defecto desde la Ola 1) |
 | `ORG_BLOCKED_BY_PLATFORM` | 403 | El dueño intenta reactivar a quien bloqueó la plataforma |
 | `ORG_ALREADY_MEMBER` | 409 | Ya es miembro activo |
 
