@@ -1,5 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { EmailStatusEnum, MembershipStatusEnum } from '@prisma/client';
+import { Injectable } from '@nestjs/common';
+import {
+  EmailStatusEnum,
+  InvitationStatusEnum,
+  MembershipStatusEnum,
+  Prisma,
+  WineryApplicationStatusEnum,
+} from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import type { AuditEventView } from '@shared/audit/audit.types';
 import { AuditQueryService } from '@modules/audit/audit-query.service';
@@ -48,26 +54,14 @@ interface InvitationStats {
   expiringIn24h: number;
 }
 
-const NO_APPLICATIONS: ApplicationStats = {
-  counts: { unverified: 0, received: 0, inReview: 0, meetingScheduled: 0 },
-  unassigned: { count: 0, oldest: null },
-};
-
 /**
- * Tablero del back office. Cuenta sobre lo que existe hoy en el modelo:
- *
- * - Solicitudes de alta (`winery_applications`) e invitaciones
- *   (`invitations`) llegan con otras partes de la Ola 1 (O1-BE-1 A y B): se
- *   leen con SQL solo si la tabla existe (`to_regclass`) y con las columnas
- *   del contrato (`status`, `created_at`, `expires_at`). Mientras no exista,
- *   o si la consulta falla, cuentan cero (y se avisa en los logs).
- * - Bodegas por estado, miembros bloqueados, correos fallidos y los últimos
- *   eventos de la bitácora salen del modelo actual.
+ * Tablero del back office (contrato O1 §8, PLT-06): solicitudes de alta por
+ * estado, bodegas por estado, invitaciones pendientes y a punto de caducar,
+ * miembros bloqueados, alertas y los últimos eventos de la bitácora, con
+ * consultas tipadas de Prisma sobre los modelos de la Ola 1.
  */
 @Injectable()
 export class DashboardService {
-  private readonly logger = new Logger(DashboardService.name);
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditQuery: AuditQueryService,
@@ -137,79 +131,55 @@ export class DashboardService {
     return { count, latest: latest?.updatedAt ?? null };
   }
 
-  /** ¿Existe la tabla? (las de otras partes de la ola pueden no existir aún). */
-  private async tableExists(table: string): Promise<boolean> {
-    const rows = await this.prisma.$queryRaw<{ found: boolean }[]>`
-      SELECT to_regclass(${table}::text) IS NOT NULL AS found`;
-    return rows[0]?.found === true;
-  }
-
   private async applicationStats(now: Date): Promise<ApplicationStats> {
-    try {
-      if (!(await this.tableExists('winery_applications'))) {
-        return NO_APPLICATIONS;
-      }
-      const threshold = new Date(
-        now.getTime() - UNASSIGNED_APPLICATION_ALERT_HOURS * HOUR_MS,
-      );
-      const [byStatus, unassigned] = await Promise.all([
-        this.prisma.$queryRaw<{ status: string; total: number }[]>`
-          SELECT status::text AS status, count(*)::int AS total
-          FROM winery_applications GROUP BY status`,
-        this.prisma.$queryRaw<{ total: number; oldest: Date | null }[]>`
-          SELECT count(*)::int AS total, min(created_at) AS oldest
-          FROM winery_applications
-          WHERE status::text = 'RECEIVED' AND created_at < ${threshold}`,
-      ]);
-      const count = (status: string) =>
-        byStatus.find((r) => r.status === status)?.total ?? 0;
-      return {
-        counts: {
-          unverified: count('UNVERIFIED'),
-          received: count('RECEIVED'),
-          inReview: count('IN_REVIEW'),
-          meetingScheduled: count('MEETING_SCHEDULED'),
-        },
-        unassigned: {
-          count: unassigned[0]?.total ?? 0,
-          oldest: unassigned[0]?.oldest ?? null,
-        },
-      };
-    } catch (error) {
-      this.logger.warn({
-        message: 'Tablero: no se pudieron contar las solicitudes de alta',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return NO_APPLICATIONS;
-    }
+    const threshold = new Date(
+      now.getTime() - UNASSIGNED_APPLICATION_ALERT_HOURS * HOUR_MS,
+    );
+    const unassignedWhere: Prisma.WineryApplicationWhereInput = {
+      status: WineryApplicationStatusEnum.RECEIVED,
+      assigneeUserId: null,
+      createdAt: { lt: threshold },
+    };
+    const [byStatus, unassigned, oldest] = await Promise.all([
+      this.prisma.wineryApplication.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.wineryApplication.count({ where: unassignedWhere }),
+      this.prisma.wineryApplication.findFirst({
+        where: unassignedWhere,
+        orderBy: { createdAt: 'asc' },
+        select: { createdAt: true },
+      }),
+    ]);
+    const count = (status: WineryApplicationStatusEnum) =>
+      byStatus.find((r) => r.status === status)?._count._all ?? 0;
+    return {
+      counts: {
+        unverified: count(WineryApplicationStatusEnum.UNVERIFIED),
+        received: count(WineryApplicationStatusEnum.RECEIVED),
+        inReview: count(WineryApplicationStatusEnum.IN_REVIEW),
+        meetingScheduled: count(WineryApplicationStatusEnum.MEETING_SCHEDULED),
+      },
+      unassigned: { count: unassigned, oldest: oldest?.createdAt ?? null },
+    };
   }
 
+  /** Una invitación `PENDING` ya vencida cuenta como caducada (contrato O1 §2). */
   private async invitationStats(now: Date): Promise<InvitationStats> {
-    try {
-      if (!(await this.tableExists('invitations'))) {
-        return { pending: 0, expiringIn24h: 0 };
-      }
-      const in24h = new Date(now.getTime() + 24 * HOUR_MS);
-      // Una invitación PENDING ya vencida cuenta como caducada (contrato O1 §2)
-      const rows = await this.prisma.$queryRaw<
-        { pending: number; expiring: number }[]
-      >`
-        SELECT
-          count(*) FILTER (WHERE expires_at > ${now})::int AS pending,
-          count(*) FILTER (WHERE expires_at > ${now} AND expires_at <= ${in24h})::int AS expiring
-        FROM invitations
-        WHERE status::text = 'PENDING'`;
-      return {
-        pending: rows[0]?.pending ?? 0,
-        expiringIn24h: rows[0]?.expiring ?? 0,
-      };
-    } catch (error) {
-      this.logger.warn({
-        message: 'Tablero: no se pudieron contar las invitaciones',
-        error: error instanceof Error ? error.message : String(error),
-      });
-      return { pending: 0, expiringIn24h: 0 };
-    }
+    const in24h = new Date(now.getTime() + 24 * HOUR_MS);
+    const [pending, expiringIn24h] = await Promise.all([
+      this.prisma.invitation.count({
+        where: { status: InvitationStatusEnum.PENDING, expiresAt: { gt: now } },
+      }),
+      this.prisma.invitation.count({
+        where: {
+          status: InvitationStatusEnum.PENDING,
+          expiresAt: { gt: now, lte: in24h },
+        },
+      }),
+    ]);
+    return { pending, expiringIn24h };
   }
 }
 

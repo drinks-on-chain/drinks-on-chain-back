@@ -4,48 +4,35 @@ import { DashboardService, buildAlerts } from '../dashboard.service';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
 
-function setup(tables: {
-  applications?: boolean;
-  invitations?: boolean;
-  failQueries?: boolean;
-}) {
-  const queryRaw = jest.fn(
-    (strings: TemplateStringsArray, ...values: unknown[]) => {
-      const sql = strings.join('?');
-      if (sql.includes('to_regclass')) {
-        const table = values[0];
-        return Promise.resolve([
-          {
-            found:
-              (table === 'winery_applications' && !!tables.applications) ||
-              (table === 'invitations' && !!tables.invitations),
-          },
-        ]);
-      }
-      if (tables.failQueries) {
-        return Promise.reject(new Error('column "status" does not exist'));
-      }
-      if (sql.includes('GROUP BY status')) {
-        return Promise.resolve([
-          { status: 'UNVERIFIED', total: 1 },
-          { status: 'RECEIVED', total: 3 },
-          { status: 'IN_REVIEW', total: 2 },
-          { status: 'APPROVED', total: 9 },
-        ]);
-      }
-      if (sql.includes('winery_applications')) {
-        return Promise.resolve([
-          { total: 2, oldest: new Date('2026-09-20T08:00:00.000Z') },
-        ]);
-      }
-      if (sql.includes('FROM invitations')) {
-        return Promise.resolve([{ pending: 4, expiring: 1 }]);
-      }
-      return Promise.resolve([]);
-    },
-  );
+function setup(data: { applications?: boolean } = {}) {
   const prisma = {
-    $queryRaw: queryRaw,
+    wineryApplication: {
+      groupBy: jest.fn().mockResolvedValue(
+        data.applications
+          ? [
+              { status: 'UNVERIFIED', _count: { _all: 1 } },
+              { status: 'RECEIVED', _count: { _all: 3 } },
+              { status: 'IN_REVIEW', _count: { _all: 2 } },
+              { status: 'APPROVED', _count: { _all: 9 } },
+            ]
+          : [],
+      ),
+      count: jest.fn().mockResolvedValue(data.applications ? 2 : 0),
+      findFirst: jest
+        .fn()
+        .mockResolvedValue(
+          data.applications
+            ? { createdAt: new Date('2026-09-20T08:00:00.000Z') }
+            : null,
+        ),
+    },
+    invitation: {
+      count: jest.fn((args: { where: { expiresAt: { lte?: Date } } }) =>
+        Promise.resolve(
+          data.applications ? (args.where.expiresAt.lte ? 1 : 4) : 0,
+        ),
+      ),
+    },
     winery: {
       groupBy: jest.fn().mockResolvedValue([
         { certificationStatus: 'ACTIVE', _count: 5 },
@@ -70,8 +57,8 @@ function setup(tables: {
 }
 
 describe('Tablero del back office', () => {
-  it('sin las tablas de solicitudes e invitaciones: ceros', async () => {
-    const { service, auditQuery } = setup({});
+  it('sin solicitudes ni invitaciones: ceros', async () => {
+    const { service, auditQuery } = setup();
     const view = await service.get(NOW);
     expect(view).toEqual({
       applications: {
@@ -89,11 +76,8 @@ describe('Tablero del back office', () => {
     expect(auditQuery.recent).toHaveBeenCalledWith(5);
   });
 
-  it('con las tablas: cuenta por estado y avisa', async () => {
-    const { service, prisma } = setup({
-      applications: true,
-      invitations: true,
-    });
+  it('cuenta por estado con Prisma y avisa', async () => {
+    const { service, prisma } = setup({ applications: true });
     prisma.emailMessage.count.mockResolvedValue(2);
     prisma.emailMessage.findFirst.mockResolvedValue({
       updatedAt: new Date('2026-09-26T10:00:00.000Z'),
@@ -115,18 +99,14 @@ describe('Tablero del back office', () => {
       createdAt: '2026-09-20T08:00:00.000Z',
       link: '/solicitudes',
     });
-  });
-
-  it('si la consulta de otra parte falla, cuenta cero sin romper el tablero', async () => {
-    const { service } = setup({
-      applications: true,
-      invitations: true,
-      failQueries: true,
+    // Sin tomar más de 48 h: RECEIVED, sin asignar y anteriores al umbral
+    expect(prisma.wineryApplication.count).toHaveBeenCalledWith({
+      where: {
+        status: 'RECEIVED',
+        assigneeUserId: null,
+        createdAt: { lt: new Date('2026-09-25T12:00:00.000Z') },
+      },
     });
-    const view = await service.get(NOW);
-    expect(view.applications.received).toBe(0);
-    expect(view.invitations.pending).toBe(0);
-    expect(view.wineries.active).toBe(5);
   });
 
   it('buildAlerts: singular y plural', () => {
