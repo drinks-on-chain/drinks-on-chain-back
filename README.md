@@ -377,8 +377,8 @@ sequenceDiagram
 
 - 🍸 **[Guía de Pruebas Manuales — Flujo Singani D.O.](docs/demo/guia_pruebas_manuales_trazabilidad.md):** Flujo completo con comandos `curl`, altitud $\ge 1,600$ msnm, destilación y 180 días de reposo inerte.
 - 🍷 **[Guía de Pruebas Manuales — Flujo Vino de Altura](docs/demo/guia_pruebas_manuales_vino.md):** Flujo vitivinícola con maceración, crianza en barricas de roble (190 días) y embotellado.
-- 🧾 **[Bitácora](docs/arquitectura/bitacora.md):** entradas en la misma transacción, solo inserción, cadena de hashes y cómo registrar una acción.
-- ⚙️ **[Configuración en dos niveles](docs/arquitectura/configuracion.md):** catálogo de parámetros, valor efectivo con caché, mínimos legales e instantánea del lote.
+- 🧾 **[Bitácora](docs/arquitectura/bitacora.md):** entradas en la misma transacción, solo inserción, cadena de hashes y cómo registrar una acción; consulta, exportación CSV y verificación del back office, bitácora del dueño, motivo obligatorio (`@RequiresReason()`) y tablero (`/v1/platform/dashboard`).
+- ⚙️ **[Configuración en dos niveles](docs/arquitectura/configuracion.md):** catálogo de parámetros, valor efectivo con caché, mínimos legales e instantánea del lote; edición desde el back office (`/v1/platform/settings/*`).
 - ✉️ **[Correo, archivos y operación](docs/arquitectura/correo-y-archivos.md):** correo por la cola, almacenamiento privado con URL firmadas, salud, logs y Swagger.
 - 🔐 **[Identidad, sesiones y membresías](docs/arquitectura/identidad.md):** modelo, cookie `doc_rt`, rotación y reutilización, organización activa, revocación, matriz de roles y límites.
 - 📋 **[Catálogo de Endpoints de la API](docs/endpoints/endpoints.md):** Referencia detallada de todos los endpoints, DTOs y respuestas.

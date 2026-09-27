@@ -76,3 +76,19 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] e2e: dos ejecuciones sobre un esquema vacío sin duplicados y una dueña de demo que inicia sesión y ve sus parcelas · 2026-09-27
   - [ ] Ejecutarla en el servidor de desarrollo con contraseñas generadas allí (coordinación)
   - [ ] `lotPrefix`, perfiles públicos, invitaciones y ajustes por bodega de los mocks cuando existan en el modelo (Ola 1)
+
+## Etapa 1 · Back office y bodegas (Ola 1)
+
+- [x] **1.7 Configuración en el back office** (CFG-02, CFG-03, CFG-04, CFG-07) — estándar general, ajustes por bodega (selección o todas), volver al estándar, historial y mínimo legal como piso con excepción de administración. · 2026-09-27 ([`docs/arquitectura/configuracion.md`](arquitectura/configuracion.md#back-office-ola-1))
+  - [x] `GET/PUT /v1/platform/settings[/{key}]`, `GET/PUT …/{key}/overrides`, `POST …/overrides/reset`, `GET …/{key}/history` con permisos por rol (§9) · 2026-09-27
+  - [x] `GET /v1/organizations/current/settings` con `@OrgType('WINERY')`, `?wineryId=` para la plataforma y `@RequireActiveOrg()` · 2026-09-27
+  - [x] e2e: 403 por rol, motivo obligatorio, niveles, mínimo legal rechazado y aceptado con excepción, 404 entre bodegas, volver al estándar e historial · 2026-09-27
+- [ ] **1.8 Bitácora y tablero** (AUD-03, AUD-04, AUD-05, CMP-02, PLT-06) ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md#consulta-ola-1))
+  - [x] `GET /v1/platform/audit` con filtros y `seq` descendente; índices para los filtros · 2026-09-27
+  - [x] `GET /v1/platform/audit/export`: CSV por streaming, límite de 50 000 filas (`AUDIT_EXPORT_TOO_LARGE`), cabeceras de descarga, celdas seguras contra fórmulas · 2026-09-27
+  - [x] `GET /v1/platform/audit/verify` (ADMIN) por fechas · 2026-09-27
+  - [x] `GET /v1/organizations/current/audit` para el dueño (también lo hecho por la plataforma), legible con la bodega suspendida · 2026-09-27
+  - [x] `@RequiresReason()` común para las rutas del back office sobre terceros (AUD-05) · 2026-09-27
+  - [x] `GET /v1/platform/dashboard` con bodegas, miembros bloqueados, alertas y últimos eventos · 2026-09-27
+  - [ ] Contadores de solicitudes e invitaciones con los modelos de las partes A y B (hoy SQL detrás de `to_regclass`; cero si no existen)
+  - [ ] Correos de la etapa (CMP-02) y registro en la bitácora de las acciones de las partes A y B

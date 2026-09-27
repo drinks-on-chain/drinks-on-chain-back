@@ -166,6 +166,16 @@ Cuando una comprobación de un campo depende de otro y se hace en el servicio, s
 
 Un recurso de otra bodega sigue respondiendo **404** (`NOT_FOUND`), nunca 403.
 
+### Configuración y bitácora (contrato O1 §6–§7)
+| Código | HTTP | Descripción |
+|---|---|---|
+| `SETTING_NOT_FOUND` | 404 | El parámetro no existe en el catálogo |
+| `SETTING_LEVEL_NOT_ALLOWED` | 422 | Ajuste por bodega en un parámetro solo general, o estándar en uno solo por bodega |
+| `SETTING_BELOW_LEGAL_MINIMUM` | 422 | Valor más laxo que el mínimo legal sin excepción autorizada (A-31) |
+| `AUDIT_EXPORT_TOO_LARGE` | 422 | La exportación CSV de la bitácora supera 50 000 filas |
+
+Motivo ausente en una acción del back office sobre terceros (`@RequiresReason()`, AUD-05): 422 `VALIDATION_ERROR` con `details[{ field: 'reason' }]`.
+
 ### Bodegas
 | Código | HTTP | Descripción |
 |---|---|---|

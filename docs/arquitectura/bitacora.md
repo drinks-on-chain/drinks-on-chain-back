@@ -1,6 +1,7 @@
 # Bitácora (auditoría)
 
-> Ola 0 · paso 0.7 (AUD-01, AUD-02; docs-back/07 §4, docs-back/03 §10 y §13, contrato O1 §7). Base de la bitácora: modelo, escritura en la misma transacción, encadenamiento por hash e inmutabilidad. La consulta, la exportación CSV y la verificación por HTTP (`/v1/platform/audit*`, `/v1/organizations/current/audit`) llegan con el back office en la Ola 1 sobre este mismo modelo.
+> Ola 0 · paso 0.7 (AUD-01, AUD-02; docs-back/07 §4, docs-back/03 §10 y §13, contrato O1 §7): modelo, escritura en la misma transacción, encadenamiento por hash e inmutabilidad.
+> Ola 1 · paso 1.8 (AUD-03, AUD-04, AUD-05, PLT-06): consulta con filtros, exportación CSV y verificación por HTTP, bitácora del dueño, motivo obligatorio (`@RequiresReason()`) y tablero del back office ([Consulta](#consulta-ola-1)).
 
 ## Qué garantiza
 
@@ -32,7 +33,7 @@ Forma pública (`AuditService.toView`) = `AuditEvent` del contrato O1 §7.
 | `correlation_id` | `correlationId` | `X-Correlation-ID` de la petición (o del evento, en el worker) |
 | `hash`, `prev_hash` | `hash`, `prevHash` | Hex de 64 caracteres; la primera entrada no tiene `prev_hash` (check en la base) |
 
-Sin claves foráneas: la bitácora sobrevive a lo que registra. Índices por fecha, actor, organización, acción y recurso (con `seq` para ordenar), para los filtros del back office.
+Sin claves foráneas: la bitácora sobrevive a lo que registra. Índices para los filtros, todos con `seq` para ordenar sin paso extra: fecha (`occurred_at`), persona (`actor_user_id, seq`), organización desde la que actuó (`actor_organization_id, seq`, bitácora del dueño), organización afectada (`organization_id, seq`), acción (`action, seq`) y recurso (`resource_type, resource_id, seq`). Como `seq` y `occurred_at` crecen juntos, un rango de fechas es también un rango de `seq`.
 
 ## Contexto de la petición
 
@@ -82,7 +83,59 @@ Desde el candado hasta la confirmación, las demás escrituras auditadas esperan
 | `SETTING_CHANGED`, `SETTING_OVERRIDE_SET`, `SETTING_OVERRIDE_RESET` | `SettingsService` ([configuración](configuracion.md)) |
 | `FILE_UPLOADED` | `UploadsService` ([correo y archivos](correo-y-archivos.md)) |
 
-Pendiente (Ola 1 en adelante): membresías y equipo, invitaciones, solicitudes, cierre de sesión y recuperación de contraseña, cadena, canjes.
+Pendiente (resto de la Ola 1 en adelante): membresías y equipo, invitaciones, solicitudes, cierre de sesión y recuperación de contraseña, cadena, canjes (cada parte registra las suyas; las del back office sobre terceros, con `@RequiresReason()`).
+
+## Consulta (Ola 1)
+
+`AuditQueryService` y sus controladores (`src/modules/audit/`), contrato O1 §7. Toda lectura ordena por `seq` descendente y pagina con `limit`/`offset` (`{ items, total, limit, offset }`).
+
+| Ruta | Quién | Notas |
+|---|---|---|
+| `GET /v1/platform/audit?from=&to=&actorId=&organizationId=&action=&resourceType=&resourceId=` | `SUPERADMIN`, `ADMIN`, `OPERATIONS`, `SUPPORT` | `from`/`to`: `AAAA-MM-DD` (día completo en UTC) o ISO 8601 con zona; `actorId` y `organizationId` UUID; `action` en `UPPER_SNAKE_CASE`. Filtros inválidos → 422 por campo |
+| `GET /v1/platform/audit/export?…` (mismos filtros, sin página) | Igual | CSV en orden cronológico (ver abajo) |
+| `GET /v1/platform/audit/verify?from=&to=` | `SUPERADMIN`, `ADMIN` | Fechas como en la consulta; se traducen a `seq` (primera entrada ≥ `from`, última ≤ `to`) y se llama a `verifyChain`, que también comprueba el enlace con la entrada anterior al tramo. Tramo sin entradas → `{ valid: true, checked: 0 }` |
+| `GET /v1/organizations/current/audit?…` | Dueño de la bodega activa; la plataforma con `?wineryId=` | Lo que **afecta** a la bodega (`organization_id`, también lo que hizo el back office en ella) **o** lo que hicieron sus miembros **desde** ella (`actor_organization_id`, p. ej. sus inicios de sesión). Sin filtro `organizationId` (422 si llega). Otra bodega en `?wineryId=` → 404. Se lee con la bodega suspendida (`@RequireActiveOrg({ allow: ['SUSPENDED'] })`) |
+
+### Exportación CSV
+
+- **Límite**: se cuenta antes de escribir nada; más de 50 000 filas → 422 `AUDIT_EXPORT_TOO_LARGE` (acotar fechas o filtros). Nunca se escriben más filas que las contadas (las entradas que llegan durante la exportación no entran).
+- **Streaming**: lotes de 1000 por `seq` (sin `OFFSET`), escritos respetando la contrapresión de la respuesta; si el cliente corta, se deja de leer.
+- **Cabeceras**: `Content-Type: text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="bitacora-AAAAMMDD-HHmm.csv"` (UTC, expuesta por CORS), `Cache-Control: no-store` y `X-Export-Rows`.
+- **Formato**: UTF-8 con BOM (Excel), coma, CRLF, cabecera en la primera fila. Columnas iguales a las de `@drinks-on-chain/mocks`: `seq, occurredAt, actorUserId, actorFullName, actorRole, actorOrganizationId, viaPlatform, app, ip, action, resourceType, resourceId, organizationId, reason, before, after, correlationId, prevHash, hash` (`before`/`after` como JSON).
+- **Inyección de fórmulas**: una celda que empieza por `=`, `+`, `-`, `@`, tabulador o retorno de carro lleva un apóstrofo delante; las que tienen comas, comillas o saltos van entre comillas (RFC 4180).
+
+### Motivo obligatorio (AUD-05)
+
+`src/shared/audit/requires-reason.ts`, para las rutas del back office sobre terceros (partes A y B de la Ola 1 y siguientes):
+
+```ts
+@Post(':id/suspend')
+@RequiresReason()                        // siempre
+suspend(@Body() dto: SuspendDto) { … }   // en el DTO: @ReasonProperty() reason!: string
+
+@Post(':id/resend')
+@RequiresReason({ when: 'platform' })    // solo si la organización activa es la de plataforma
+resend(@Body() dto: ResendDto) { … }     // en el DTO: @OptionalReasonProperty() reason?: string
+```
+
+- Sin motivo de 3 a 500 caracteres (recortado) → 422 `VALIDATION_ERROR` con `details[{ field: 'reason' }]`, antes de validar el resto del cuerpo. El DTO recibe el motivo recortado.
+- `@ReasonProperty()` / `@OptionalReasonProperty()` declaran el campo en el DTO (validación y OpenAPI); el decorador de la ruta añade `x-requires-reason: always | platform` al OpenAPI.
+- En un servicio, `assertReason(valor, campo?)` hace la misma comprobación (la usa `SettingsService`). El motivo se guarda en `reason` de la entrada de la bitácora.
+
+### Tablero del back office (PLT-06)
+
+`GET /v1/platform/dashboard` (`src/modules/dashboard/`, todo el personal de plataforma), contrato O1 §8:
+
+| Bloque | Fuente |
+|---|---|
+| `applications` por estado | `winery_applications` (parte B de la Ola 1). Mientras la tabla no exista (`to_regclass`), o si la consulta falla, cuenta cero y lo avisa en los logs. Espera las columnas del contrato `status` y `created_at` |
+| `wineries` por estado | `wineries.certification_status` |
+| `invitations.pending` / `expiringIn24h` | `invitations` (parte A de la Ola 1), igual que las solicitudes: `status = 'PENDING'` y `expires_at` futuro (una pendiente vencida cuenta como caducada) |
+| `team.blockedMembers` | Membresías `BLOCKED` (bodegas y plataforma) |
+| `alerts` | Una por tipo, `id` estable: `emails-failed` (CRITICAL, correos `FAILED` de los últimos 7 días), `applications-unassigned` (WARNING, solicitudes `RECEIVED` de hace más de 48 h, enlace `/solicitudes`), `invitations-expiring` (INFO, caducan en menos de 24 h, enlace `/bodegas`) |
+| `recentAudit` | Las 5 entradas con mayor `seq` |
+
+Cuando las partes A y B añadan sus modelos a Prisma, las dos consultas en SQL pasan a consultas tipadas (misma forma de respuesta).
 
 ## Límites conocidos
 
@@ -92,5 +145,6 @@ Pendiente (Ola 1 en adelante): membresías y equipo, invitaciones, solicitudes, 
 
 ## Pruebas
 
-- Unitarias: `src/shared/audit/__tests__/` (saneado, hash y detección de eslabones rotos, servicio con contexto, interceptor de login).
+- Unitarias: `src/shared/audit/__tests__/` (saneado, hash y detección de eslabones rotos, servicio con contexto, interceptor de login, `@RequiresReason()`), `src/modules/audit/__tests__/` (filtros, fechas, recorrido por lotes, verificación por fechas, CSV seguro) y `src/modules/dashboard/__tests__/` (contadores con y sin las tablas de otras partes, alertas).
+- e2e del back office: `test/backoffice-platform.e2e-spec.ts` — consulta con filtros y orden, 403 por rol, bitácora del dueño sin las de otras bodegas (404 con otra en `?wineryId=`), CSV (cabeceras, BOM, fórmula neutralizada, límite), verificación válida y rota tras desactivar el trigger solo en la prueba, y tablero.
 - e2e con Postgres: `test/audit.e2e-spec.ts` — 12 escrituras simultáneas con `seq` consecutivos y cadena válida, rollback sin entrada, `UPDATE`/`DELETE`/`TRUNCATE` rechazados por la base, manipulación detectada por `verifyChain`, escritura por HTTP con `X-Client-App` y login correcto y fallido.
