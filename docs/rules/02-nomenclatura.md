@@ -353,9 +353,11 @@ export class CreateHarvestBatchDto {
 
 ### Parámetros de query — `camelCase`
 ```
-GET /v1/tokenized-items?tokenStatus=MINTED&wineryId=xxx&page=1&limit=20
+GET /v1/tokenized-items?tokenStatus=MINTED&wineryId=xxx&limit=20&offset=0
 GET /v1/collections?publicationStatus=PUBLISHED&beverageType=WINE
 ```
+
+> Ajustado por A-33 (27-09-2026): las colecciones se paginan con `limit` (1–100, por defecto 20) y `offset`, no con `page`. Ver `03-formato-respuestas.md` § Paginación.
 
 ---
 

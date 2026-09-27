@@ -123,19 +123,23 @@ drinks-on-chain-backend/
      "data": { ... }
    }
 
-   // Respuesta de Error
+   // Colección (toda lista, con ?limit=1..100 (20) y ?offset>=0)
+   { "success": true, "...": "...", "data": { "items": [ ... ], "total": 47, "limit": 20, "offset": 0 } }
+
+   // Respuesta de Error (validación → 422 con un detalle por campo)
    {
      "success": false,
      "statusCode": 422,
      "timestamp": "2026-09-07T12:00:00.000Z",
      "path": "/v1/...",
      "error": {
-       "code": "UNPROCESSABLE_ENTITY",
-       "message": "Descripción amigable del error de negocio",
-       "details": null
+       "code": "VALIDATION_ERROR",
+       "message": "Validation failed",
+       "details": [{ "field": "grossWeightKg", "message": "..." }]
      }
    }
    ```
+   Estándares completos (A-33: listas, errores, `Idempotency-Key`, 429 con `Retry-After`) en [`docs/rules/03-formato-respuestas.md`](docs/rules/03-formato-respuestas.md).
 
 ---
 
@@ -174,14 +178,15 @@ Se ejecutan en la CI (`.github/workflows/ci.yml`) en cada push y PR a `dev` y `m
 ```bash
 pnpm lint            # ESLint 9 (flat config) + Prettier, sin --fix (pnpm lint:fix para corregir)
 pnpm typecheck       # tsc --noEmit en modo estricto
-pnpm test            # unitarias (118)
-pnpm test:e2e        # e2e contra Postgres y Redis reales (37): con docker compose up -d y el .env
+pnpm test            # unitarias (incluye la prueba del contrato OpenAPI)
+pnpm test:e2e        # e2e contra Postgres y Redis reales: con docker compose up -d y el .env
 pnpm build
+pnpm openapi:generate   # si cambió la API: regenera openapi.json y se versiona en el mismo commit
 docker build .       # imagen de producción
 pnpm audit --prod --audit-level high
 ```
 
-La CI además aplica las migraciones sobre una base vacía (`prisma migrate deploy`) y falla si `schema.prisma` tiene cambios sin migración (`prisma migrate diff --exit-code`).
+La CI además aplica las migraciones sobre una base vacía (`prisma migrate deploy`) y falla si `schema.prisma` tiene cambios sin migración (`prisma migrate diff --exit-code`), y regenera el OpenAPI y falla si `openapi.json` no coincide con el código (ver más abajo).
 
 **Auditoría de dependencias**: bloquea avisos altos o críticos de producción. Excepciones sin arreglo dentro de la versión mayor actual, en `package.json#pnpm.auditConfig.ignoreGhsas`:
 
@@ -196,10 +201,20 @@ La CI además aplica las migraciones sobre una base vacía (`prisma migrate depl
 - **Desarrollo**: cada push a `dev` con la CI en verde se despliega solo en el servidor de desarrollo (`deploy-dev.yml` → `git archive` → `scp` → `deploy.sh`), con rollback automático si la API no queda sana. Detalles, puesta en marcha y secretos en [`deploy/README.md`](deploy/README.md).
 - Ramas: trabajo en `dev` (o ramas `feat/…` integradas en `dev`); `main` solo por PR `dev → main`.
 
-### 📚 Documentación Interactiva de la API (Swagger OpenAPI)
+### 📚 OpenAPI como contrato (OPS-12)
+
+`openapi.json` (raíz del repo, versionado) es el contrato con el frontend: `@drinks-on-chain/mocks` lo importa con `pnpm openapi:pull` y valida sus datos de prueba contra él (plan/03 §2).
+
+1. Cambias controladores o DTO (colecciones con `@ApiPaginatedResponse(Dto)`, altas con `@Idempotent()`, rutas sin sesión con `@Public()`).
+2. `pnpm openapi:generate` compila y genera el documento **sin base de datos ni Redis** (Nest en modo `preview`, `src/openapi/generate.ts`), con rutas y componentes ordenados para que el diff sea estable. `pnpm openapi:check` solo comprueba.
+3. Versionas `openapi.json` en el mismo commit. `pnpm test` también falla si no está al día (`src/openapi/__tests__/openapi.spec.ts`, que además comprueba que toda colección declara `{ items, total, limit, offset }`, que las rutas `@Public` van sin candado y el resto con `bearer`).
+4. CI (`ci.yml`, job *check*): regenera y falla si `git diff --exit-code openapi.json` no está limpio.
+5. CI (`openapi.yml`): [`oasdiff`](https://github.com/oasdiff/oasdiff) en Docker compara con la versión anterior y publica en el resumen de la ejecución los cambios incompatibles y el changelog. En `dev` (push o PR) **solo avisa**; en un **PR a `main` falla** salvo que el PR tenga la etiqueta `breaking-change` o una línea `BREAKING CHANGE:` en la descripción (cambio coordinado con el frontend y anotado en `drinks-on-chain-mocks`).
+
 Con la API levantada:
 - **Swagger UI:** <http://localhost:4000/docs>
-- **JSON OpenAPI Spec:** <http://localhost:4000/docs-json>
+- **JSON OpenAPI Spec:** <http://localhost:4000/docs-json> (mismo documento que `openapi.json`)
+- `SWAGGER_ENABLED=false` apaga ambos (producción). En desarrollo quedan activos: <https://136.243.223.39.sslip.io/docs>.
 
 ---
 

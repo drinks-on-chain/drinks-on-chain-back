@@ -2,6 +2,8 @@
 
 > Todos los endpoints del sistema devuelven respuestas en el mismo formato estructurado.  
 > Implementado via `ResponseTransformInterceptor` global.
+>
+> **Ajustado por A-33 (27-09-2026)**: listas con `limit`/`offset` (no `page`), validación en **422** con `details: [{ field, message }]`, cabecera `Idempotency-Key` y 429 con `Retry-After`. Fuente: `plan/contratos/o0-sesiones-y-estandares.md` §1–§3. El contrato publicado es `openapi.json` en la raíz del repo.
 
 ---
 
@@ -18,23 +20,19 @@
 }
 ```
 
-### Respuesta de lista con paginación
+### Respuesta de lista con paginación (ajustado por A-33)
+Toda colección (también `wineries/pending` y `wineries/my/members`) devuelve una página:
 ```json
 {
   "success": true,
   "statusCode": 200,
   "timestamp": "2026-08-28T21:00:00.000Z",
-  "path": "/v1/harvest-batches",
+  "path": "/v1/harvest-batches?limit=20&offset=40",
   "data": {
     "items": [ ... ],
-    "pagination": {
-      "total": 47,
-      "page": 1,
-      "limit": 20,
-      "totalPages": 3,
-      "hasNextPage": true,
-      "hasPrevPage": false
-    }
+    "total": 47,
+    "limit": 20,
+    "offset": 40
   }
 }
 ```
@@ -54,11 +52,12 @@
 }
 ```
 
-### Respuesta de error de validación (400)
+### Respuesta de error de validación (422, ajustado por A-33)
+`details` es **siempre** una lista de `{ field, message }` o `null`. `field` usa notación de puntos en los anidados (`items.0.quantity`) y es `null` si el error no es de un campo. Un detalle por regla incumplida.
 ```json
 {
   "success": false,
-  "statusCode": 400,
+  "statusCode": 422,
   "timestamp": "2026-08-28T21:00:00.000Z",
   "path": "/v1/harvest-batches",
   "error": {
@@ -76,16 +75,24 @@
 
 ## Implementación
 
+| Pieza | Archivo |
+|---|---|
+| Interfaces (`ApiSuccessResponse`, `ApiErrorResponse`, `ErrorDetail`, `Paginated<T>`) | `src/shared/interfaces/api-response.interface.ts` |
+| Envoltorio de éxito | `src/shared/interceptors/response-transform.interceptor.ts` |
+| Filtro de errores (normaliza `details`, 429 con `Retry-After`) | `src/shared/filters/global-exception.filter.ts` |
+| `ValidationPipe` global → 422 con `details` por campo | `src/shared/pipes/app-validation.pipe.ts`, `src/shared/exceptions/validation.exception.ts` |
+| Catálogo de códigos | `src/shared/exceptions/error-codes.ts` |
+| Consulta paginada y página | `src/shared/dto/pagination-query.dto.ts` |
+| `@ApiPaginatedResponse(Dto)` (esquema de la página en OpenAPI) | `src/shared/decorators/api-paginated-response.decorator.ts` |
+| `@Idempotent()` e interceptor | `src/shared/idempotency/` |
+| Configuración común de la app (la usan `main.ts`, las e2e y el OpenAPI) | `src/app.setup.ts` |
+
 ### Interfaz de respuesta
 ```typescript
 // src/shared/interfaces/api-response.interface.ts
-
-export interface ApiSuccessResponse<T> {
-  success: true;
-  statusCode: number;
-  timestamp: string;
-  path: string;
-  data: T;
+export interface ErrorDetail {
+  field: string | null; // notación de puntos: items.0.quantity
+  message: string;
 }
 
 export interface ApiErrorResponse {
@@ -93,86 +100,30 @@ export interface ApiErrorResponse {
   statusCode: number;
   timestamp: string;
   path: string;
-  error: {
-    code: string;
-    message: string;
-    details: ValidationErrorDetail[] | null;
-  };
+  error: { code: string; message: string; details: ErrorDetail[] | null };
 }
 
-export interface ValidationErrorDetail {
-  field: string;
-  message: string;
-}
-
-export interface PaginatedData<T> {
+export interface Paginated<T> {
   items: T[];
-  pagination: PaginationMeta;
-}
-
-export interface PaginationMeta {
   total: number;
-  page: number;
   limit: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
+  offset: number;
 }
 ```
 
-### Interceptor de transformación global
+### Validación global (422)
 ```typescript
-// src/shared/interceptors/response-transform.interceptor.ts
-
-import {
-  Injectable, NestInterceptor, ExecutionContext,
-  CallHandler,
-} from '@nestjs/common';
-import { Observable } from 'rxjs';
-import { map } from 'rxjs/operators';
-import { Request } from 'express';
-import { ApiSuccessResponse } from '../interfaces/api-response.interface';
-
-@Injectable()
-export class ResponseTransformInterceptor<T>
-  implements NestInterceptor<T, ApiSuccessResponse<T>> {
-
-  intercept(
-    context: ExecutionContext,
-    next: CallHandler,
-  ): Observable<ApiSuccessResponse<T>> {
-    const request = context.switchToHttp().getRequest<Request>();
-
-    return next.handle().pipe(
-      map((data) => ({
-        success: true,
-        statusCode: context.switchToHttp().getResponse().statusCode,
-        timestamp: new Date().toISOString(),
-        path: request.url,
-        data,
-      })),
-    );
-  }
-}
+// src/shared/pipes/app-validation.pipe.ts — lo aplica configureApp()
+new ValidationPipe({
+  whitelist: true,
+  forbidNonWhitelisted: true,
+  transform: true,
+  exceptionFactory: (errors) =>
+    new ValidationException(flattenValidationErrors(errors)), // 422 VALIDATION_ERROR
+});
 ```
 
-### Registro global en main.ts
-```typescript
-// src/main.ts
-app.useGlobalInterceptors(new ResponseTransformInterceptor());
-app.useGlobalPipes(new ValidationPipe({
-  whitelist: true,          // elimina campos no declarados en el DTO
-  forbidNonWhitelisted: true, // lanza error si llegan campos no declarados
-  transform: true,          // transforma strings a sus tipos (ej. "42" → 42)
-  exceptionFactory: (errors) => {
-    const details = errors.map(e => ({
-      field: e.property,
-      message: Object.values(e.constraints ?? {}).join(', '),
-    }));
-    throw new BadRequestException({ code: 'VALIDATION_ERROR', details });
-  },
-}));
-```
+Cuando una comprobación de un campo depende de otro y se hace en el servicio, se lanza igual con el campo: `throw ValidationException.forField('grossWeightKg', 'El peso bruto debe ser…')`.
 
 ---
 
@@ -180,6 +131,15 @@ app.useGlobalPipes(new ValidationPipe({
 
 > Los códigos de error son `UPPER_SNAKE_CASE` y siempre tienen prefijo del dominio.  
 > Permiten al cliente identificar el tipo de error sin parsear el mensaje.
+
+### Idempotencia (A-33)
+| Código | HTTP | Descripción |
+|---|---|---|
+| `IDEMPOTENCY_KEY_INVALID` | 422 | `Idempotency-Key` no es un UUID (`details[0].field = "Idempotency-Key"`) |
+| `IDEMPOTENCY_KEY_REQUIRED` | 422 | La operación exige la cabecera (catálogo, desde la Ola 3) |
+| `IDEMPOTENCY_KEY_REUSED` | 409 | Misma clave con otro cuerpo |
+| `IDEMPOTENCY_IN_PROGRESS` | 409 | Otra petición con la misma clave aún se procesa |
+| `IDEMPOTENCY_STORE_UNAVAILABLE` | 503 | Redis no responde; la operación no se ejecuta |
 
 ### Autenticación y Autorización
 | Código | HTTP | Descripción |
@@ -189,6 +149,11 @@ app.useGlobalPipes(new ValidationPipe({
 | `AUTH_TOKEN_INVALID` | 401 | JWT inválido o malformado |
 | `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Rol insuficiente para la operación |
 | `AUTH_TENANT_MISMATCH` | 403 | El recurso no pertenece al tenant del usuario |
+
+### Bodegas
+| Código | HTTP | Descripción |
+|---|---|---|
+| `WINERY_NOT_PENDING` | 409 | Aprobar o rechazar una bodega que ya no está en `PENDING` |
 
 ### Multi-tenant
 | Código | HTTP | Descripción |
@@ -208,6 +173,8 @@ app.useGlobalPipes(new ValidationPipe({
 | Código | HTTP | Descripción |
 |---|---|---|
 | `FERMENTATION_TANK_NOT_FOUND` | 404 | |
+| `FERMENTATION_TANK_ALREADY_TRANSFERRED` | 409 | La cuba ya pasó a un lote de crianza |
+| `TRACEABILITY_STRATEGY_NOT_FOUND` | 422 | No hay estrategia de trazabilidad para el tipo de bebida |
 | `FERMENTATION_TANK_WRONG_STATUS` | 422 | Operación no válida en el estado actual |
 | `FERMENTATION_TANK_DESTINATION_LOCKED` | 422 | El destino ya fue definido y no puede cambiarse |
 
@@ -256,7 +223,11 @@ app.useGlobalPipes(new ValidationPipe({
 ### Validación General
 | Código | HTTP | Descripción |
 |---|---|---|
-| `VALIDATION_ERROR` | 400 | Falló la validación del DTO (ver `details`) |
+| `VALIDATION_ERROR` | 422 | Falló la validación del DTO, la query o un campo (ver `details`). Ajustado por A-33: antes 400 |
+| `BAD_REQUEST` | 400 | Petición mal formada (JSON inválido, parámetro de ruta que no es UUID) |
+| `UNAUTHORIZED` / `FORBIDDEN` / `NOT_FOUND` / `CONFLICT` | 401 / 403 / 404 / 409 | Genéricos, cuando la excepción no trae código propio. Un recurso de otra organización es **404**, nunca 403 |
+| `UNPROCESSABLE_ENTITY` | 422 | Regla de negocio sin código propio |
+| `TOO_MANY_REQUESTS` | 429 | Límite de peticiones; la respuesta lleva `Retry-After` (segundos) |
 | `RESOURCE_NOT_FOUND` | 404 | Recurso genérico no encontrado |
 | `INTERNAL_ERROR` | 500 | Error interno del servidor |
 | `STELLAR_TX_FAILED` | 502 | La transacción en Stellar falló |
@@ -264,76 +235,69 @@ app.useGlobalPipes(new ValidationPipe({
 
 ---
 
-## Paginación
+## Paginación (ajustado por A-33, 27-09-2026)
+
+> Las reglas originales usaban `page`/`sortBy`/`sortOrder` y `pagination.totalPages…`. A-33 fija `limit`/`offset` y la página `{ items, total, limit, offset }` (contrato O0 §2).
 
 ### Query params estándar
 ```
-GET /v1/harvest-batches?page=1&limit=20&sortBy=createdAt&sortOrder=desc
+GET /v1/harvest-batches?limit=20&offset=40&harvestYear=2026
 ```
 
-| Param | Default | Máximo | Descripción |
+| Param | Default | Rango | Descripción |
 |---|---|---|---|
-| `page` | 1 | — | Página actual (1-indexed) |
-| `limit` | 20 | 100 | Registros por página |
-| `sortBy` | `createdAt` | — | Campo por el que ordenar |
-| `sortOrder` | `desc` | — | `asc` o `desc` |
+| `limit` | 20 | 1–100 | Resultados por página. Fuera de rango → 422 `VALIDATION_ERROR` en `limit` |
+| `offset` | 0 | ≥ 0 | Resultados que se saltan. Negativo → 422 en `offset` |
 
-### DTO de paginación reutilizable
+El orden lo fija cada colección (por defecto, fecha de alta descendente).
+
+### DTO de consulta reutilizable
 ```typescript
 // src/shared/dto/pagination-query.dto.ts
-import { Type } from 'class-transformer';
-import { IsOptional, IsInt, Min, Max, IsString, IsEnum } from 'class-validator';
-
 export class PaginationQueryDto {
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  page?: number = 1;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100)
+  limit: number = 20;
 
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  @Max(100)
-  limit?: number = 20;
-
-  @IsOptional()
-  @IsString()
-  sortBy?: string = 'createdAt';
-
-  @IsOptional()
-  @IsEnum(['asc', 'desc'])
-  sortOrder?: 'asc' | 'desc' = 'desc';
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0)
+  offset: number = 0;
 }
+
+// Las consultas con filtros la extienden
+export class QueryHarvestBatchesDto extends PaginationQueryDto { /* filtros */ }
 ```
 
-### Helper de paginación para Prisma
+### Servicio y controlador
 ```typescript
-// src/shared/helpers/pagination.helper.ts
+// Servicio
+const [items, total] = await Promise.all([
+  this.prisma.harvestBatch.findMany({ where, ...toPrismaPage(query), orderBy }),
+  this.prisma.harvestBatch.count({ where }),
+]);
+return toPage(items, total, query); // { items, total, limit, offset }
 
-export function buildPaginationMeta(
-  total: number,
-  page: number,
-  limit: number,
-): PaginationMeta {
-  const totalPages = Math.ceil(total / limit);
-  return {
-    total,
-    page,
-    limit,
-    totalPages,
-    hasNextPage: page < totalPages,
-    hasPrevPage: page > 1,
-  };
-}
+// Controlador: declara la página en OpenAPI (y el 422 de limit/offset)
+@Get()
+@ApiPaginatedResponse(HarvestBatchResponseDto, { description: 'Página de lotes' })
+findAll(@Query() query: QueryHarvestBatchesDto) { … }
+```
 
-export function buildPrismaSkipTake(page: number, limit: number) {
-  return {
-    skip: (page - 1) * limit,
-    take: limit,
-  };
-}
+Una prueba (`src/openapi/__tests__/openapi.spec.ts`) recorre el OpenAPI y falla si una colección no declara la página o si alguna respuesta es un array plano.
+
+---
+
+## Idempotency-Key (A-33, contrato O0 §3)
+
+- Cabecera `Idempotency-Key: <UUID>`, permitida en CORS. Se acepta en cualquier `POST`; las operaciones marcadas con `@Idempotent()` la aplican (hoy, las altas del ERP; desde la Ola 3, obligatoria con `@Idempotent({ required: true })` en pedidos, pases, canjes, aprobaciones de tokenización y reembolsos).
+- Clave de almacenamiento en Redis: persona + método y ruta + clave. Se guarda la huella SHA-256 del cuerpo (JSON canónico) y la respuesta durante **24 h**.
+- Misma clave y mismo cuerpo → la misma respuesta guardada, sin volver a ejecutar la operación (cabecera `Idempotent-Replayed: true`).
+- Misma clave con otro cuerpo → 409 `IDEMPOTENCY_KEY_REUSED`. Misma clave mientras la primera sigue en curso → 409 `IDEMPOTENCY_IN_PROGRESS` (reserva atómica `SET NX` de 120 s).
+- Si la operación falla (4xx/5xx), la clave se libera y se puede reintentar con ella.
+
+```typescript
+@Post()
+@HttpCode(HttpStatus.CREATED)
+@Idempotent()
+create(@Body() dto: CreateTerroirDto) { … }
 ```
 
 ---

@@ -3,6 +3,8 @@
 > Las excepciones se manejan de forma centralizada mediante un `HttpExceptionFilter` global.  
 > Nunca se exponen stack traces al cliente en producción.  
 > Todas las excepciones de dominio tienen un código de error semántico (ver `03-formato-respuestas.md`).
+>
+> **Ajustado por A-33 (27-09-2026)**: la validación responde **422** `VALIDATION_ERROR` (antes 400) y `details` es siempre `[{ field, message }]` o `null` — nunca cadenas ni objetos internos. Los conflictos de estado son 409 y el 429 lleva `Retry-After`. Implementación real: `src/shared/filters/global-exception.filter.ts`, `src/shared/exceptions/validation.exception.ts` y el catálogo `src/shared/exceptions/error-codes.ts`.
 
 ---
 
@@ -19,6 +21,7 @@ Error (Node.js)
     └── UnprocessableEntityException → 422
          
 AppException (custom, base)       ← Excepciones de dominio del proyecto
+├── ValidationException           ← 422 VALIDATION_ERROR con details [{ field, message }] (A-33)
 ├── DomainException               ← Regla de negocio violada
 ├── TenantException               ← Violación de multi-tenancy
 ├── BlockchainException           ← Error de Stellar/Soroban
@@ -181,6 +184,15 @@ export const PaymentErrors = {
 ---
 
 ## Exception Filter Global
+
+> Ajustado por A-33: el ejemplo de abajo es la guía original. El filtro del repositorio además normaliza `details` (`normalizeErrorDetails`: solo `[{ field, message }]`, el resto se descarta y queda en los logs), convierte una lista de mensajes sueltos en 422 `VALIDATION_ERROR` con `field: null` y añade `Retry-After` a todo 429 que no lo traiga. La validación ya no llega como `BadRequestException`: el `ValidationPipe` lanza `ValidationException` (422).
+
+```typescript
+// Validación de un campo que depende de otro, desde un servicio
+if (dto.grossWeightKg <= dto.tareWeightKg) {
+  throw ValidationException.forField('grossWeightKg', 'El peso bruto debe ser estrictamente mayor al peso tara');
+}
+```
 
 ```typescript
 // src/shared/filters/http-exception.filter.ts

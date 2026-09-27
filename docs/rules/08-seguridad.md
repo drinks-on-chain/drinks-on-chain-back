@@ -19,6 +19,10 @@
 ### C. Idempotencia en Transacciones Blockchain
 - Antes de enviar una transacción de minteo o anclaje, el backend verifica si la entidad ya cuenta con un `tx_hash` registrado para evitar doble emisión o consumo innecesario de comisiones (fees de Stellar).
 
+### D. Idempotencia en la API (`Idempotency-Key`) — ajustado por A-33 (27-09-2026)
+- Los clientes envían `Idempotency-Key: <UUID>` en las operaciones que no deben repetirse (cabecera permitida en CORS). `@Idempotent()` guarda en Redis, 24 h, la huella del cuerpo y la respuesta por persona + ruta + clave: un reintento devuelve la misma respuesta sin repetir la operación; otro cuerpo con la misma clave → 409 `IDEMPOTENCY_KEY_REUSED`; dos peticiones a la vez → 409 `IDEMPOTENCY_IN_PROGRESS`.
+- Obligatoria (`@Idempotent({ required: true })`) desde la Ola 3 en pedidos, pases, canjes, aprobaciones de tokenización y reembolsos; hoy se aplica a las altas del ERP. Complementa, no sustituye, las restricciones `UNIQUE` y las comprobaciones de estado de la base.
+
 ---
 
 ## 2. Aislamiento Multi-Tenant (Tenant Boundary Isolation)
@@ -128,7 +132,7 @@ Para mitigar ataques de fuerza bruta y denegación de servicio (DoS):
 - Todo endpoint con body o query params debe validar contra un DTO con `class-validator`.
 - Configuración global estricta en `main.ts`:
   - `whitelist: true` (descarta propiedades no declaradas en el DTO).
-  - `forbidNonWhitelisted: true` (rechaza con HTTP 400 si se envían campos adicionales maliciosos).
+  - `forbidNonWhitelisted: true` (rechaza con HTTP 422 `VALIDATION_ERROR` y un detalle por campo no declarado; ajustado por A-33, antes 400).
   - `transform: true` (convierte tipos primitivos de forma segura).
 
 ### E. CORS Restrictivo
