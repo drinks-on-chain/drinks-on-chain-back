@@ -36,6 +36,14 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm test
       - run: pnpm build
+      # OPS-12: openapi.json versionado = el que genera el código compilado
+      - name: OpenAPI al día (openapi.json)
+        run: |
+          node dist/openapi/generate.js
+          if ! git diff --exit-code -- openapi.json || [ -n "$(git status --porcelain -- openapi.json)" ]; then
+            echo "::error::openapi.json no coincide con el código. Ejecuta 'pnpm openapi:generate' y versiona el resultado."
+            exit 1
+          fi
 
   e2e:
     name: e2e y migraciones (Postgres y Redis reales)
