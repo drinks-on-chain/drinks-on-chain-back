@@ -3,11 +3,15 @@ import { Type } from 'class-transformer';
 import {
   IsInt,
   IsNotEmpty,
+  IsNumber,
+  IsObject,
+  IsOptional,
   IsString,
   Min,
   ValidateNested,
 } from 'class-validator';
 import { createAppValidationPipe } from '../app-validation.pipe';
+import { NullableFields } from '../optional-nulls';
 import { ValidationException } from '../../exceptions/validation.exception';
 import {
   DEFAULT_PAGE_LIMIT,
@@ -30,6 +34,30 @@ class OrderDto {
   @Type(() => LineDto)
   items!: LineDto[];
 }
+
+class ParcelDto {
+  @IsString()
+  @IsNotEmpty()
+  name!: string;
+
+  @IsNumber()
+  surface!: number;
+
+  @IsOptional()
+  @IsNumber()
+  latitude?: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+
+  @IsOptional()
+  @IsObject()
+  polygon?: Record<string, unknown>;
+}
+
+@NullableFields('latitude', 'polygon')
+class ParcelPatchDto extends ParcelDto {}
 
 describe('createAppValidationPipe (contrato O0 §1-§2)', () => {
   const pipe = createAppValidationPipe();
@@ -117,5 +145,63 @@ describe('createAppValidationPipe (contrato O0 §1-§2)', () => {
     expect(error.details).toEqual([
       { field: 'page', message: 'property page should not exist' },
     ]);
+  });
+
+  describe('null en campos opcionales del cuerpo', () => {
+    it('equivale a omitirlos (no llega al servicio)', async () => {
+      const result = (await pipe.transform(
+        {
+          name: 'Cuartel 4',
+          surface: 5,
+          latitude: null,
+          notes: null,
+          polygon: { type: 'Point', coordinates: [1, null] },
+        },
+        body(ParcelDto),
+      )) as ParcelDto;
+      expect(result).toBeInstanceOf(ParcelDto);
+      expect(result.latitude).toBeUndefined();
+      expect(result.notes).toBeUndefined();
+      // Los objetos libres no se tocan
+      expect(result.polygon).toEqual({ type: 'Point', coordinates: [1, null] });
+    });
+
+    it('en un obligatorio sigue siendo 422', async () => {
+      const error = await validationError(
+        { name: 'Cuartel 4', surface: null },
+        body(ParcelDto),
+      );
+      expect(error.details).toEqual([
+        expect.objectContaining({ field: 'surface' }),
+      ]);
+    });
+
+    it('se conserva en los campos de @NullableFields (borrar el dato)', async () => {
+      const result = (await pipe.transform(
+        { name: 'x', surface: 1, latitude: null, notes: null, polygon: null },
+        body(ParcelPatchDto),
+      )) as ParcelPatchDto;
+      expect(result.latitude).toBeNull();
+      expect(result.polygon).toBeNull();
+      expect(result.notes).toBeUndefined();
+    });
+
+    it('un campo no declarado con null sigue siendo un error', async () => {
+      const error = await validationError(
+        { name: 'x', surface: 1, extra: null },
+        body(ParcelDto),
+      );
+      expect(error.details).toEqual([
+        { field: 'extra', message: 'property extra should not exist' },
+      ]);
+    });
+
+    it('no afecta a query ni a parámetros', async () => {
+      const result = await pipe.transform(null, {
+        type: 'param',
+        metatype: String,
+      });
+      expect(result).toBeNull();
+    });
   });
 });

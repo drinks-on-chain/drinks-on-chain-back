@@ -90,7 +90,12 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     await runSeed(
       prisma,
-      { superadmin: null, demo: { password: DEMO_PASSWORD }, bcryptRounds: 4 },
+      {
+        superadmin: null,
+        demo: { password: DEMO_PASSWORD, totpSecret: null },
+        bcryptRounds: 4,
+        mfaKeys: { jwtSecret: null, mfaEncryptionKey: null },
+      },
       undefined,
       loadMockFixtures(),
     );
@@ -219,6 +224,111 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
     for (const event of events) {
       expect(typeof event.after?.surfaceHectares).toBe('string');
     }
+  });
+
+  it('null en campos opcionales = omitido (antes 500); en obligatorios, 422', async () => {
+    const send = (method: 'post' | 'patch', path: string, body: object) =>
+      http()
+        [method](path)
+        .set('X-Forwarded-For', nextIp())
+        .set('Authorization', `Bearer ${tokens.altos}`)
+        .send(body);
+
+    const created = await send('post', '/v1/terroirs', {
+      parcelName: `Cuartel nulos ${run}`,
+      cadastreCode: null,
+      surfaceHectares: 2.5,
+      altitudeMasl: 1700,
+      latitude: null,
+      longitude: null,
+      geographicPolygonGeojson: null,
+      rawMaterialType: 'uva',
+      varietyName: 'Moscatel de Alejandría',
+      soilType: null,
+      irrigationSystem: null,
+      isDoEligible: null,
+      doType: null,
+      doCertificateUrl: null,
+    }).expect(201);
+    openapi.expectResponse('post', '/v1/terroirs', created);
+    expect(created.body.data).toMatchObject({
+      latitude: null,
+      longitude: null,
+      cadastreCode: null,
+      surfaceHectares: 2.5,
+    });
+    const terroirId = created.body.data.id as string;
+
+    // PATCH: null en un campo no anulable no cambia nada; en uno anulable, borra
+    const patched = await send('patch', `/v1/terroirs/${terroirId}`, {
+      surfaceHectares: null,
+      isActive: null,
+      parcelName: null,
+      soilType: 'Franco',
+    }).expect(200);
+    openapi.expectResponse('patch', `/v1/terroirs/${terroirId}`, patched);
+    expect(patched.body.data).toMatchObject({
+      surfaceHectares: 2.5,
+      isActive: true,
+      soilType: 'Franco',
+    });
+    const cleared = await send('patch', `/v1/terroirs/${terroirId}`, {
+      soilType: null,
+    }).expect(200);
+    expect(cleared.body.data.soilType).toBeNull();
+
+    const missing = await send('post', '/v1/terroirs', {
+      parcelName: `Cuartel sin superficie ${run}`,
+      surfaceHectares: null,
+      altitudeMasl: 1700,
+      rawMaterialType: 'uva',
+      varietyName: 'Moscatel de Alejandría',
+    }).expect(422);
+    openapi.expectResponse('post', '/v1/terroirs', missing);
+    expect(missing.body.error.code).toBe('VALIDATION_ERROR');
+    expect(
+      (missing.body.error.details as { field: string }[]).map((d) => d.field),
+    ).toContain('surfaceHectares');
+
+    const now = new Date();
+    const harvest = await send('post', '/v1/harvest-batches', {
+      terroirId,
+      intakeDate: now.toISOString(),
+      harvestYear: now.getUTCFullYear(),
+      grossWeightKg: 1200.5,
+      tareWeightKg: 200,
+      brixDegrees: 22.5,
+      initialPh: 3.4,
+      initialAcidityGl: 5.2,
+      temperatureAtIntakeC: null,
+      phytosanitaryStatus: null,
+      notes: null,
+    }).expect(201);
+    openapi.expectResponse('post', '/v1/harvest-batches', harvest);
+    expect(harvest.body.data).toMatchObject({
+      netWeightKg: 1000.5,
+      temperatureAtIntakeC: null,
+      phytosanitaryStatus: 'PENDING_INSPECTION',
+    });
+
+    const tank = await firstItem('altos', '/v1/fermentation-tanks');
+    const log = await send('post', `/v1/fermentation-tanks/${tank.id}/logs`, {
+      temperatureCelsius: 17,
+      specificGravity: null,
+      phValue: null,
+      co2Observations: null,
+      notes: null,
+      recordedAt: now.toISOString(),
+    }).expect(201);
+    openapi.expectResponse(
+      'post',
+      `/v1/fermentation-tanks/${tank.id}/logs`,
+      log,
+    );
+    expect(log.body.data).toMatchObject({
+      temperatureCelsius: 17,
+      specificGravity: null,
+    });
   });
 
   it('vendimias', async () => {
