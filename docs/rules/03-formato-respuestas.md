@@ -141,26 +141,35 @@ Cuando una comprobación de un campo depende de otro y se hace en el servicio, s
 | `IDEMPOTENCY_IN_PROGRESS` | 409 | Otra petición con la misma clave aún se procesa |
 | `IDEMPOTENCY_STORE_UNAVAILABLE` | 503 | Redis no responde; la operación no se ejecuta |
 
-### Autenticación y Autorización
+### Autenticación y sesión — ajustado por A-33 (sesiones y membresías, `docs/arquitectura/identidad.md`)
 | Código | HTTP | Descripción |
 |---|---|---|
-| `AUTH_INVALID_CREDENTIALS` | 401 | Email o contraseña incorrectos |
-| `AUTH_TOKEN_EXPIRED` | 401 | JWT expirado |
-| `AUTH_TOKEN_INVALID` | 401 | JWT inválido o malformado |
-| `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Rol insuficiente para la operación |
-| `AUTH_TENANT_MISMATCH` | 403 | El recurso no pertenece al tenant del usuario |
+| `AUTH_INVALID_CREDENTIALS` | 401 | Email o contraseña incorrectos (o cuenta bloqueada: no se distingue) |
+| `AUTH_TOKEN_EXPIRED` | 401 | Acceso caducado (15 min): renovar |
+| `AUTH_TOKEN_INVALID` | 401 | Acceso ausente, inválido o de 0.1 (sin sesión) |
+| `AUTH_REFRESH_INVALID` | 401 | Refresco ausente o que no pertenece a la sesión |
+| `AUTH_REFRESH_REUSED` | 401 | Refresco ya rotado presentado otra vez: la sesión se revoca |
+| `AUTH_SESSION_REVOKED` | 401 | Sesión revocada, o persona o membresía activa bloqueada |
+| `AUTH_SESSION_EXPIRED` | 401 | Sesión caducada (7 días personal, 30 consumidores) |
+| `AUTH_TOO_MANY_ATTEMPTS` | 429 | Bloqueo progresivo del login, con `Retry-After` |
+| `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Audiencia, tipo de organización activa o rol insuficientes |
+
+### Organizaciones y membresías
+| Código | HTTP | Descripción |
+|---|---|---|
+| `ORG_NOT_FOUND` | 404 | Sin membresía en esa organización, o bodega inexistente en `?wineryId=` |
+| `ORG_MEMBERSHIP_BLOCKED` | 403 | Cambiar a una organización donde la membresía está bloqueada |
+| `ORG_REVOKED` | 403 | Cambiar a una organización revocada |
+| `ORG_NOT_ACTIVE` | 403 | ERP con la bodega activa no `ACTIVE` (SE-05; `details[0].message` = estado; desde la Ola 1) |
+| `ORG_BLOCKED_BY_PLATFORM` | 403 | El dueño intenta reactivar una membresía que bloqueó la plataforma |
+| `ORG_ALREADY_MEMBER` | 409 | La persona ya es miembro activo |
+
+Un recurso de otra bodega sigue respondiendo **404** (`NOT_FOUND`), nunca 403.
 
 ### Bodegas
 | Código | HTTP | Descripción |
 |---|---|---|
-| `WINERY_NOT_PENDING` | 409 | Aprobar o rechazar una bodega que ya no está en `PENDING` |
-
-### Multi-tenant
-| Código | HTTP | Descripción |
-|---|---|---|
-| `TENANT_NOT_FOUND` | 404 | Bodega no encontrada |
-| `TENANT_NOT_ACTIVE` | 403 | Bodega suspendida o revocada |
-| `TENANT_ALREADY_REGISTERED` | 409 | Bodega ya registrada on-chain |
+| `WINERY_NOT_PENDING` | 409 | Aprobar o rechazar una bodega que ya no está en `INVITED` (antes `PENDING`) |
 
 ### ERP — Cosechas
 | Código | HTTP | Descripción |

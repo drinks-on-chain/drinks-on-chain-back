@@ -32,8 +32,10 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Define JWT_REFRESH_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
-      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      # Acceso de 15 min: un valor mayor en el .env del servidor se recorta a 900 s
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-900s}
+      # nginx delante (una capa): IP real para los límites de peticiones (SE-06)
+      TRUST_PROXY: ${TRUST_PROXY:-1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS}
       STORAGE_DRIVER: local
       STORAGE_LOCAL_PATH: /app/uploads

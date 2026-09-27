@@ -27,7 +27,7 @@ export const envValidationSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   REDIS_URL: Joi.string().required(),
   JWT_SECRET: Joi.string().min(32).required(),
-  JWT_EXPIRES_IN: Joi.string().default('7d'),
+  JWT_EXPIRES_IN: Joi.string().default('900s'), // 15 min (A-33)
   STELLAR_NETWORK: Joi.string().valid('testnet', 'mainnet', 'futurenet').default('testnet'),
   STELLAR_HORIZON_URL: Joi.string().uri().required(),
   STELLAR_SOROBAN_RPC_URL: Joi.string().uri().required(),
@@ -57,8 +57,8 @@ Todo endpoint expuesto debe contar con decoradores de `@nestjs/swagger` indicand
 // Ejemplo de documentación en Controller
 @ApiTags('Harvest Batches')
 @ApiBearerAuth()
-@Controller('harvest-batches')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@OrgType('WINERY')
+@Controller('harvest-batches') // guards globales: acceso, autorización y bodega (A-33)
 export class HarvestBatchController {
   @Post()
   @ApiOperation({ summary: 'Registrar un nuevo lote de cosecha/vendimia' })

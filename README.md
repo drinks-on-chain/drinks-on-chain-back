@@ -41,10 +41,10 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `211/211` tests pasando (38 suites).
-- **Pruebas E2E:** `91/91` tests pasando (7 suites completas).
+- **Pruebas Unitarias:** `301/301` tests pasando (42 suites).
+- **Pruebas E2E:** `109/109` tests pasando (8 suites completas).
 - **Compilación TypeScript:** modo estricto (`strict: true`) sin errores; ESLint 9 sin errores (CI en cada push y PR).
-- **Base de Datos:** 15 modelos relacionales y 15 enums migrados y sincronizados en PostgreSQL (incluido el outbox).
+- **Base de Datos:** 18 modelos relacionales y 21 enums migrados y sincronizados en PostgreSQL (incluidos el outbox, las organizaciones, las membresías y las sesiones).
 
 ---
 
@@ -65,7 +65,8 @@ drinks-on-chain-backend/
 ├── src/                                # Código fuente de la aplicación NestJS
 │   ├── config/                         # Validación de variables de entorno (Joi)
 │   ├── modules/                        # Módulos de dominio de la aplicación
-│   │   ├── auth/                       # Autenticación JWT, RBAC y Guards
+│   │   ├── auth/                       # Sesiones (acceso + doc_rt), guards globales, límites
+│   │   ├── organizations/              # Organizaciones y membresías (roles por organización)
 │   │   ├── harvest-batches/            # Lotes de vendimia, pesaje neto y fitosanitario
 │   │   ├── health/                     # Healthcheck y diagnóstico de base de datos / Redis
 │   │   ├── terroirs/                   # Parcelas agrícolas, GeoJSON y altitud msnm
@@ -111,14 +112,12 @@ drinks-on-chain-backend/
    - `SinganiTraceabilityStrategy`: Restricción estricta de altitud $\ge 1,600$ msnm, 100% Moscatel de Alejandría, balance de masa en alambiques y **180 días obligatorios de reposo inerte**.
    - `BeerTraceabilityStrategy`: Control de densidades y atenuación de levaduras cerveceras.
 3. **Multi-Tenancy Estricto (`TenantGuard` & `@TenantId()`):** Aislamiento de datos a nivel de base de datos (`wineryId`) garantizando que ningún usuario acceda o vincule recursos de otra bodega (seguridad por oscuridad con respuesta `404 Not Found`).
-4. **Control de Acceso Basado en Roles (RBAC Estricto):**
-   - `PLATFORM_ADMIN`: Creado exclusivamente vía Seeder inicial. Cuenta con visibilidad global de lectura (`GET` en todos los módulos de trazabilidad de cualquier bodega, con filtro opcional `?wineryId=...`), directorio institucional de bodegas (`GET /v1/wineries`), aprobación (`POST /v1/wineries/:id/approve`) y revocación/rechazo (`POST /v1/wineries/:id/reject`).
-   - `WINERY_ADMIN`: Registrado mediante onboarding público (`signup`). Administra integralmente su bodega y da de alta a su personal operativo (`POST /v1/wineries/my/members/create`).
-   - `AGRONOMIST`: Incorporado por su bodega; gestiona parcelas (`terroirs`) y recepción de vendimia (`harvest-batches`).
-   - `ENOLOGIST`: Incorporado por su bodega; emite dictámenes fitosanitarios, bitácoras de fermentación, destilación, crianza y embotellado.
-   - `POS_OPERATOR`: Operador de punto de venta y cavas turísticas para canje físico de botellas (Claims).
-   - `CONSUMER`: Usuario registrado estándar para comercio, catálogo y seguimiento de pedidos.
-   > 🔒 **Endurecimiento de Seguridad:** El endpoint público `POST /v1/auth/signup` solo permite crear cuentas con rol `CONSUMER` o `WINERY_ADMIN`. Intentos de autoregistro con roles privilegiados (`PLATFORM_ADMIN`, `ENOLOGIST`, etc.) son rechazados con `403 Forbidden`. Todo el personal operativo debe ser dado de alta directamente por el administrador de su bodega.
+4. **Sesiones seguras y roles por membresía** (Ola 0 · 0.5–0.6, detalle en [`docs/arquitectura/identidad.md`](docs/arquitectura/identidad.md)):
+   - **Sesión**: acceso JWT de 15 min con `sid` y organización activa (`org`, `orgType`, `role`); renovación **rotativa** en la cookie `HttpOnly` `doc_rt` (7 días el personal, 30 los consumidores, deslizante), con **detección de reutilización** (revoca la sesión) y un periodo de gracia de 20 s para pestañas concurrentes; `logout` y `logout-all`; revocación inmediata al bloquear una persona o una membresía (lista de `sid` en Redis + sesión en la base).
+   - **Organizaciones y membresías**: una persona puede estar en varias organizaciones (`PLATFORM`, `WINERY`, `PICKUP_POINT`) con un rol en cada una: plataforma `SUPERADMIN`/`ADMIN`/`OPERATIONS`/`SUPPORT`; bodega `OWNER`/`ENOLOGIST`/`AGRONOMIST`/`OPERATOR`/`ACCOUNTANT`. La organización activa se elige con `POST /v1/auth/switch-organization`; `GET /v1/users/me` devuelve `{ user, memberships, activeOrganizationId }`.
+   - **Autorización**: guards globales (límite por IP real → acceso y sesión viva → `@Audience`/`@OrgType`/`@Roles` contra la organización activa → bodega de la petición). El personal de plataforma opera sobre una bodega con `?wineryId=` (obligatorio en escrituras). Una bodega solo puede añadir o reactivar membresías **de sí misma** (SE-01).
+   - `users.user_role` (`PLATFORM_ADMIN`, `WINERY_ADMIN`…) y `winery_members` quedan **obsoletos** hasta H1: solo alimentan los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`).
+   > 🔒 El endpoint público `POST /v1/auth/signup` solo crea cuentas `CONSUMER` o `WINERY_ADMIN`; el superadministrador sale del seeder (membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega lo incorpora su dueño. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
 5. **Grafo DAG de Trazabilidad:** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
 6. **Formato Estándar de Respuesta API:**
    ```json
@@ -176,7 +175,7 @@ pnpm start:worker:dev             # worker (otra terminal): outbox, colas y tare
 
 #### Variables de entorno
 
-`.env.example` documenta cada variable; la validación está en `src/config/env.validation.ts`. Solo son obligatorias `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` y `JWT_REFRESH_SECRET` (y `CORS_ALLOWED_ORIGINS` en producción). Stellar y el indexador son opcionales hasta la Ola 3; las variables de Dynamic, Supabase, pasarela bancaria y los contratos `CONTRACT_*` antiguos ya no se leen.
+`.env.example` documenta cada variable; la validación está en `src/config/env.validation.ts`. Solo son obligatorias `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` y `JWT_REFRESH_SECRET` (y `CORS_ALLOWED_ORIGINS` en producción). Detrás de un proxy, `TRUST_PROXY=1` (el servidor de desarrollo ya lo fija en `deploy/dev/compose.yml`); `JWT_REFRESH_EXPIRES_IN` ya no se usa. Stellar y el indexador son opcionales hasta la Ola 3; las variables de Dynamic, Supabase, pasarela bancaria y los contratos `CONTRACT_*` antiguos ya no se leen.
 
 **CORS**: `CORS_ALLOWED_ORIGINS` es una lista de orígenes exactos separada por comas (`https://erp.ejemplo.com,http://localhost:3002`). No se admiten comodines ni se refleja el origen de la petición; vacía fuera de producción equivale a `http://localhost:3002,http://localhost:3009`. Cabeceras permitidas: `Authorization`, `Content-Type`, `X-Correlation-ID`, `Idempotency-Key`, `Accept-Language`; expuestas: `X-Correlation-ID`, `Retry-After`.
 
@@ -325,6 +324,7 @@ sequenceDiagram
 
 - 🍸 **[Guía de Pruebas Manuales — Flujo Singani D.O.](docs/demo/guia_pruebas_manuales_trazabilidad.md):** Flujo completo con comandos `curl`, altitud $\ge 1,600$ msnm, destilación y 180 días de reposo inerte.
 - 🍷 **[Guía de Pruebas Manuales — Flujo Vino de Altura](docs/demo/guia_pruebas_manuales_vino.md):** Flujo vitivinícola con maceración, crianza en barricas de roble (190 días) y embotellado.
+- 🔐 **[Identidad, sesiones y membresías](docs/arquitectura/identidad.md):** modelo, cookie `doc_rt`, rotación y reutilización, organización activa, revocación, matriz de roles y límites.
 - 📋 **[Catálogo de Endpoints de la API](docs/endpoints/endpoints.md):** Referencia detallada de todos los endpoints, DTOs y respuestas.
 - 🗄️ **[Registro de Base de Datos](docs/bd/base_de_datos.md):** Estructura de tablas, atributos y relaciones Prisma.
 - 📜 **[Contrato de Trazabilidad Soroban](docs/contratos/trazabillidad.rs):** Smart contract en Rust de referencia para el anclaje on-chain.

@@ -181,27 +181,32 @@ export class NftMetadataFactory {
 
 ### Problema
 Cada petición HTTP entrante debe pasar por múltiples verificaciones secuenciales:
-1. ¿El token JWT es válido? (`JwtAuthGuard`)
-2. ¿El usuario tiene el rol necesario? (`RolesGuard`)
-3. ¿El usuario pertenece a la bodega solicitada y se aísla su tenant? (`TenantGuard`)
+0. ¿Está dentro del límite de peticiones de su IP real? (`AppThrottlerGuard`)
+1. ¿El token de acceso es válido y su sesión sigue viva? (`AccessTokenGuard`: firma, lista de revocación en Redis, sesión, persona y membresía)
+2. ¿Su audiencia, el tipo de su organización activa y su rol en ella alcanzan? (`AuthorizationGuard`: `@Audience`, `@OrgType`, `@Roles`, `@RequireActiveOrg`)
+3. ¿Sobre qué bodega trabaja y es la suya? (`TenantGuard`: la activa, o `?wineryId=` para la plataforma)
+
+> Ajustado por A-33 (27-09-2026): los cuatro guards son **globales** (`APP_GUARD` en `AppModule`) y los roles son **por membresía**, evaluados contra la organización activa de la sesión. Detalle en `docs/arquitectura/identidad.md`.
 
 ### Implementación
 NestJS implementa de forma nativa la Cadena de Responsabilidad mediante `CanActivate` Guards.
 
 ```
-Request ──▶ [ JwtAuthGuard ] ──▶ [ RolesGuard ] ──▶ [ TenantGuard ] ──▶ Controller
-                 │                    │                   │
-                 ▼ (401)              ▼ (403)             ▼ (403)
-             Unauthorized         Forbidden           TenantMismatch
+Request ──▶ [ Throttler ] ──▶ [ AccessToken ] ──▶ [ Authorization ] ──▶ [ Tenant ] ──▶ Controller
+                 │                 │                    │                   │
+                 ▼ (429)           ▼ (401)              ▼ (403)             ▼ (404 / 422)
+          TOO_MANY_REQUESTS   AUTH_TOKEN_* ·      AUTH_INSUFFICIENT_    otra bodega /
+                              AUTH_SESSION_*      PERMISSIONS           falta ?wineryId=
 ```
 
 ```typescript
-// Aplicación en Controller:
+// Aplicación en Controller (guards globales; solo se declaran los requisitos):
+@OrgType('WINERY')          // bodega activa (o plataforma con ?wineryId=)
+@RequireActiveOrg()         // SE-05
 @Controller('harvest-batches')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 export class HarvestBatchController {
   @Post()
-  @Roles(UserRole.ENOLOGIST, UserRole.AGRONOMIST, UserRole.WINERY_ADMIN)
+  @Roles('OWNER', 'AGRONOMIST', 'ENOLOGIST', 'OPERATOR')
   async create(
     @Body() dto: CreateHarvestBatchDto,
     @TenantId() tenantId: string,
