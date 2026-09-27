@@ -131,6 +131,26 @@ describe('Environment Validation Schema (Joi)', () => {
       ).toBeUndefined();
     });
 
+    it('PROXY_SHARED_SECRET: vacío o secretos de 32+ caracteres separados por comas', () => {
+      const long = 'a'.repeat(32);
+      expect(
+        envValidationSchema.validate({ ...validEnv, PROXY_SHARED_SECRET: '' })
+          .error,
+      ).toBeUndefined();
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          PROXY_SHARED_SECRET: `${long},${'b'.repeat(40)}`,
+        }).error,
+      ).toBeUndefined();
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          PROXY_SHARED_SECRET: `${long},corto`,
+        }).error?.message,
+      ).toContain('PROXY_SHARED_SECRET');
+    });
+
     it('límites y duraciones numéricos', () => {
       expect(
         envValidationSchema.validate({

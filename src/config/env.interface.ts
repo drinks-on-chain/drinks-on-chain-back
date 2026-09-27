@@ -22,6 +22,7 @@ export interface EnvironmentVariables {
   REFRESH_GRACE_SECONDS?: number;
   FEATURE_ENFORCE_ACTIVE_ORG?: boolean;
   TRUST_PROXY?: string;
+  PROXY_SHARED_SECRET?: string;
   RATE_LIMIT_GLOBAL_PER_MINUTE?: number;
   RATE_LIMIT_AUTH_PER_MINUTE?: number;
   RATE_LIMIT_LOGIN_PER_MINUTE?: number;

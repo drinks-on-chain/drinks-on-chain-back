@@ -111,6 +111,26 @@ export const envValidationSchema = Joi.object({
     'any.invalid':
       'TRUST_PROXY=true confiaría en cualquier X-Forwarded-For; usa el número de saltos (1 con nginx)',
   }),
+  // IP del cliente firmada por el proxy de las apps (O1-OPS-1): uno o varios
+  // secretos separados por comas (rotación sin corte), de al menos 32
+  // caracteres cada uno. Vacío = función desactivada.
+  PROXY_SHARED_SECRET: Joi.string()
+    .allow('')
+    .optional()
+    .custom((value: string, helpers) => {
+      const secrets = value
+        .split(',')
+        .map((secret) => secret.trim())
+        .filter((secret) => secret.length > 0);
+      if (secrets.some((secret) => secret.length < 32)) {
+        return helpers.error('string.proxySecret');
+      }
+      return value;
+    })
+    .messages({
+      'string.proxySecret':
+        'PROXY_SHARED_SECRET: cada secreto (separados por comas) debe tener al menos 32 caracteres (openssl rand -hex 32)',
+    }),
   // Límites de peticiones por IP y minuto (SE-06, IAM-07)
   RATE_LIMIT_GLOBAL_PER_MINUTE: Joi.number().integer().min(1).optional(),
   RATE_LIMIT_AUTH_PER_MINUTE: Joi.number().integer().min(1).optional(),

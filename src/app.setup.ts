@@ -4,9 +4,14 @@ import { HttpLoggingInterceptor } from './shared/interceptors/logging.intercepto
 import { ResponseTransformInterceptor } from './shared/interceptors/response-transform.interceptor';
 import { createAppValidationPipe } from './shared/pipes/app-validation.pipe';
 import { parseTrustProxy } from './config/trust-proxy.config';
+import {
+  createProxyClientIpMiddleware,
+  parseProxySecrets,
+} from './shared/middleware/proxy-client-ip';
 
 /**
- * Configuración común de la aplicación HTTP: `trust proxy`, versionado `/v1`, validación
+ * Configuración común de la aplicación HTTP: `trust proxy`, IP firmada por el
+ * proxy de las apps, versionado `/v1`, validación
  * (422 con `details` por campo), envoltorio de respuesta y filtro de errores.
  * La usan `main.ts`, las pruebas e2e y la generación del OpenAPI, para que
  * los tres vean exactamente la misma API.
@@ -20,6 +25,13 @@ export function configureApp(app: INestApplication): INestApplication {
       'trust proxy',
       parseTrustProxy(process.env.TRUST_PROXY),
     );
+  }
+  // IP del cliente firmada por el proxy de las apps (O1-OPS-1). Se registra
+  // aquí, antes que los middleware de los módulos, para que la correlación,
+  // la bitácora, las sesiones y los límites vean ya la IP resuelta.
+  const proxySecrets = parseProxySecrets(process.env.PROXY_SHARED_SECRET);
+  if (proxySecrets.length > 0) {
+    app.use(createProxyClientIpMiddleware(proxySecrets));
   }
   app.enableVersioning({
     type: VersioningType.URI,
