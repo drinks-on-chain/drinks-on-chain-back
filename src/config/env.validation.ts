@@ -96,21 +96,55 @@ export const envValidationSchema = Joi.object({
         'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed starting with S',
     }),
 
-  // Almacenamiento de archivos (local hoy; objetos privados en la Ola 0 · 0.9)
+  // Almacenamiento de objetos privado (OPS-06, SE-04): s3 (MinIO) o local
   STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
   STORAGE_LOCAL_PATH: Joi.string().default('./uploads'),
-  // Si falta, se deriva de PORT: http://localhost:<PORT>/uploads
+  // Origen público de la API para las URL firmadas del driver local
+  // (por defecto http://localhost:<PORT>)
   STORAGE_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
+    .allow('')
     .optional(),
+  // Vida de las URL firmadas de lectura (máx. 1 h)
+  STORAGE_SIGNED_URL_TTL_SECONDS: Joi.number()
+    .integer()
+    .min(30)
+    .max(3600)
+    .default(900),
+  // Secreto de las URL firmadas del driver local (por defecto, derivado de JWT_SECRET)
+  STORAGE_SIGNING_SECRET: Joi.string().min(32).allow('').optional(),
+  S3_ENDPOINT: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow(''),
+  // Endpoint que ve el navegador, si difiere del interno (p. ej. detrás de nginx)
+  S3_PUBLIC_ENDPOINT: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow(''),
+  S3_REGION: Joi.string().default('us-east-1'),
+  S3_FORCE_PATH_STYLE: Joi.boolean().default(true),
+  S3_BUCKET: Joi.string()
+    .pattern(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/)
+    .when('STORAGE_DRIVER', { is: 's3', then: Joi.required() }),
+  S3_ACCESS_KEY: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+  }),
+  S3_SECRET_KEY: Joi.string().when('STORAGE_DRIVER', {
+    is: 's3',
+    then: Joi.required(),
+  }),
+
+  // Logs: json (por defecto, una línea por entrada) o text (legible en local)
+  LOG_FORMAT: Joi.string().valid('json', 'text').default('json'),
 
   // Indexador (opcional hasta la Ola 3)
   STELLAR_INDEXER_POLL_INTERVAL_MS: Joi.number().min(1000).default(5000),
   STELLAR_INDEXER_START_LEDGER: Joi.number().min(0).default(0),
 
-  // Swagger UI en /docs y documento en /docs-json. `false` los apaga
-  // (producción); el contrato versionado es openapi.json.
-  SWAGGER_ENABLED: Joi.boolean().default(true),
+  // Swagger UI en /docs y documento en /docs-json (SE-08). Sin definir:
+  // activo fuera de producción, apagado en producción. El contrato versionado
+  // es openapi.json.
+  SWAGGER_ENABLED: Joi.boolean().optional(),
 
   // CORS: lista de orígenes exactos separada por comas; sin comodines.
   // Obligatoria en producción. El formato de cada origen se valida al

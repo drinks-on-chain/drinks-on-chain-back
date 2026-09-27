@@ -4,11 +4,11 @@ import { Logger } from '@nestjs/common';
 import { SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { configureApp } from './app.setup';
+import { JsonLogger } from './shared/logging/json-logger';
+import { isSwaggerEnabled } from './config/swagger.config';
 import { createOpenApiDocument } from './openapi/openapi';
 
 import { NestExpressApplication } from '@nestjs/platform-express';
-import * as path from 'path';
-import * as fs from 'fs';
 import { ConfigService } from '@nestjs/config';
 import {
   buildCorsOptions,
@@ -17,7 +17,13 @@ import {
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // Logs JSON de una línea (OPS-03); LOG_FORMAT=text para leerlos en local
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    logger:
+      (process.env.LOG_FORMAT ?? 'json').toLowerCase() === 'text'
+        ? undefined
+        : new JsonLogger('api'),
+  });
 
   // 1. Seguridad HTTP con Helmet (permitiendo carga cross-origin de recursos como imágenes y PDFs)
   app.use(
@@ -26,17 +32,8 @@ async function bootstrap() {
     }),
   );
 
-  // 1.1 Servir archivos estáticos locales (/uploads/...)
-  const uploadDir = path.resolve(
-    process.cwd(),
-    process.env.STORAGE_LOCAL_PATH || './uploads',
-  );
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
-  }
-  app.useStaticAssets(uploadDir, {
-    prefix: '/uploads/',
-  });
+  // Los archivos subidos son privados: no hay carpeta pública. Se leen con
+  // URL firmadas (docs/arquitectura/correo-y-archivos.md, SE-04).
 
   // 2. CORS: solo los orígenes exactos de CORS_ALLOWED_ORIGINS (nunca reflejo)
   const config = app.get(ConfigService);
@@ -51,9 +48,13 @@ async function bootstrap() {
   //    respuesta y filtro de errores: lo mismo que usan las e2e y el OpenAPI
   configureApp(app);
 
-  // 4. Swagger / OpenAPI en /docs y /docs-json (SWAGGER_ENABLED=false lo apaga)
-  const swaggerEnabled =
-    String(config.get('SWAGGER_ENABLED', 'true')).toLowerCase() !== 'false';
+  // 4. Swagger / OpenAPI en /docs y /docs-json (SE-08): apagado por defecto
+  //    en producción salvo SWAGGER_ENABLED=true (el entorno de desarrollo lo
+  //    activa en deploy/dev/compose.yml; el frontend lee /docs-json)
+  const swaggerEnabled = isSwaggerEnabled(
+    config.get<string | boolean>('SWAGGER_ENABLED'),
+    config.get<string>('NODE_ENV'),
+  );
   if (swaggerEnabled) {
     SwaggerModule.setup('docs', app, createOpenApiDocument(app), {
       customSiteTitle: 'Drinks on Chain API Docs',

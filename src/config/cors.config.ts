@@ -10,6 +10,8 @@ export const CORS_ALLOWED_HEADERS = [
   'X-Correlation-ID',
   'Idempotency-Key',
   'Accept-Language',
+  // App de origen para la bitácora (contrato O1 §7)
+  'X-Client-App',
 ] as const;
 
 /** Cabeceras de respuesta legibles desde el navegador (contrato O0 §3). */

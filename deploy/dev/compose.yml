@@ -37,12 +37,24 @@ services:
       # nginx delante (una capa): IP real para los límites de peticiones (SE-06)
       TRUST_PROXY: ${TRUST_PROXY:-1}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS}
-      STORAGE_DRIVER: local
+      # Almacenamiento privado en MinIO (red interna) con URL firmadas. Las
+      # credenciales salen de las de MinIO del .env si no se definen S3_*.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
       STORAGE_LOCAL_PATH: /app/uploads
-      STORAGE_BASE_URL: ${STORAGE_BASE_URL:?Define STORAGE_BASE_URL}
+      STORAGE_BASE_URL: ${STORAGE_BASE_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # Endpoint que ve el navegador para las URL firmadas (nginx → minio:9000)
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-doc-dev-uploads}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER:-doc-minio}}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD}}
+      S3_FORCE_PATH_STYLE: 'true'
       STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
-      # Desarrollo publica /docs y /docs-json (el frontend lee el contrato de ahí)
+      # Desarrollo publica /docs y /docs-json (el frontend lee el contrato de ahí);
+      # en producción queda apagado si no se define (SE-08)
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
     volumes:
@@ -53,6 +65,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_started
 
   postgres:
     image: postgres:16-alpine
@@ -130,6 +144,14 @@ services:
       OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
       OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
       WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
+      # Correo (cola `email`): en desarrollo, a Mailpit (UI en 127.0.0.1:8025)
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Drinks on Chain (desarrollo) <no-reply@dev.drinksonchain.local>}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
     healthcheck:
       test: ['CMD', 'node', 'dist/worker-healthcheck.js']
       interval: 15s
@@ -143,6 +165,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
 
 networks:
   internal:
