@@ -12,8 +12,8 @@
   },
   "scripts": {
     "build": "nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.ts\"",
-    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"prisma/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\" \"scripts/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug": "nest start --debug --watch",
@@ -34,6 +34,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
+    "seed": "ts-node --transpile-only -r tsconfig-paths/register src/seed.ts",
+    "seed:sync": "ts-node --transpile-only scripts/sync-seed-fixtures.ts",
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
@@ -116,7 +118,7 @@
     }
   },
   "prisma": {
-    "seed": "ts-node --transpile-only -r tsconfig-paths/register prisma/seed.ts"
+    "seed": "ts-node --transpile-only -r tsconfig-paths/register src/seed.ts"
   },
   "jest": {
     "moduleFileExtensions": [

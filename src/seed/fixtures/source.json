@@ -1,0 +1,21 @@
+{
+  "package": "@drinks-on-chain/mocks",
+  "version": "0.3.0",
+  "git": "v0.3.0-rc.2-1-g5a197dc",
+  "referenceDay": "2026-09-25",
+  "files": [
+    "fixtures/erp/wineries.json",
+    "fixtures/erp/users.json",
+    "fixtures/erp/wallets.json",
+    "fixtures/erp/terroirs.json",
+    "fixtures/erp/harvest-batches.json",
+    "fixtures/erp/fermentation-tanks.json",
+    "fixtures/erp/fermentation-logs.json",
+    "fixtures/erp/enological-treatments.json",
+    "fixtures/erp/wine-aging.json",
+    "fixtures/erp/production-batches.json",
+    "fixtures/erp/bottling.json",
+    "fixtures/erp/lab-analyses.json",
+    "fixtures/backoffice/member-blocks.json"
+  ]
+}
