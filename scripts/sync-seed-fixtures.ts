@@ -27,7 +27,11 @@ const ERP_FILES = [
   'bottling.json',
   'lab-analyses.json',
 ] as const;
-const BACKOFFICE_FILES = ['member-blocks.json'] as const;
+const BACKOFFICE_FILES = [
+  'member-blocks.json',
+  'invitations.json',
+  'staff-mfa.json',
+] as const;
 
 const mocksDir = resolve(
   process.argv[2] ?? join('..', 'drinks-on-chain-mocks'),
@@ -53,6 +57,22 @@ function withoutPasswords(users: unknown): unknown {
   });
 }
 
+/**
+ * Del segundo factor de los mocks solo se copia quién está inscrito: el
+ * secreto y los códigos de recuperación no se versionan aquí (el secreto de
+ * la semilla sale de `SEED_DEMO_TOTP_SECRET`).
+ */
+function withoutMfaSecrets(entries: unknown): unknown {
+  if (!Array.isArray(entries)) {
+    throw new Error('staff-mfa.json debe ser una lista');
+  }
+  return entries.map((entry: Record<string, unknown>) => ({
+    userId: entry.userId,
+    enrolled: entry.enrolled,
+    enrolledAt: entry.enrolledAt,
+  }));
+}
+
 function gitDescribe(dir: string): string | null {
   try {
     return execFileSync('git', ['-C', dir, 'describe', '--tags', '--always'], {
@@ -72,9 +92,10 @@ for (const file of ERP_FILES) {
   );
 }
 for (const file of BACKOFFICE_FILES) {
+  const data = readJson(join(mocksDir, 'fixtures', 'backoffice', file));
   writeJson(
     join(outDir, file),
-    readJson(join(mocksDir, 'fixtures', 'backoffice', file)),
+    file === 'staff-mfa.json' ? withoutMfaSecrets(data) : data,
   );
 }
 const pkg = readJson(join(mocksDir, 'package.json')) as { version: string };

@@ -274,6 +274,32 @@ export interface FixtureLabAnalysis {
   createdAt: IsoDate;
 }
 
+export interface FixtureInvitation {
+  id: string;
+  email: string;
+  organizationId: string;
+  organizationType: 'PLATFORM' | 'WINERY' | 'PICKUP_POINT';
+  organizationName: string;
+  role: string;
+  status: 'PENDING' | 'ACCEPTED' | 'EXPIRED' | 'REVOKED';
+  expiresAt: IsoDate;
+  createdAt: IsoDate;
+  invitedBy: { userId: string; fullName: string; viaPlatform: boolean };
+  _mock: {
+    token: string;
+    inviteeName: string | null;
+    acceptedAt: IsoDate | null;
+    revokedAt: IsoDate | null;
+  };
+}
+
+/** Quién tiene el segundo factor inscrito en los mocks (sin secretos). */
+export interface FixtureStaffMfa {
+  userId: string;
+  enrolled: boolean;
+  enrolledAt: IsoDate | null;
+}
+
 export interface FixtureSource {
   package: string;
   version: string;
@@ -287,6 +313,8 @@ export interface MockFixtures {
   users: FixtureUser[];
   wallets: FixtureWallet[];
   memberBlocks: FixtureMemberBlock[];
+  invitations: FixtureInvitation[];
+  staffMfa: FixtureStaffMfa[];
   terroirs: FixtureTerroir[];
   harvestBatches: FixtureHarvestBatch[];
   fermentationTanks: FixtureFermentationTank[];
@@ -312,6 +340,8 @@ export function loadMockFixtures(dir: string = FIXTURES_DIR): MockFixtures {
     users: read(dir, 'users.json'),
     wallets: read(dir, 'wallets.json'),
     memberBlocks: read(dir, 'member-blocks.json'),
+    invitations: read(dir, 'invitations.json'),
+    staffMfa: read(dir, 'staff-mfa.json'),
     terroirs: read(dir, 'terroirs.json'),
     harvestBatches: read(dir, 'harvest-batches.json'),
     fermentationTanks: read(dir, 'fermentation-tanks.json'),

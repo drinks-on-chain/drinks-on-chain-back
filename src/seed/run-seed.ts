@@ -4,6 +4,9 @@ import { DemoSeedSummary, seedDemo, selectDemoPeople } from './demo.seed';
 import { loadMockFixtures, MockFixtures } from './fixtures';
 import { ensurePlatformOrganization, upsertSuperadmin } from './platform.seed';
 import { SeedOptions } from './seed.options';
+import { DemoIdentitySummary, seedDemoIdentity } from './identity.seed';
+import { ConfigService } from '@nestjs/config';
+import { MfaCrypto } from '../modules/auth/mfa/mfa-crypto';
 
 export interface SeedLogger {
   log(message: string): void;
@@ -13,6 +16,7 @@ export interface SeedLogger {
 export interface SeedResult {
   superadmin: { id: string; created: boolean } | null;
   demo: DemoSeedSummary | null;
+  identity: DemoIdentitySummary | null;
 }
 
 const silentLogger: SeedLogger = {
@@ -52,7 +56,7 @@ export async function runSeed(
 
   if (!options.demo) {
     logger.log('Sin datos de demostración (SEED_DEMO distinto de true)');
-    return { superadmin, demo: null };
+    return { superadmin, demo: null, identity: null };
   }
 
   const fx = fixtures ?? loadMockFixtures();
@@ -66,10 +70,28 @@ export async function runSeed(
     );
   }
   const hash = await bcrypt.hash(options.demo.password, options.bcryptRounds);
-  const demo = await prisma.$transaction((tx) => seedDemo(tx, fx, hash), {
-    maxWait: 10_000,
-    timeout: 120_000,
-  });
+  const demoOptions = options.demo;
+  const crypto =
+    demoOptions.totpSecret && options.mfaKeys.jwtSecret
+      ? new MfaCrypto(
+          new ConfigService({
+            JWT_SECRET: options.mfaKeys.jwtSecret,
+            MFA_ENCRYPTION_KEY: options.mfaKeys.mfaEncryptionKey ?? undefined,
+          }),
+        )
+      : null;
+  const { demo, identity } = await prisma.$transaction(
+    async (tx) => {
+      const summary = await seedDemo(tx, fx, hash);
+      const ident = await seedDemoIdentity(tx, fx, {
+        demoPassword: demoOptions.password,
+        totpSecret: demoOptions.totpSecret,
+        encryptTotp: crypto ? (secret) => crypto.encrypt(secret) : null,
+      });
+      return { demo: summary, identity: ident };
+    },
+    { maxWait: 10_000, timeout: 120_000 },
+  );
   logger.log(
     `Datos de demostración de ${fx.source.package} ${fx.source.git ?? fx.source.version} (día de referencia ${fx.source.referenceDay}): ` +
       `${demo.users} personas, ${demo.wineries} bodegas, ${demo.wineryMemberships} membresías de bodega, ` +
@@ -81,5 +103,13 @@ export async function runSeed(
   for (const { user, reason } of people.skipped) {
     logger.log(`No se crea ${user.email} (${reason})`);
   }
-  return { superadmin, demo };
+  logger.log(
+    `Invitaciones de demostración: ${identity.invitations}; segundo factor inscrito para ${identity.totpEnrolled} personas del equipo interno`,
+  );
+  for (const link of identity.links) {
+    logger.log(
+      `Invitación ${link.status} a ${link.email}: <APP_URL_${link.app}>${link.path}`,
+    );
+  }
+  return { superadmin, demo, identity };
 }

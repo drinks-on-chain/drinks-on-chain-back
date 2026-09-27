@@ -16,6 +16,8 @@
     "fixtures/erp/production-batches.json",
     "fixtures/erp/bottling.json",
     "fixtures/erp/lab-analyses.json",
-    "fixtures/backoffice/member-blocks.json"
+    "fixtures/backoffice/member-blocks.json",
+    "fixtures/backoffice/invitations.json",
+    "fixtures/backoffice/staff-mfa.json"
   ]
 }

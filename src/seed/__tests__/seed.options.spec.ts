@@ -68,7 +68,31 @@ describe('seedOptionsFromEnv', () => {
       SEED_DEMO: 'TRUE',
       SEED_DEMO_PASSWORD: 'demo-larga-123',
     });
-    expect(options.demo).toEqual({ password: 'demo-larga-123' });
+    expect(options.demo).toEqual({
+      password: 'demo-larga-123',
+      totpSecret: null,
+    });
+  });
+
+  it('SEED_DEMO_TOTP_SECRET: base32 y exige JWT_SECRET para cifrarlo', () => {
+    const base = { SEED_DEMO: 'true', SEED_DEMO_PASSWORD: 'demo-larga-123' };
+    expect(() =>
+      seedOptionsFromEnv({ ...base, SEED_DEMO_TOTP_SECRET: 'no-es-base32!' }),
+    ).toThrow(SeedConfigError);
+    expect(() =>
+      seedOptionsFromEnv({
+        ...base,
+        SEED_DEMO_TOTP_SECRET: 'DRINKSONCHAINDEMOTOTPKEY',
+      }),
+    ).toThrow(/JWT_SECRET/);
+    const { options, warnings } = seedOptionsFromEnv({
+      ...base,
+      SEED_DEMO_TOTP_SECRET: 'drinksonchaindemototpkey',
+      JWT_SECRET: 'x'.repeat(40),
+    });
+    expect(options.demo?.totpSecret).toBe('DRINKSONCHAINDEMOTOTPKEY');
+    expect(options.mfaKeys.jwtSecret).toBe('x'.repeat(40));
+    expect(warnings.join(' ')).not.toContain('SEED_DEMO_TOTP_SECRET');
   });
 
   it('SEED_DEMO distinto de true: sin demo; un valor raro es un error', () => {

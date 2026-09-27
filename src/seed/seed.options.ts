@@ -13,8 +13,14 @@ export interface SeedSuperadmin {
 export interface SeedOptions {
   /** `null`: no se crea ni se actualiza el superusuario. */
   superadmin: SeedSuperadmin | null;
-  /** `null`: sin datos de demostración (`SEED_DEMO` distinto de `true`). */
-  demo: { password: string } | null;
+  /**
+   * `null`: sin datos de demostración (`SEED_DEMO` distinto de `true`).
+   * `totpSecret`: secreto TOTP (base32) del personal interno de demo inscrito
+   * (`SEED_DEMO_TOTP_SECRET`); sin él quedan sin inscribir.
+   */
+  demo: { password: string; totpSecret: string | null } | null;
+  /** Claves para cifrar los secretos TOTP como la API (`MfaCrypto`). */
+  mfaKeys: { jwtSecret: string | null; mfaEncryptionKey: string | null };
   /** Coste de bcrypt (el de la API por defecto). */
   bcryptRounds: number;
 }
@@ -101,11 +107,40 @@ export function seedOptionsFromEnv(env: NodeJS.ProcessEnv): ParsedSeedOptions {
       );
     }
     assertSeedPassword('SEED_DEMO_PASSWORD', demoPassword);
-    demo = { password: demoPassword };
+    const rawTotp = value(env, 'SEED_DEMO_TOTP_SECRET')
+      ?.toUpperCase()
+      .replace(/\s+/g, '');
+    let totpSecret: string | null = null;
+    if (rawTotp) {
+      if (!/^[A-Z2-7]{16,}=*$/.test(rawTotp)) {
+        throw new SeedConfigError(
+          'SEED_DEMO_TOTP_SECRET debe ser base32 (A-Z, 2-7) de al menos 16 caracteres',
+        );
+      }
+      if (!value(env, 'JWT_SECRET')) {
+        throw new SeedConfigError(
+          'SEED_DEMO_TOTP_SECRET necesita JWT_SECRET (y MFA_ENCRYPTION_KEY si la API la usa) para cifrarlo como la API',
+        );
+      }
+      totpSecret = rawTotp;
+    } else {
+      warnings.push(
+        'SEED_DEMO_TOTP_SECRET no está definido: el personal interno de demostración queda sin segundo factor y lo inscribirá al entrar',
+      );
+    }
+    demo = { password: demoPassword, totpSecret };
   }
 
   return {
-    options: { superadmin, demo, bcryptRounds: DEFAULT_BCRYPT_ROUNDS },
+    options: {
+      superadmin,
+      demo,
+      bcryptRounds: DEFAULT_BCRYPT_ROUNDS,
+      mfaKeys: {
+        jwtSecret: value(env, 'JWT_SECRET') ?? null,
+        mfaEncryptionKey: value(env, 'MFA_ENCRYPTION_KEY') ?? null,
+      },
+    },
     warnings,
   };
 }
