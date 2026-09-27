@@ -1,0 +1,129 @@
+# -----------------------------------------------------------------------------
+# Drinks on Chain · backend · entorno de DESARROLLO del servidor
+#
+# Lo lanza deploy/dev/deploy.sh desde la release extraída:
+#   docker compose -p doc-dev -f ~/doc-dev/current/deploy/dev/compose.yml \
+#     --env-file ~/doc-dev/.env up -d --build --remove-orphans
+#
+# - La API se construye desde el código de esta misma release (context ../..).
+# - Solo se publican en el host la API (127.0.0.1:3000, detrás de nginx) y la
+#   UI de Mailpit (127.0.0.1:8025). Postgres, Redis, SMTP y MinIO quedan en la
+#   red interna.
+# - Los volúmenes de datos tienen nombre configurable para reutilizar los que
+#   ya existen en el servidor (ver deploy/dev/.env.example).
+# -----------------------------------------------------------------------------
+name: doc-dev
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    # Una etiqueta por release: el rollback reutiliza la imagen anterior
+    image: drinks-on-chain-back:dev-${RELEASE_SHA:-local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${API_NODE_ENV:-production}
+      PORT: 4000
+      RELEASE_SHA: ${RELEASE_SHA:-local}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Define JWT_REFRESH_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-30d}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS}
+      STORAGE_DRIVER: local
+      STORAGE_LOCAL_PATH: /app/uploads
+      STORAGE_BASE_URL: ${STORAGE_BASE_URL:?Define STORAGE_BASE_URL}
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
+    volumes:
+      - uploads:/app/uploads
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-drinks_on_chain_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD}
+    command: ['sh', '-c', 'exec redis-server --requirepass "$${REDIS_PASSWORD}"']
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+      MP_MAX_MESSAGES: '5000'
+      MP_DATABASE: /data/mailpit.db
+    ports:
+      - '127.0.0.1:${MAILPIT_UI_HOST_PORT:-8025}:8025'
+    volumes:
+      - mailpit_data:/data
+    networks: [internal]
+
+  minio:
+    # minio/minio ya no se publica en Docker Hub: imagen de Chainguard fijada
+    # por digest (sin shell ni mc, así que sin healthcheck propio)
+    image: cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-doc-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data
+    networks: [internal]
+
+networks:
+  internal:
+    name: doc-dev-internal
+
+# Nombres fijos (no dependen del nombre del proyecto). Para reutilizar los
+# volúmenes que ya existen en el servidor, pon su nombre en .env y
+# *_VOLUME_EXTERNAL=true (ver deploy/dev/.env.example).
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-doc-dev_postgres_data}
+    external: ${POSTGRES_VOLUME_EXTERNAL:-false}
+  redis_data:
+    name: ${REDIS_VOLUME_NAME:-doc-dev_redis_data}
+    external: ${REDIS_VOLUME_EXTERNAL:-false}
+  uploads:
+    name: ${UPLOADS_VOLUME_NAME:-doc-dev_uploads}
+  mailpit_data:
+    name: ${MAILPIT_VOLUME_NAME:-doc-dev_mailpit_data}
+  minio_data:
+    name: ${MINIO_VOLUME_NAME:-doc-dev_minio_data}
