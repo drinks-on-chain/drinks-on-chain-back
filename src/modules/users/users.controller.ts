@@ -2,8 +2,8 @@ import {
   Controller,
   Get,
   Patch,
+  Post,
   Body,
-  UseGuards,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -14,59 +14,92 @@ import {
   ApiBearerAuth,
   ApiUnauthorizedResponse,
   ApiNotFoundResponse,
+  ApiNoContentResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
+import { AccountService } from '@modules/auth/account/account.service';
+import { ChangePasswordDto } from '@modules/auth/dto/account.dto';
 import { UsersService } from './users.service';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { UserProfileResponseDto } from './dto/user-profile-response.dto';
+import { MeResponseDto } from './dto/user-profile-response.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 
 @ApiTags('Usuarios')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard)
+@ApiBearerAuth()
 @Controller('users')
 export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+  constructor(
+    private readonly usersService: UsersService,
+    private readonly account: AccountService,
+  ) {}
 
   @Get('me')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Obtener el perfil del usuario autenticado',
+    summary: 'Obtener la persona autenticada con sus membresías',
     description:
-      'Retorna los datos de identidad, roles, membresías en bodegas y dirección pública de su billetera custodial.',
+      'Devuelve `{ user, memberships, activeOrganizationId }` (contrato O0 §5): el perfil (con `audience` y la dirección pública de su billetera custodial), todas sus membresías y la organización activa de la sesión.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Perfil de usuario obtenido exitosamente',
-    type: UserProfileResponseDto,
+    description: 'Persona, membresías y organización activa',
+    type: MeResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado o token inválido' })
   @ApiNotFoundResponse({ description: 'Usuario no encontrado' })
   async getProfile(
     @CurrentUser() user: AuthenticatedUser,
-  ): Promise<UserProfileResponseDto> {
-    return this.usersService.getProfile(user.id);
+  ): Promise<MeResponseDto> {
+    return this.usersService.getMe(user);
   }
 
   @Patch('me')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Actualizar datos de perfil del usuario',
+    summary: 'Actualizar mi perfil y mis preferencias',
     description:
-      'Permite modificar nombre completo, teléfono y preferencia de idioma.',
+      'Nombre, teléfono, idioma (`es`/`en`), preferencias de comunicación (`notificationPrefs`, parcial) y consentimiento de promociones (se guarda con su fecha). Responde como `GET /v1/users/me`: `{ user, memberships, activeOrganizationId }` (contrato O1 §1).',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Perfil de usuario actualizado exitosamente',
-    type: UserProfileResponseDto,
+    description: 'Perfil actualizado',
+    type: MeResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado' })
+  @ApiUnprocessableEntityResponse({
+    description: 'VALIDATION_ERROR',
+    type: ApiErrorResponseDto,
+  })
   async updateProfile(
     @CurrentUser() user: AuthenticatedUser,
     @Body() dto: UpdateUserDto,
-  ): Promise<UserProfileResponseDto> {
-    return this.usersService.updateProfile(user.id, dto);
+  ): Promise<MeResponseDto> {
+    return this.usersService.updateMe(user, dto);
+  }
+
+  @Post('me/password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Cambiar mi contraseña',
+    description:
+      'Con la contraseña actual. Cierra las **demás** sesiones de la persona (esta sigue abierta) y avisa por correo.',
+  })
+  @ApiNoContentResponse({ description: 'Contraseña cambiada' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'AUTH_INVALID_CURRENT_PASSWORD (en `currentPassword`), AUTH_WEAK_PASSWORD (en `newPassword`) o VALIDATION_ERROR',
+    type: ApiErrorResponseDto,
+  })
+  async changePassword(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    await this.account.changePassword(user, dto);
   }
 
   @Get('me/wallet')

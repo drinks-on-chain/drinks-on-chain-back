@@ -1,0 +1,27 @@
+[
+  {
+    "userId": "54ad3be4-79ad-57fb-86ff-1fa2517fe25a",
+    "enrolled": true,
+    "enrolledAt": "2026-04-04T09:15:00Z"
+  },
+  {
+    "userId": "4e89872f-1de3-5f01-968b-2203e12dbfd0",
+    "enrolled": true,
+    "enrolledAt": "2026-04-10T09:15:00Z"
+  },
+  {
+    "userId": "99f29bfe-2296-57c7-908c-b09ec778c439",
+    "enrolled": true,
+    "enrolledAt": "2026-05-02T09:15:00Z"
+  },
+  {
+    "userId": "23d99814-3526-54f6-8b5f-5807a08506a2",
+    "enrolled": true,
+    "enrolledAt": "2026-07-25T09:15:00Z"
+  },
+  {
+    "userId": "886f4172-f40e-5a9c-b20b-04742409ddfd",
+    "enrolled": false,
+    "enrolledAt": null
+  }
+]

@@ -1,15 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
-import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
-import { GlobalExceptionFilter } from '../src/shared/filters/global-exception.filter';
+import { configureApp } from '../src/app.setup';
+import {
+  createPlatformUser,
+  deleteIdentityData,
+  loginWithMfa,
+} from './helpers/identity';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -46,44 +45,25 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
 
-    app.enableVersioning({
-      type: VersioningType.URI,
-      defaultVersion: '1',
-    });
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.useGlobalInterceptors(new ResponseTransformInterceptor());
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
+    configureApp(app);
 
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);
 
     // 1. Crear Platform Admin directamente en DB (simulando Seeder oficial)
     const adminEmail = `platform_admin_${timestamp}@doc.bo`;
-    const passwordHash = await bcrypt.hash('Password123!', 12);
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        passwordHash,
-        fullName: 'Platform Admin',
-        userRole: UserRoleEnum.PLATFORM_ADMIN,
-        isActive: true,
-      },
+    await createPlatformUser(prisma, {
+      email: adminEmail,
+      password: 'Password123!',
+      fullName: 'Platform Admin',
     });
 
-    const adminLogin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: adminEmail,
-        password: 'Password123!',
-      });
+    const adminLogin = await loginWithMfa(
+      () => request(app.getHttpServer()),
+      prisma,
+      { email: adminEmail, password: 'Password123!' },
+    );
     platformAdminToken = adminLogin.body.data.tokens.accessToken;
 
     // 2. Crear Winery Admin para Bodega 1
@@ -95,7 +75,6 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         fullName: 'Winery Admin Singani',
         userRole: UserRoleEnum.WINERY_ADMIN,
       });
-    const wineryAdminId = wAdminRes.body.data.user.id;
     const initialWineryAdminToken = wAdminRes.body.data.tokens.accessToken;
 
     // 3. Crear Bodega 1
@@ -226,6 +205,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
   afterAll(async () => {
     if (prisma) {
       const activeWineryIds = [wineryId, winery2Id].filter(Boolean);
+      await deleteIdentityData(prisma, {
+        emailContains: `${timestamp}`,
+        wineryIds: activeWineryIds,
+      });
       if (activeWineryIds.length > 0) {
         await prisma.batchLabAnalysis.deleteMany({
           where: { bottlingBatch: { wineryId: { in: activeWineryIds } } },
@@ -298,7 +281,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.parcelName).toBe('Cuartel 4 - La Finca El Potrero');
-      expect(Number(res.body.data.altitudeMasl)).toBe(1850.0);
+      expect(res.body.data.altitudeMasl).toBe(1850);
       terroirId = res.body.data.id;
     });
 
@@ -322,7 +305,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.harvestBatchCode).toContain('HARV-2026');
-      expect(Number(res.body.data.netWeightKg)).toBe(14850.0);
+      expect(res.body.data.netWeightKg).toBe(14850);
       harvestBatchId = res.body.data.id;
     });
 
@@ -332,7 +315,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .set('Authorization', `Bearer ${enologistToken}`)
         .send({
           phytosanitaryStatus: PhytoStatusEnum.APPROVED,
-          phytoInspectionPdfUrl: 'https://storage.drinksonchain.com/inspections/phyto-potrero.pdf',
+          phytoInspectionPdfUrl:
+            'https://storage.drinksonchain.com/inspections/phyto-potrero.pdf',
           notes: 'Aprobado sin presencia de botritis',
         });
 
@@ -451,7 +435,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           totalBottlesPackaged: 4080,
           packagingFormatCl: 75,
           bottleType: 'Vidrio Extra-Flint 750ml',
-          labelDesignUrl: 'https://storage.drinksonchain.com/labels/singani-anniversary.png',
+          labelDesignUrl:
+            'https://storage.drinksonchain.com/labels/singani-anniversary.png',
           bottlingDate: '2026-10-01',
         });
 
@@ -469,7 +454,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .set('Authorization', `Bearer ${enologistToken}`)
         .send({
           bottlingBatchId,
-          certifiedLaboratoryName: 'Laboratorio de Servicios Analíticos ISO 17025',
+          certifiedLaboratoryName:
+            'Laboratorio de Servicios Analíticos ISO 17025',
           accreditedLabCertificationCode: 'LAB-SENASAG-2026-991',
           analysisRequestDate: '2026-10-02',
           testPerformedAt: '2026-10-04',
@@ -478,13 +464,14 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           volatileAcidityAceticGl: 0.22,
           methanolContentMgL: 48.0,
           copperContentMgL: 0.02,
-          laboratoryReportPdfUrl: 'https://storage.drinksonchain.com/certs/lab-report-991.pdf',
+          laboratoryReportPdfUrl:
+            'https://storage.drinksonchain.com/certs/lab-report-991.pdf',
           conformsToSenasagStandards: true,
         });
 
       expect(res.status).toBe(201);
       expect(res.body.data.conformsToSenasagStandards).toBe(true);
-      expect(Number(res.body.data.methanolContentMgL)).toBe(48.0);
+      expect(res.body.data.methanolContentMgL).toBe(48);
     });
 
     it('Paso 11: [GET /v1/traceability/dag/:id] Reconstruye el grafo DAG completo de 5 etapas', async () => {
@@ -497,7 +484,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.body.data.nodes).toHaveLength(5);
 
       // Verificar encadenamiento de nodos
-      const [plotNode, harvestNode, vinifNode, distNode, bottleNode] = res.body.data.nodes;
+      const [plotNode, harvestNode, vinifNode, distNode, bottleNode] =
+        res.body.data.nodes;
       expect(plotNode.stageName).toBe('Plot');
       expect(harvestNode.stageName).toBe('Harvest');
       expect(harvestNode.parents).toContain(plotNode.batchId);
@@ -659,8 +647,16 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.productType).toBe('WINE');
       expect(res.body.data.nodes).toHaveLength(5);
-      const stageNames = res.body.data.nodes.map((n: any) => n.stageName);
-      expect(stageNames).toEqual(['Plot', 'Harvest', 'Vinification', 'Aging', 'Bottling']);
+      const stageNames = res.body.data.nodes.map(
+        (n: { stageName: string }) => n.stageName,
+      );
+      expect(stageNames).toEqual([
+        'Plot',
+        'Harvest',
+        'Vinification',
+        'Aging',
+        'Bottling',
+      ]);
     });
   });
 

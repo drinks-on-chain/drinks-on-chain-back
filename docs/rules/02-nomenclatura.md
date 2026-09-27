@@ -168,8 +168,13 @@ interface TenantContext { ... }
 ```typescript
 type BeverageType = 'WINE' | 'SINGANI' | 'BEER' | 'SPIRITS' | 'CIDER' | 'MEAD' | 'OTHER';
 type TokenStatus = 'UNMINTED' | 'RESERVED' | 'MINTED' | 'BURNED';
-type UserRole = 'PLATFORM_ADMIN' | 'WINERY_ADMIN' | 'ENOLOGIST' | 'AGRONOMIST' | 'CONSUMER' | 'POS_OPERATOR';
-type WineryStatus = 'PENDING' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+// Roles por membresía (ajustado por A-33): el rol va en la membresía, no en la persona
+type OrganizationType = 'PLATFORM' | 'WINERY' | 'PICKUP_POINT';
+type PlatformRole = 'SUPERADMIN' | 'ADMIN' | 'OPERATIONS' | 'SUPPORT';
+type WineryRole = 'OWNER' | 'ENOLOGIST' | 'AGRONOMIST' | 'OPERATOR' | 'ACCOUNTANT';
+type PickupPointRole = 'MANAGER' | 'CASHIER';
+type WineryStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+// Obsoleto hasta H1 (solo compatibilidad): 'PLATFORM_ADMIN' | 'WINERY_ADMIN' | … (users.user_role)
 ```
 
 ### Enums — `PascalCase` para el enum, `UPPER_SNAKE_CASE` para valores
@@ -353,9 +358,11 @@ export class CreateHarvestBatchDto {
 
 ### Parámetros de query — `camelCase`
 ```
-GET /v1/tokenized-items?tokenStatus=MINTED&wineryId=xxx&page=1&limit=20
+GET /v1/tokenized-items?tokenStatus=MINTED&wineryId=xxx&limit=20&offset=0
 GET /v1/collections?publicationStatus=PUBLISHED&beverageType=WINE
 ```
+
+> Ajustado por A-33 (27-09-2026): las colecciones se paginan con `limit` (1–100, por defecto 20) y `offset`, no con `page`. Ver `03-formato-respuestas.md` § Paginación.
 
 ---
 
@@ -374,9 +381,11 @@ DATABASE_POOL_MAX=10
 
 # Auth
 JWT_SECRET=...
-JWT_EXPIRES_IN=7d
-JWT_REFRESH_SECRET=...
-JWT_REFRESH_EXPIRES_IN=30d
+JWT_EXPIRES_IN=900s               # acceso de 15 min (tope; ajustado por A-33)
+JWT_REFRESH_SECRET=...            # clave HMAC de la cadena de refrescos
+SESSION_TTL_STAFF_DAYS=7          # renovación deslizante del personal
+SESSION_TTL_CONSUMER_DAYS=30      # y de los consumidores
+TRUST_PROXY=1                     # detrás de nginx (IP real para los límites)
 
 # Redis
 REDIS_URL=redis://localhost:6379

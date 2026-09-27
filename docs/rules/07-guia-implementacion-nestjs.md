@@ -27,7 +27,7 @@ export const envValidationSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   REDIS_URL: Joi.string().required(),
   JWT_SECRET: Joi.string().min(32).required(),
-  JWT_EXPIRES_IN: Joi.string().default('7d'),
+  JWT_EXPIRES_IN: Joi.string().default('900s'), // 15 min (A-33)
   STELLAR_NETWORK: Joi.string().valid('testnet', 'mainnet', 'futurenet').default('testnet'),
   STELLAR_HORIZON_URL: Joi.string().uri().required(),
   STELLAR_SOROBAN_RPC_URL: Joi.string().uri().required(),
@@ -46,20 +46,24 @@ export const envValidationSchema = Joi.object({
 Todo endpoint expuesto debe contar con decoradores de `@nestjs/swagger` indicando:
 - `@ApiTags()` del módulo correspondiente.
 - `@ApiOperation({ summary, description })`.
-- `@ApiResponse()` para 200/201, 400 (Validation), 401/403 (Auth/Tenant), 404 (NotFound), 422 (DomainException).
-- `@ApiBearerAuth()` para endpoints protegidos.
+- `@ApiResponse()` para 200/201, 401/403 (Auth/Tenant), 404 (NotFound), 409 (conflicto) y 422 (validación y DomainException).
+- `@ApiBearerAuth()` para endpoints protegidos (esquema `bearer`); las rutas `@Public()` salen sin candado en el documento.
+- Colecciones: `@ApiPaginatedResponse(Dto)` (declara `{ items, total, limit, offset }` y el 422 de `limit`/`offset`).
+- Altas que no deben repetirse: `@Idempotent()` (declara la cabecera `Idempotency-Key`).
+
+> Ajustado por A-33 (27-09-2026): la validación es 422, no 400, y el OpenAPI es el contrato con el frontend: `pnpm openapi:generate` escribe `openapi.json` (versionado; la CI falla si no coincide con el código y avisa de los cambios incompatibles). Ver README · "OpenAPI como contrato".
 
 ```typescript
 // Ejemplo de documentación en Controller
 @ApiTags('Harvest Batches')
 @ApiBearerAuth()
-@Controller('harvest-batches')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@OrgType('WINERY')
+@Controller('harvest-batches') // guards globales: acceso, autorización y bodega (A-33)
 export class HarvestBatchController {
   @Post()
   @ApiOperation({ summary: 'Registrar un nuevo lote de cosecha/vendimia' })
   @ApiResponse({ status: 201, description: 'Lote creado exitosamente', type: HarvestBatchResponseDto })
-  @ApiResponse({ status: 400, description: 'Error de validación en DTO' })
+  @ApiResponse({ status: 422, description: 'VALIDATION_ERROR en el DTO', type: ApiErrorResponseDto })
   @ApiResponse({ status: 403, description: 'No autorizado o no pertenece a la bodega' })
   @ApiResponse({ status: 409, description: 'Código de lote ya existe' })
   async create(

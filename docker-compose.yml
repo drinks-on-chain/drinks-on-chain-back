@@ -1,38 +1,134 @@
-version: '3.8'
+# -----------------------------------------------------------------------------
+# Drinks on Chain · backend · entorno LOCAL
+#
+#   cp .env.example .env            # cambia cada change-me
+#   docker compose up -d            # postgres, redis, mailpit, minio
+#   docker compose --profile app up -d --build   # + la API y el worker en contenedor
+#
+# Todos los puertos se publican solo en 127.0.0.1. Las contraseñas salen del
+# .env (docker compose lo lee para interpolar); aquí no se escribe ninguna.
+# El entorno de desarrollo del servidor usa deploy/dev/compose.yml.
+# -----------------------------------------------------------------------------
+name: drinks-on-chain-back
 
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: doc_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgrespassword
-      POSTGRES_DB: drinks_on_chain_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD en .env}
+      POSTGRES_DB: ${POSTGRES_DB:-drinks_on_chain_db}
     ports:
-      - "5435:5432"
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5435}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: doc_redis
     restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD en .env}
+    command: ['sh', '-c', 'exec redis-server --requirepass "$${REDIS_PASSWORD}"']
     ports:
-      - "6379:6379"
+      - '127.0.0.1:${REDIS_HOST_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    ports:
+      - '127.0.0.1:${MAILPIT_SMTP_HOST_PORT:-1025}:1025'
+      - '127.0.0.1:${MAILPIT_UI_HOST_PORT:-8025}:8025'
+
+  minio:
+    # minio/minio ya no se publica en Docker Hub: imagen de Chainguard fijada
+    # por digest (sin shell ni mc, así que sin healthcheck propio)
+    image: cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-doc-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD en .env}
+    ports:
+      - '127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000'
+      - '127.0.0.1:${MINIO_CONSOLE_HOST_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/data
+
+  # API en contenedor (opcional): docker compose --profile app up -d --build
+  api:
+    profiles: ['app']
+    build:
+      context: .
+    image: drinks-on-chain-back:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      RUN_MIGRATIONS: 'true'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      S3_ENDPOINT: http://minio:9000
+      # El navegador abre las URL firmadas en el MinIO publicado en localhost
+      S3_PUBLIC_ENDPOINT: http://localhost:${MINIO_API_HOST_PORT:-9000}
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-4000}:4000'
+    volumes:
+      - api_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Worker (misma imagen que la API, otro comando): outbox → BullMQ, colas y
+  # tareas programadas. Espera a la API sana (ya aplicó las migraciones).
+  worker:
+    profiles: ['app']
+    image: drinks-on-chain-back:local
+    pull_policy: never
+    command: ['node', 'dist/worker.js']
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: development
+      RUN_MIGRATIONS: 'false'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
+      WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+    healthcheck:
+      test: ['CMD', 'node', 'dist/worker-healthcheck.js']
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 30s
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
+  minio_data:
+  api_uploads:

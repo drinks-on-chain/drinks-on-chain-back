@@ -1,5 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PhytoStatusEnum } from '@prisma/client';
+import { TerroirResponseDto } from '@modules/terroirs/dto/terroir-response.dto';
+import { FermentationTankResponseDto } from '@modules/traceability/dto/fermentation-tank-response.dto';
 
 export class HarvestBatchResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
@@ -38,21 +40,46 @@ export class HarvestBatchResponseDto {
   @ApiProperty({ example: 6.8 })
   initialAcidityGl!: number;
 
-  @ApiPropertyOptional({ example: 16.5 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 16.5 })
   temperatureAtIntakeC?: number | null;
 
   @ApiProperty({ enum: PhytoStatusEnum, example: PhytoStatusEnum.APPROVED })
   phytosanitaryStatus!: PhytoStatusEnum;
 
-  @ApiPropertyOptional({ example: 'https://storage.drinksonchain.com/inspections/phyto-01.pdf' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'https://storage.drinksonchain.com/inspections/phyto-01.pdf',
+  })
   phytoInspectionPdfUrl?: string | null;
 
-  @ApiPropertyOptional({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
+  })
   certifiedByMemberId?: string | null;
 
-  @ApiPropertyOptional({ example: 'Cosecha matutina manual' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Cosecha matutina manual',
+  })
   notes?: string | null;
 
   @ApiProperty({ example: '2026-09-06T12:00:00.000Z' })
   createdAt!: Date;
+
+  @ApiPropertyOptional({
+    type: () => TerroirResponseDto,
+    description: 'En la lista y el detalle',
+  })
+  terroir?: TerroirResponseDto;
+
+  @ApiPropertyOptional({
+    type: () => FermentationTankResponseDto,
+    isArray: true,
+    description: 'Solo en el detalle',
+  })
+  fermentationTanks?: FermentationTankResponseDto[];
 }

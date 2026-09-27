@@ -5,7 +5,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -15,8 +14,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
@@ -24,24 +21,31 @@ import { BottlingService } from '../services/bottling.service';
 import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
 import { BottlingBatchResponseDto } from '../dto/bottling-batch-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Fraccionamiento y Embotellado')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@ApiBearerAuth()
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('bottling')
 export class BottlingController {
   constructor(private readonly bottlingService: BottlingService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Idempotent()
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Registrar lote de embotellado y fraccionamiento',
     description:
@@ -64,14 +68,14 @@ export class BottlingController {
   }
 
   @Get()
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.PLATFORM_ADMIN,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar lotes embotellados',
-    description: 'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
+    description:
+      'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
+  })
+  @ApiPaginatedResponse(BottlingBatchResponseDto, {
+    description: 'Página de lotes embotellados',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,
@@ -81,14 +85,11 @@ export class BottlingController {
   }
 
   @Get(':id')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.PLATFORM_ADMIN,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de lote embotellado',
-    description: 'Retorna datos de fraccionamiento, código de lote internacional y certificado de laboratorio asociado.',
+    description:
+      'Retorna datos de fraccionamiento, código de lote internacional y certificado de laboratorio asociado.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

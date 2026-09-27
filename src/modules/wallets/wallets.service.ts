@@ -1,7 +1,12 @@
 import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { WalletRepository } from './repositories/wallet.repository';
 import { IWalletProvider } from './interfaces/wallet-provider.interface';
-import { UserWallet, WalletPurposeEnum, WalletTypeEnum } from '@prisma/client';
+import {
+  Prisma,
+  UserWallet,
+  WalletPurposeEnum,
+  WalletTypeEnum,
+} from '@prisma/client';
 import { WalletResponseDto } from './dto/wallet-response.dto';
 
 @Injectable()
@@ -14,13 +19,15 @@ export class WalletsService {
   ) {}
 
   /**
-   * Aprovisiona una billetera custodial para un usuario (consumidor o personal)
+   * Aprovisiona una billetera custodial para un usuario (consumidor o personal).
+   * Con `tx`, la fila se escribe dentro de esa transacción (OP-01).
    */
   async provisionUserWallet(
     userId: string,
     purpose: WalletPurposeEnum = WalletPurposeEnum.CONSUMER_NFT,
+    tx?: Prisma.TransactionClient,
   ): Promise<UserWallet> {
-    const existingWallet = await this.walletRepository.findByUserId(userId);
+    const existingWallet = await this.walletRepository.findByUserId(userId, tx);
     if (existingWallet) {
       return existingWallet;
     }
@@ -28,14 +35,17 @@ export class WalletsService {
     const { vaultId, stellarPublicKey } =
       await this.walletProvider.createCustodialVault(userId, purpose);
 
-    const wallet = await this.walletRepository.create({
-      userId,
-      stellarPublicAddress: stellarPublicKey,
-      dynamicVaultId: vaultId,
-      walletType: WalletTypeEnum.CUSTODIAL,
-      walletPurpose: purpose,
-      isPrimary: true,
-    });
+    const wallet = await this.walletRepository.create(
+      {
+        userId,
+        stellarPublicAddress: stellarPublicKey,
+        dynamicVaultId: vaultId,
+        walletType: WalletTypeEnum.CUSTODIAL,
+        walletPurpose: purpose,
+        isPrimary: true,
+      },
+      tx,
+    );
 
     this.logger.log(
       `Billetera custodial creada exitosamente para usuario: ${userId} -> ${wallet.stellarPublicAddress}`,
@@ -45,14 +55,19 @@ export class WalletsService {
   }
 
   /**
-   * Aprovisiona una billetera custodial institucional para una bodega
+   * Aprovisiona una billetera custodial institucional para una bodega.
+   * Con `tx`, la fila se escribe dentro de esa transacción (OP-01).
    */
   async provisionWineryWallet(
     userId: string,
     wineryId: string,
     purpose: WalletPurposeEnum = WalletPurposeEnum.PRODUCER_SIGNING,
+    tx?: Prisma.TransactionClient,
   ): Promise<UserWallet> {
-    const existingWallet = await this.walletRepository.findByWineryId(wineryId);
+    const existingWallet = await this.walletRepository.findByWineryId(
+      wineryId,
+      tx,
+    );
     if (existingWallet) {
       return existingWallet;
     }
@@ -60,15 +75,18 @@ export class WalletsService {
     const { vaultId, stellarPublicKey } =
       await this.walletProvider.createCustodialVault(wineryId, purpose);
 
-    const wallet = await this.walletRepository.create({
-      userId,
-      wineryId,
-      stellarPublicAddress: stellarPublicKey,
-      dynamicVaultId: vaultId,
-      walletType: WalletTypeEnum.CUSTODIAL,
-      walletPurpose: purpose,
-      isPrimary: true,
-    });
+    const wallet = await this.walletRepository.create(
+      {
+        userId,
+        wineryId,
+        stellarPublicAddress: stellarPublicKey,
+        dynamicVaultId: vaultId,
+        walletType: WalletTypeEnum.CUSTODIAL,
+        walletPurpose: purpose,
+        isPrimary: true,
+      },
+      tx,
+    );
 
     this.logger.log(
       `Billetera custodial creada exitosamente para bodega: ${wineryId} -> ${wallet.stellarPublicAddress}`,

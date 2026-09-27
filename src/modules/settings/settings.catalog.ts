@@ -1,0 +1,321 @@
+import type { SettingCatalogEntry } from './settings.types';
+
+/**
+ * Catálogo de parámetros configurables (CFG-01): claves tal cual de
+ * docs-back/05 §4, con tipo, niveles, cuándo aplican, valor por defecto,
+ * límites y mínimo legal (A-31). Los valores de enumeración, unidades y
+ * límites coinciden con `@drinks-on-chain/mocks` (backoffice/settings-catalog).
+ *
+ * El código es la fuente de verdad: al arrancar, la API copia este catálogo a
+ * `setting_definitions` (SettingsCatalogSync). Añadir un parámetro = añadirlo
+ * aquí; retirarlo = quitarlo (su fila queda con `is_active = false`).
+ */
+
+/**
+ * Límites de laboratorio por defecto ("norma vigente"). Metanol: el mismo
+ * límite que ya aplica el registro de análisis (< 200 mg/100 ml de alcohol
+ * anhidro, `lab-analyses.service.ts`); cobre y acidez volátil, los de los
+ * mocks. Pendiente de confirmar contra la norma boliviana.
+ */
+export const DEFAULT_LAB_LIMITS = {
+  metanol: { max: 200, unidad: 'mg/100 ml a.a.' },
+  cobre: { max: 6, unidad: 'mg/l' },
+  acidezVolatil: { max: 1.2, unidad: 'g/l' },
+};
+
+export const SETTINGS_CATALOG: readonly SettingCatalogEntry[] = [
+  {
+    key: 'trazabilidad.singani.altitudMinimaMsnm',
+    description: 'Altitud mínima de la parcela para D.O. Singani',
+    type: 'NUMBER',
+    unit: 'msnm',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: 1600,
+    min: 0,
+    max: 5000,
+    integer: true,
+    legalMinimum: 1600,
+  },
+  {
+    key: 'trazabilidad.singani.variedadesExigidas',
+    description: 'Cepas admitidas para D.O. Singani',
+    type: 'LIST',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: ['Moscatel de Alejandría'],
+    legalMinimum: ['Moscatel de Alejandría'],
+  },
+  {
+    key: 'trazabilidad.singani.reposoMinimoDias',
+    description: 'Reposo mínimo tras la destilación',
+    type: 'NUMBER',
+    unit: 'días',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: 180,
+    min: 0,
+    max: 3650,
+    integer: true,
+    legalMinimum: 180,
+  },
+  {
+    key: 'trazabilidad.vino.crianzaMinimaMeses',
+    description: 'Mínimo de meses de crianza que puede fijar el enólogo',
+    type: 'NUMBER',
+    unit: 'meses',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: 0,
+    min: 0,
+    max: 120,
+    integer: true,
+  },
+  {
+    key: 'trazabilidad.fitosanitario.exigirAprobado',
+    description: 'Exigir dictamen aprobado para fermentar',
+    type: 'BOOLEAN',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: true,
+  },
+  {
+    key: 'trazabilidad.embotellado.mermaMaximaPorcentaje',
+    description: 'Merma tolerada entre litros disponibles y embotellados',
+    type: 'NUMBER',
+    unit: '%',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: 5,
+    min: 0,
+    max: 100,
+  },
+  {
+    key: 'trazabilidad.excepcionMinimoLegal',
+    description:
+      'Autoriza a una bodega a configurar reglas normativas por debajo del mínimo legal (A-31); solo administración, con motivo',
+    type: 'BOOLEAN',
+    levels: 'WINERY',
+    appliesAt: 'LOT',
+    default: false,
+  },
+  {
+    key: 'trazabilidad.laboratorio.limites',
+    description: 'Límites de metanol, cobre y otros parámetros con su unidad',
+    type: 'OBJECT',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'LOT',
+    default: DEFAULT_LAB_LIMITS,
+  },
+  {
+    key: 'precio.politica',
+    description:
+      'Cómo se sugiere el precio de preventa. Estructura lista; la política se define más adelante (A-32)',
+    type: 'OBJECT',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'COLLECTION',
+    default: null,
+    nullable: true,
+  },
+  {
+    key: 'compra.maxBotellasPorCompra',
+    description: 'Máximo por pedido; vacío = ilimitado',
+    type: 'NUMBER_OR_UNLIMITED',
+    unit: 'botellas',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 10,
+    min: 1,
+    max: 1000,
+    integer: true,
+  },
+  {
+    key: 'compra.minutosReserva',
+    description: 'Tiempo que un pedido reserva los NFT mientras se paga',
+    type: 'NUMBER',
+    unit: 'minutos',
+    levels: 'GLOBAL',
+    appliesAt: 'IMMEDIATE',
+    default: 30,
+    min: 5,
+    max: 240,
+    integer: true,
+  },
+  {
+    key: 'canje.pase.caducidadHoras',
+    description: 'Caducidad del pase de canje',
+    type: 'NUMBER',
+    unit: 'horas',
+    levels: 'GLOBAL',
+    appliesAt: 'IMMEDIATE',
+    default: 24,
+    min: 1,
+    max: 720,
+    integer: true,
+  },
+  {
+    key: 'canje.ventanaDias',
+    description: 'Días para canjear desde que el NFT es canjeable',
+    type: 'NUMBER',
+    unit: 'días',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 30,
+    min: 1,
+    max: 365,
+    integer: true,
+  },
+  {
+    key: 'canje.ventanaVencida.accion',
+    description:
+      'Qué pasa con un NFT cuando vence su ventana de canje (A-29): quemar, extender o compensar',
+    type: 'ENUM',
+    enumValues: ['BURN', 'EXTEND', 'COMPENSATE'],
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 'BURN',
+  },
+  {
+    key: 'canje.ventanaVencida.diasExtension',
+    description: 'Días que se añaden si la acción es extender',
+    type: 'NUMBER',
+    unit: 'días',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 15,
+    min: 1,
+    max: 180,
+    integer: true,
+  },
+  {
+    key: 'canje.ventanaVencida.diasAviso',
+    description: 'Días antes del vencimiento en que se avisa por correo',
+    type: 'NUMBER',
+    unit: 'días',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 7,
+    min: 0,
+    max: 60,
+    integer: true,
+  },
+  {
+    key: 'canje.codigoBotella.modo',
+    description:
+      'Registro del código de botella en el canje: desactivado, opcional u obligatorio',
+    type: 'ENUM',
+    enumValues: ['DISABLED', 'OPTIONAL', 'REQUIRED'],
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 'OPTIONAL',
+  },
+  {
+    key: 'canje.entregaAsistida.maxPorClienteMes',
+    description: 'Límite de entregas asistidas por consumidor',
+    type: 'NUMBER',
+    levels: 'GLOBAL',
+    appliesAt: 'IMMEDIATE',
+    default: 2,
+    min: 0,
+    max: 20,
+    integer: true,
+  },
+  {
+    key: 'puntos.bodegaPuedeHabilitar',
+    description: 'Si la bodega puede crear sus puntos de canje',
+    type: 'BOOLEAN',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: false,
+  },
+  {
+    key: 'puntos.maxPorBodega',
+    description: 'Máximo de puntos que puede crear una bodega',
+    type: 'NUMBER',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 3,
+    min: 0,
+    max: 50,
+    integer: true,
+  },
+  {
+    key: 'puntos.maxCajerosPorPunto',
+    description: 'Máximo de cajeros por punto',
+    type: 'NUMBER',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 5,
+    min: 1,
+    max: 50,
+    integer: true,
+  },
+  {
+    key: 'equipo.maxColaboradoresPorBodega',
+    description:
+      'Máximo de colaboradores de una bodega (miembros activos + invitaciones pendientes); vacío = ilimitado',
+    type: 'NUMBER_OR_UNLIMITED',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: null,
+    min: 1,
+    max: 500,
+    integer: true,
+  },
+  {
+    key: 'tokenizacion.requiereAprobacion',
+    description: 'La tokenización necesita aprobación del back office',
+    type: 'BOOLEAN',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: true,
+  },
+  {
+    key: 'invitacion.caducidadHoras',
+    description: 'Caducidad de las invitaciones',
+    type: 'NUMBER',
+    unit: 'horas',
+    levels: 'GLOBAL',
+    appliesAt: 'IMMEDIATE',
+    default: 72,
+    min: 1,
+    max: 720,
+    integer: true,
+  },
+  {
+    key: 'campanas.agradecimiento.activa',
+    description: 'Mensaje de agradecimiento tras el canje',
+    type: 'BOOLEAN',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: true,
+  },
+  {
+    key: 'campanas.recordatorioResena.dias',
+    description:
+      'Días tras el canje para recordar la reseña; vacío = desactivado',
+    type: 'NUMBER_OR_UNLIMITED',
+    unit: 'días',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: 7,
+    min: 1,
+    max: 90,
+    integer: true,
+  },
+  {
+    key: 'campanas.promociones.activas',
+    description: 'Envío de promociones',
+    type: 'BOOLEAN',
+    levels: 'GLOBAL_AND_WINERY',
+    appliesAt: 'IMMEDIATE',
+    default: false,
+  },
+];
+
+const BY_KEY = new Map(SETTINGS_CATALOG.map((entry) => [entry.key, entry]));
+
+/** Entrada del catálogo por clave (`undefined` si no existe). */
+export function settingEntry(key: string): SettingCatalogEntry | undefined {
+  return BY_KEY.get(key);
+}

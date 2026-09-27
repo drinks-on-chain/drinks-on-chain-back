@@ -1,9 +1,9 @@
-import { IsOptional, IsEnum, IsUUID, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { TankStatusEnum, DestinationTypeEnum } from '@prisma/client';
 
-export class QueryTanksDto {
+export class QueryTanksDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({ enum: TankStatusEnum })
   @IsOptional()
   @IsEnum(TankStatusEnum)
@@ -18,18 +18,4 @@ export class QueryTanksDto {
   @IsOptional()
   @IsUUID()
   harvestBatchId?: string;
-
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
-
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number = 0;
 }

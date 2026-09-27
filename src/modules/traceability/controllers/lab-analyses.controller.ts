@@ -4,7 +4,6 @@ import {
   Post,
   Body,
   Param,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -14,36 +13,36 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiConflictResponse,
 } from '@nestjs/swagger';
 import { LabAnalysesService } from '../services/lab-analyses.service';
 import { CreateBatchLabAnalysisDto } from '../dto/create-batch-lab-analysis.dto';
 import { BatchLabAnalysisResponseDto } from '../dto/batch-lab-analysis-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Laboratorio Físico-Químico')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@ApiBearerAuth()
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('lab-analyses')
 export class LabAnalysesController {
   constructor(private readonly labAnalysesService: LabAnalysesService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.PLATFORM_ADMIN,
-  )
+  @Idempotent()
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Registrar informe analítico oficial de laboratorio',
     description:
@@ -54,7 +53,9 @@ export class LabAnalysesController {
     description: 'Informe de laboratorio registrado',
     type: BatchLabAnalysisResponseDto,
   })
-  @ApiConflictResponse({ description: 'El lote ya tiene un informe oficial registrado' })
+  @ApiConflictResponse({
+    description: 'El lote ya tiene un informe oficial registrado',
+  })
   async create(
     @TenantId() wineryId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -64,16 +65,12 @@ export class LabAnalysesController {
   }
 
   @Get('batch/:bottlingBatchId')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.AGRONOMIST,
-    UserRoleEnum.PLATFORM_ADMIN,
-    UserRoleEnum.CONSUMER,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
   @ApiOperation({
-    summary: 'Consultar certificado de laboratorio por ID de lote de embotellado',
-    description: 'Obtiene el informe físico-químico oficial emitido para un lote embotellado.',
+    summary:
+      'Consultar certificado de laboratorio por ID de lote de embotellado',
+    description:
+      'Obtiene el informe físico-químico oficial emitido para un lote embotellado.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

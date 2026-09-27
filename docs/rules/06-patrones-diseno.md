@@ -181,27 +181,32 @@ export class NftMetadataFactory {
 
 ### Problema
 Cada petición HTTP entrante debe pasar por múltiples verificaciones secuenciales:
-1. ¿El token JWT es válido? (`JwtAuthGuard`)
-2. ¿El usuario tiene el rol necesario? (`RolesGuard`)
-3. ¿El usuario pertenece a la bodega solicitada y se aísla su tenant? (`TenantGuard`)
+0. ¿Está dentro del límite de peticiones de su IP real? (`AppThrottlerGuard`)
+1. ¿El token de acceso es válido y su sesión sigue viva? (`AccessTokenGuard`: firma, lista de revocación en Redis, sesión, persona y membresía)
+2. ¿Su audiencia, el tipo de su organización activa y su rol en ella alcanzan? (`AuthorizationGuard`: `@Audience`, `@OrgType`, `@Roles`, `@RequireActiveOrg`)
+3. ¿Sobre qué bodega trabaja y es la suya? (`TenantGuard`: la activa, o `?wineryId=` para la plataforma)
+
+> Ajustado por A-33 (27-09-2026): los cuatro guards son **globales** (`APP_GUARD` en `AppModule`) y los roles son **por membresía**, evaluados contra la organización activa de la sesión. Detalle en `docs/arquitectura/identidad.md`.
 
 ### Implementación
 NestJS implementa de forma nativa la Cadena de Responsabilidad mediante `CanActivate` Guards.
 
 ```
-Request ──▶ [ JwtAuthGuard ] ──▶ [ RolesGuard ] ──▶ [ TenantGuard ] ──▶ Controller
-                 │                    │                   │
-                 ▼ (401)              ▼ (403)             ▼ (403)
-             Unauthorized         Forbidden           TenantMismatch
+Request ──▶ [ Throttler ] ──▶ [ AccessToken ] ──▶ [ Authorization ] ──▶ [ Tenant ] ──▶ Controller
+                 │                 │                    │                   │
+                 ▼ (429)           ▼ (401)              ▼ (403)             ▼ (404 / 422)
+          TOO_MANY_REQUESTS   AUTH_TOKEN_* ·      AUTH_INSUFFICIENT_    otra bodega /
+                              AUTH_SESSION_*      PERMISSIONS           falta ?wineryId=
 ```
 
 ```typescript
-// Aplicación en Controller:
+// Aplicación en Controller (guards globales; solo se declaran los requisitos):
+@OrgType('WINERY')          // bodega activa (o plataforma con ?wineryId=)
+@RequireActiveOrg()         // SE-05
 @Controller('harvest-batches')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 export class HarvestBatchController {
   @Post()
-  @Roles(UserRole.ENOLOGIST, UserRole.AGRONOMIST, UserRole.WINERY_ADMIN)
+  @Roles('OWNER', 'AGRONOMIST', 'ENOLOGIST', 'OPERATOR')
   async create(
     @Body() dto: CreateHarvestBatchDto,
     @TenantId() tenantId: string,
@@ -266,49 +271,62 @@ async executePhysicalRedemption(params: BurnClaimParams) {
 
 ---
 
-## 6. Worker & Event-Driven Pattern (Procesamiento Asíncrono con BullMQ)
+## 6. Outbox + Worker (Procesamiento Asíncrono con BullMQ)
+
+> **Ajustado por A-33 (27-09-2026)**: la "doble escritura" (guardar en la base y después encolar desde la API) queda sustituida por el **outbox transaccional** (ADR-005). La API nunca encola directamente. Implementación real y garantías: `docs/arquitectura/outbox.md`.
 
 ### Problema
-Las transacciones en la red Stellar (minteo, anclaje de lotes, quema) pueden tardar varios segundos en confirmarse por consenso. Un endpoint HTTP no debe bloquearse esperando la blockchain ni arriesgarse a timeouts.
+Las transacciones en la red Stellar (minteo, anclaje de lotes, quema), el correo y el banco pueden tardar o fallar. Un endpoint HTTP no debe esperarlos, y escribir en la base y encolar por separado deja estados a medias: la base se confirma y el encolado falla (o al revés).
 
 ### Implementación
-La API responde inmediatamente encolando un trabajo (Job) en BullMQ con soporte de reintentos y backoff exponencial.
+El servicio escribe sus datos **y** un evento en `outbox_events` en la misma transacción. El proceso `worker` publica los eventos en BullMQ (`FOR UPDATE SKIP LOCKED`, `jobId` = id del evento, reintentos exponenciales) y un procesador hace el efecto externo.
 
 ```
-HTTP Callback ──▶ [ Guardar Pago ] ──▶ [ Encolar BullMQ Job ] ──▶ Response 200 OK
-                                                │
-                                                ▼ (Asíncrono)
-                                     [ BullMQ Worker ]
-                                                │
-                                                ▼
-                                    [ StellarService.mint() ]
-                                                │
-                                                ▼
-                                    [ Actualizar BD / Retry ]
+HTTP ──▶ [ $transaction: datos + outbox_events ] ──▶ Response 200/201
+                          │
+                          ▼ (worker, asíncrono)
+               [ Relay del outbox ] ──▶ [ Cola BullMQ: chain · email · scheduled · default ]
+                                                    │
+                                                    ▼
+                                     [ Procesador @HandlesJob(cola, tipo) ]
+                                                    │
+                                                    ▼
+                                     [ StellarService.mint() · reintentos ]
 ```
 
 ```typescript
-// src/modules/tokenization/processors/mint-nft.processor.ts
-import { Processor, WorkerHost } from '@nestjs/bullmq';
-import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
-import { StellarService } from '../../stellar/stellar.service';
-import { QUEUE_MINT_NFT } from '../../../shared/constants/queue.constants';
+// src/modules/commerce/orders.service.ts (api)
+await this.prisma.$transaction(async (tx) => {
+  const order = await tx.order.update({ where: { id }, data: { status: 'PAID' } });
+  await this.outbox.add(tx, {
+    type: 'order.paid',
+    aggregateType: 'order',
+    aggregateId: order.id,
+    queue: QUEUE_CHAIN,
+    payload: { orderId: order.id },
+  });
+});
+```
 
-@Processor(QUEUE_MINT_NFT)
-export class MintNftProcessor extends WorkerHost {
-  private readonly logger = new Logger(MintNftProcessor.name);
+```typescript
+// src/modules/commerce/jobs/order-paid.handler.ts (worker)
+@Injectable()
+@HandlesJob(QUEUE_CHAIN, 'order.paid')
+export class OrderPaidHandler implements JobHandler<OutboxJobData<OrderPaidPayload>> {
+  private readonly logger = new Logger(OrderPaidHandler.name);
 
-  constructor(private readonly stellarService: StellarService) {
-    super();
-  }
+  constructor(private readonly stellarService: StellarService) {}
 
-  async process(job: Job<MintJobData>): Promise<void> {
-    this.logger.log(`Processing mint job ${job.id} for token ${job.data.tokenId}`);
-    await this.stellarService.mintProductNft(job.data);
+  async handle(data: OutboxJobData<OrderPaidPayload>): Promise<void> {
+    // Idempotente: la entrega es "al menos una vez" (comprobar tx_hash antes de enviar)
+    await this.stellarService.transferOrderNfts(data.payload.orderId);
   }
 }
 ```
+
+- Los procesadores se registran en un `<modulo>-jobs.module.ts` añadido a `JOB_MODULES` (`src/worker/worker.module.ts`); la API no los carga.
+- Tareas programadas: `@ScheduledTask({ name, pattern })` en lugar de `@HandlesJob`.
+- El `correlationId` de la petición viaja en el evento y aparece en los logs JSON del worker.
 
 ---
 

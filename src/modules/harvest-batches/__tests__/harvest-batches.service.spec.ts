@@ -1,8 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HarvestBatchesService } from '../harvest-batches.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
+import { NotFoundException } from '@nestjs/common';
 import { Prisma, PhytoStatusEnum } from '@prisma/client';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 
 describe('HarvestBatchesService', () => {
   let service: HarvestBatchesService;
@@ -67,6 +70,10 @@ describe('HarvestBatchesService', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
       ],
     }).compile();
 
@@ -110,7 +117,7 @@ describe('HarvestBatchesService', () => {
       expect(result).toEqual(mockHarvestBatch);
     });
 
-    it('debe lanzar BadRequestException si grossWeightKg <= tareWeightKg', async () => {
+    it('debe lanzar 422 VALIDATION_ERROR en grossWeightKg si grossWeightKg <= tareWeightKg', async () => {
       mockPrismaService.terroir.findFirst.mockResolvedValue(mockTerroir);
 
       const dto = {
@@ -124,8 +131,13 @@ describe('HarvestBatchesService', () => {
         initialAcidityGl: 6.8,
       };
 
+      await expect(service.create(mockWineryId, dto)).rejects.toMatchObject({
+        statusCode: 422,
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'grossWeightKg', message: expect.any(String) }],
+      });
       await expect(service.create(mockWineryId, dto)).rejects.toThrow(
-        BadRequestException,
+        ValidationException,
       );
     });
 
@@ -151,19 +163,33 @@ describe('HarvestBatchesService', () => {
 
   describe('findAll', () => {
     it('debe retornar lotes de vendimia paginados', async () => {
-      mockPrismaService.harvestBatch.findMany.mockResolvedValue([mockHarvestBatch]);
+      mockPrismaService.harvestBatch.findMany.mockResolvedValue([
+        mockHarvestBatch,
+      ]);
       mockPrismaService.harvestBatch.count.mockResolvedValue(1);
 
-      const result = await service.findAll(mockWineryId, { limit: 10, offset: 0 });
+      const result = await service.findAll(mockWineryId, {
+        limit: 10,
+        offset: 0,
+      });
 
-      expect(result.items).toHaveLength(1);
-      expect(result.total).toBe(1);
+      expect(result).toEqual({
+        items: [mockHarvestBatch],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      });
+      expect(mockPrismaService.harvestBatch.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 10, skip: 0 }),
+      );
     });
   });
 
   describe('findById', () => {
     it('debe retornar lote si existe', async () => {
-      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(mockHarvestBatch);
+      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(
+        mockHarvestBatch,
+      );
 
       const result = await service.findById(mockWineryId, mockHarvestId);
 
@@ -181,8 +207,12 @@ describe('HarvestBatchesService', () => {
 
   describe('updatePhytoStatus', () => {
     it('debe actualizar el estado fitosanitario', async () => {
-      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(mockHarvestBatch);
-      mockPrismaService.wineryMember.findFirst.mockResolvedValue({ id: mockMemberId });
+      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(
+        mockHarvestBatch,
+      );
+      mockPrismaService.wineryMember.findFirst.mockResolvedValue({
+        id: mockMemberId,
+      });
       mockPrismaService.harvestBatch.update.mockResolvedValue({
         ...mockHarvestBatch,
         phytosanitaryStatus: PhytoStatusEnum.APPROVED,

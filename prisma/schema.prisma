@@ -19,8 +19,249 @@ model SystemHealth {
 }
 
 // -----------------------------------------------------------------------------
+// OUTBOX TRANSACCIONAL (OPS-04, ADR-005)
+// Se escribe en la misma transacción que la operación de negocio; el worker lo
+// publica en BullMQ (src/worker/outbox-relay.service.ts).
+// -----------------------------------------------------------------------------
+enum OutboxStatusEnum {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+
+  @@map("outbox_status_enum")
+}
+
+model OutboxEvent {
+  id            String           @id @default(uuid()) @db.Uuid
+  eventType     String           @map("event_type") @db.VarChar(100)
+  aggregateType String           @map("aggregate_type") @db.VarChar(100)
+  aggregateId   String           @map("aggregate_id") @db.VarChar(100)
+  queue         String           @default("default") @db.VarChar(50)
+  payload       Json             @db.JsonB
+  correlationId String?          @map("correlation_id") @db.VarChar(100)
+  status        OutboxStatusEnum @default(PENDING)
+  attempts      Int              @default(0)
+  nextAttemptAt DateTime         @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lockedAt      DateTime?        @map("locked_at") @db.Timestamptz(6)
+  lastError     String?          @map("last_error") @db.Text
+  processedAt   DateTime?        @map("processed_at") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@index([status, processedAt])
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+// -----------------------------------------------------------------------------
+// BITÁCORA (AUD-01, AUD-02; docs/arquitectura/bitacora.md)
+// Solo inserción: un trigger rechaza UPDATE, DELETE y TRUNCATE. Cada entrada
+// guarda el SHA-256 de su contenido canónico, que incluye el de la anterior.
+// Sin claves foráneas: la bitácora sobrevive a lo que registra.
+// -----------------------------------------------------------------------------
+model AuditEvent {
+  id                  String   @id @db.Uuid
+  seq                 BigInt   @unique
+  occurredAt          DateTime @map("occurred_at") @db.Timestamptz(3)
+  actorUserId         String?  @map("actor_user_id") @db.Uuid
+  actorFullName       String?  @map("actor_full_name") @db.VarChar(200)
+  actorRole           String?  @map("actor_role") @db.VarChar(50)
+  actorOrganizationId String?  @map("actor_organization_id") @db.Uuid
+  actorViaPlatform    Boolean  @default(false) @map("actor_via_platform")
+  sourceApp           String   @map("source_app") @db.VarChar(20)
+  sourceIp            String?  @map("source_ip") @db.VarChar(64)
+  sourceDeviceId      String?  @map("source_device_id") @db.VarChar(100)
+  sessionId           String?  @map("session_id") @db.VarChar(100)
+  action              String   @db.VarChar(100)
+  resourceType        String   @map("resource_type") @db.VarChar(100)
+  resourceId          String?  @map("resource_id") @db.VarChar(100)
+  organizationId      String?  @map("organization_id") @db.Uuid
+  before              Json?    @db.JsonB
+  after               Json?    @db.JsonB
+  reason              String?  @db.Text
+  correlationId       String?  @map("correlation_id") @db.VarChar(100)
+  hash                String   @db.Char(64)
+  prevHash            String?  @map("prev_hash") @db.Char(64)
+
+  // Filtros del back office y de la bitácora del dueño (AUD-03, AUD-04),
+  // ordenados por seq descendente
+  @@index([occurredAt])
+  @@index([actorUserId, seq])
+  @@index([actorOrganizationId, seq])
+  @@index([organizationId, seq])
+  @@index([action, seq])
+  @@index([resourceType, resourceId, seq])
+  @@map("audit_events")
+}
+
+// -----------------------------------------------------------------------------
+// CONFIGURACIÓN EN DOS NIVELES (CFG-01, CFG-05; docs/arquitectura/configuracion.md)
+// Las definiciones viven en el código (src/modules/settings/settings.catalog.ts)
+// y se copian aquí al arrancar la API; los valores (estándar general y ajustes
+// por bodega) y su historial viven solo aquí.
+// -----------------------------------------------------------------------------
+enum SettingTypeEnum {
+  NUMBER
+  BOOLEAN
+  STRING
+  LIST
+  OBJECT
+  NUMBER_OR_UNLIMITED
+  ENUM
+
+  @@map("setting_type_enum")
+}
+
+enum SettingLevelsEnum {
+  GLOBAL
+  GLOBAL_AND_WINERY
+  WINERY
+
+  @@map("setting_levels_enum")
+}
+
+enum SettingAppliesAtEnum {
+  LOT
+  COLLECTION
+  IMMEDIATE
+
+  @@map("setting_applies_at_enum")
+}
+
+enum SettingScopeEnum {
+  GLOBAL
+  WINERY
+
+  @@map("setting_scope_enum")
+}
+
+model SettingDefinition {
+  key          String               @id @db.VarChar(150)
+  description  String               @db.Text
+  type         SettingTypeEnum
+  enumValues   String[]             @default([]) @map("enum_values")
+  unit         String?              @db.VarChar(30)
+  levels       SettingLevelsEnum
+  appliesAt    SettingAppliesAtEnum @map("applies_at")
+  defaultValue Json?                @map("default_value") @db.JsonB
+  min          Float?
+  max          Float?
+  integer      Boolean              @default(false)
+  nullable     Boolean              @default(false)
+  // A-31: número (un valor menor es más laxo) o lista (un elemento fuera de ella es más laxo)
+  legalMinimum Json?                @map("legal_minimum") @db.JsonB
+  // false = el código ya no la define (se conserva por sus valores e historial)
+  isActive     Boolean              @default(true) @map("is_active")
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  globalValue SettingGlobalValue?
+  overrides   SettingOverride[]
+
+  @@map("setting_definitions")
+}
+
+/// Estándar general de un parámetro. Sin fila = valor por defecto del catálogo.
+model SettingGlobalValue {
+  key       String   @id @db.VarChar(150)
+  value     Json?    @db.JsonB
+  version   Int      @default(1)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  definition SettingDefinition @relation(fields: [key], references: [key], onDelete: Restrict)
+
+  @@map("setting_global_values")
+}
+
+/// Ajuste de una bodega ("volver al estándar" = borrar la fila).
+model SettingOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  key            String   @db.VarChar(150)
+  wineryId       String   @map("winery_id") @db.Uuid
+  value          Json?    @db.JsonB
+  // A-31: valor por debajo del mínimo legal autorizado por administración
+  legalException Boolean  @default(false) @map("legal_exception")
+  reason         String   @db.Text
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+
+  definition SettingDefinition @relation(fields: [key], references: [key], onDelete: Restrict)
+  winery     Winery            @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+
+  @@unique([key, wineryId])
+  @@index([wineryId])
+  @@map("setting_overrides")
+}
+
+/// Historial de cambios (CFG-07). `before`/`after` = { value } o null (sin valor propio).
+model SettingChange {
+  id             String           @id @default(uuid()) @db.Uuid
+  key            String           @db.VarChar(150)
+  scope          SettingScopeEnum
+  wineryId       String?          @map("winery_id") @db.Uuid
+  before         Json?            @db.JsonB
+  after          Json?            @db.JsonB
+  reason         String           @db.Text
+  legalException Boolean          @default(false) @map("legal_exception")
+  changedAt      DateTime         @default(now()) @map("changed_at") @db.Timestamptz(6)
+  changedBy      String?          @map("changed_by") @db.Uuid
+  correlationId  String?          @map("correlation_id") @db.VarChar(100)
+
+  @@index([key, changedAt])
+  @@index([wineryId, changedAt])
+  @@map("setting_changes")
+}
+
+// -----------------------------------------------------------------------------
+// CORREO (CMP-01; docs/arquitectura/correo-y-archivos.md)
+// Cada correo es una fila: la API la crea con su evento del outbox en la misma
+// transacción y el worker la envía por SMTP (cola `email`).
+// -----------------------------------------------------------------------------
+enum EmailStatusEnum {
+  QUEUED
+  SENDING
+  SENT
+  FAILED
+
+  @@map("email_status_enum")
+}
+
+model EmailMessage {
+  id                String          @id @default(uuid()) @db.Uuid
+  // Misma clave = mismo correo (p. ej. "invitation:<id>"): no se duplica
+  idempotencyKey    String?         @unique @map("idempotency_key") @db.VarChar(200)
+  template          String          @db.VarChar(100)
+  toAddress         String          @map("to_address") @db.VarChar(255)
+  locale            String          @default("es") @db.VarChar(5)
+  // Variables de la plantilla; se borran al enviarlo (pueden llevar enlaces con token)
+  variables         Json?           @db.JsonB
+  subject           String?         @db.VarChar(300)
+  status            EmailStatusEnum @default(QUEUED)
+  attempts          Int             @default(0)
+  lastError         String?         @map("last_error") @db.Text
+  providerMessageId String?         @map("provider_message_id") @db.VarChar(300)
+  organizationId    String?         @map("organization_id") @db.Uuid
+  correlationId     String?         @map("correlation_id") @db.VarChar(100)
+  sentAt            DateTime?       @map("sent_at") @db.Timestamptz(6)
+  createdAt         DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, createdAt])
+  @@index([toAddress, createdAt])
+  @@map("email_messages")
+}
+
+// -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
+/// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
+/// membresías (`memberships`). Solo se conserva para las respuestas y claims
+/// de compatibilidad.
 enum UserRoleEnum {
   PLATFORM_ADMIN
   WINERY_ADMIN
@@ -41,8 +282,9 @@ enum WineryCategoryEnum {
   @@map("winery_category_enum")
 }
 
+/// Estado de la bodega (contrato O1 §0): `INVITED` sustituye a `PENDING`.
 enum WineryStatusEnum {
-  PENDING
+  INVITED
   ACTIVE
   SUSPENDED
   REVOKED
@@ -58,6 +300,67 @@ enum WineryMemberRoleEnum {
   ACCOUNTANT
 
   @@map("winery_member_role_enum")
+}
+
+// -----------------------------------------------------------------------------
+// ORGANIZACIONES, MEMBRESÍAS Y SESIONES (Ola 0 · 0.5 y 0.6; contrato O0 §4–§5)
+// -----------------------------------------------------------------------------
+enum OrganizationTypeEnum {
+  PLATFORM
+  WINERY
+  PICKUP_POINT
+
+  @@map("organization_type_enum")
+}
+
+/// Mismo conjunto que el estado de la bodega (contrato O1 §0).
+enum OrganizationStatusEnum {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REVOKED
+
+  @@map("organization_status_enum")
+}
+
+/// Roles por membresía (EQP-01). Plataforma: SUPERADMIN, ADMIN, OPERATIONS,
+/// SUPPORT · bodega: OWNER, ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT ·
+/// punto de canje: MANAGER, CASHIER. La combinación tipo/rol la valida el código.
+enum MembershipRoleEnum {
+  SUPERADMIN
+  ADMIN
+  OPERATIONS
+  SUPPORT
+  OWNER
+  ENOLOGIST
+  AGRONOMIST
+  OPERATOR
+  ACCOUNTANT
+  MANAGER
+  CASHIER
+
+  @@map("membership_role_enum")
+}
+
+enum MembershipStatusEnum {
+  ACTIVE
+  BLOCKED
+
+  @@map("membership_status_enum")
+}
+
+enum MembershipBlockedByEnum {
+  OWNER
+  PLATFORM
+
+  @@map("membership_blocked_by_enum")
+}
+
+enum AudienceEnum {
+  STAFF
+  CONSUMER
+
+  @@map("audience_enum")
 }
 
 enum WalletTypeEnum {
@@ -166,24 +469,45 @@ enum BeverageTypeEnum {
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
-  id              String       @id @default(uuid()) @db.Uuid
-  email           String       @unique @db.VarChar(255)
-  phoneNumber     String?      @unique @map("phone_number") @db.VarChar(20)
-  passwordHash    String       @map("password_hash") @db.VarChar(255)
-  fullName        String       @map("full_name") @db.VarChar(200)
-  userRole        UserRoleEnum @map("user_role")
-  dynamicUserId   String?      @unique @map("dynamic_user_id") @db.VarChar(200)
-  preferredLocale String       @default("es") @map("preferred_locale") @db.Char(2)
-  isActive        Boolean      @default(true) @map("is_active")
-  lastLoginAt     DateTime?    @map("last_login_at") @db.Timestamptz(6)
-  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                  String       @id @default(uuid()) @db.Uuid
+  email               String       @unique @db.VarChar(255)
+  phoneNumber         String?      @unique @map("phone_number") @db.VarChar(20)
+  passwordHash        String       @map("password_hash") @db.VarChar(255)
+  fullName            String       @map("full_name") @db.VarChar(200)
+  /// Obsoleto (H1): rol global de 0.1; ya no autoriza nada.
+  userRole            UserRoleEnum @map("user_role")
+  dynamicUserId       String?      @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale     String       @default("es") @map("preferred_locale") @db.Char(2)
+  isActive            Boolean      @default(true) @map("is_active")
+  lastLoginAt         DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  /// Última organización activa elegida (la de por defecto al iniciar sesión).
+  lastOrganizationId  String?      @map("last_organization_id") @db.Uuid
+  /// Correo comprobado (enlace de verificación, invitación o recuperación).
+  emailVerifiedAt     DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  /// Preferencias de comunicación (IAM-09): `{ lotProgress, redemptionReminders }`.
+  notificationPrefs   Json         @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
+  /// Consentimiento de promociones con su fecha (null = no aceptado).
+  promotionsConsentAt DateTime?    @map("promotions_consent_at") @db.Timestamptz(6)
+  /// Bloqueo de la cuenta completa por la plataforma (`is_active = false`).
+  blockedReason       String?      @map("blocked_reason") @db.VarChar(500)
+  blockedAt           DateTime?    @map("blocked_at") @db.Timestamptz(6)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
+  lastOrganization         Organization?     @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
+  memberships              Membership[]
+  sessions                 Session[]
+  /// Obsoleto (H1): perfil del miembro en la bodega; la autorización usa `memberships`.
   wineryMemberships        WineryMember[]
   wallets                  UserWallet[]
   approvedWineries         Winery[]          @relation("ApprovedByUser")
   recordedFermentationLogs FermentationLog[]
+  accountTokens            AccountToken[]
+  mfa                      UserMfa?
+  mfaRecoveryCodes         MfaRecoveryCode[]
+  mfaChallenges            MfaChallenge[]
+  invitationsSent          Invitation[]      @relation("InvitationInvitedBy")
 
   @@map("users")
 }
@@ -206,7 +530,7 @@ model Winery {
   onchainProducerId     String?            @unique @map("onchain_producer_id") @db.VarChar(100)
   onchainRegisterTxHash String?            @map("onchain_register_tx_hash") @db.VarChar(100)
   isExportCertified     Boolean            @default(false) @map("is_export_certified")
-  certificationStatus   WineryStatusEnum   @default(PENDING) @map("certification_status")
+  certificationStatus   WineryStatusEnum   @default(INVITED) @map("certification_status")
   approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(6)
   approvedByUserId      String?            @map("approved_by_user_id") @db.Uuid
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -214,6 +538,8 @@ model Winery {
 
   // Relaciones
   approvedByUser    User?              @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  /// Organización de la bodega (enlace 1:1, mismo id).
+  organization      Organization?
   members           WineryMember[]
   wallets           UserWallet[]
   terroirs          Terroir[]
@@ -222,10 +548,220 @@ model Winery {
   wineAgingBatches  WineAgingBatch[]
   productionBatches ProductionBatch[]
   bottlingBatches   BottlingBatch[]
+  settingOverrides  SettingOverride[]
 
   @@map("wineries")
 }
 
+/// Organización genérica (contrato O0 §4). La de una bodega comparte el id con
+/// `wineries` (enlace 1:1 por `winery_id`); su nombre y estado se escriben en la
+/// misma transacción que la bodega. La de plataforma la crea la migración.
+model Organization {
+  id        String                 @id @default(uuid()) @db.Uuid
+  type      OrganizationTypeEnum
+  name      String                 @db.VarChar(300)
+  status    OrganizationStatusEnum @default(ACTIVE)
+  wineryId  String?                @unique @map("winery_id") @db.Uuid
+  createdAt DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery          Winery?      @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  memberships     Membership[]
+  activeSessions  Session[]
+  lastUsedByUsers User[]       @relation("UserLastOrganization")
+  invitations     Invitation[]
+
+  @@index([type])
+  @@map("organizations")
+}
+
+/// Membresía de una persona en una organización con su rol (EQP-01, EQP-09).
+/// En las bodegas, el id coincide con el de `winery_members` (autoría de la
+/// trazabilidad), que se mantiene en paralelo hasta H1.
+model Membership {
+  id             String                   @id @default(uuid()) @db.Uuid
+  userId         String                   @map("user_id") @db.Uuid
+  organizationId String                   @map("organization_id") @db.Uuid
+  role           MembershipRoleEnum
+  status         MembershipStatusEnum     @default(ACTIVE)
+  blockedBy      MembershipBlockedByEnum? @map("blocked_by")
+  blockedReason  String?                  @map("blocked_reason") @db.VarChar(500)
+  blockedAt      DateTime?                @map("blocked_at") @db.Timestamptz(6)
+  createdAt      DateTime                 @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime                 @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, organizationId])
+  @@index([organizationId, status])
+  @@map("memberships")
+}
+
+/// Sesión (contrato O0 §5): `id` es el claim `sid`. Cada renovación rota el
+/// refresco (se guarda solo su hash; `generation` cuenta las rotaciones). La
+/// familia de refrescos es la sesión entera: una reutilización la revoca.
+model Session {
+  id                   String       @id @default(uuid()) @db.Uuid
+  userId               String       @map("user_id") @db.Uuid
+  activeOrganizationId String?      @map("active_organization_id") @db.Uuid
+  audience             AudienceEnum
+  refreshTokenHash     String       @map("refresh_token_hash") @db.VarChar(64)
+  generation           Int          @default(0)
+  rotatedAt            DateTime?    @map("rotated_at") @db.Timestamptz(6)
+  createdAt            DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastUsedAt           DateTime     @default(now()) @map("last_used_at") @db.Timestamptz(6)
+  expiresAt            DateTime     @map("expires_at") @db.Timestamptz(6)
+  revokedAt            DateTime?    @map("revoked_at") @db.Timestamptz(6)
+  revokedReason        String?      @map("revoked_reason") @db.VarChar(50)
+  /// Segundo factor superado en esta sesión (obligatorio para la plataforma, PLT-05).
+  mfaVerifiedAt        DateTime?    @map("mfa_verified_at") @db.Timestamptz(6)
+  ip                   String?      @db.VarChar(64)
+  userAgent            String?      @map("user_agent") @db.VarChar(300)
+
+  user               User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  activeOrganization Organization? @relation(fields: [activeOrganizationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, revokedAt])
+  @@index([activeOrganizationId, revokedAt])
+  @@map("sessions")
+}
+
+// -----------------------------------------------------------------------------
+// CUENTA, SEGUNDO FACTOR E INVITACIONES (Ola 1 · 1.1 y 1.2; contrato O1 §1–§2)
+// docs/arquitectura/identidad.md. De los tokens solo se guarda el SHA-256.
+// Las filas de seguridad de una persona se borran con ella (no son negocio).
+// -----------------------------------------------------------------------------
+enum AccountTokenPurposeEnum {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+
+  @@map("account_token_purpose_enum")
+}
+
+/// Enlace de un solo uso enviado por correo (recuperación de contraseña,
+/// verificación del correo).
+model AccountToken {
+  id          String                  @id @default(uuid()) @db.Uuid
+  userId      String                  @map("user_id") @db.Uuid
+  purpose     AccountTokenPurposeEnum
+  tokenHash   String                  @unique @map("token_hash") @db.Char(64)
+  /// Correo al que se envió (el que queda verificado).
+  email       String                  @db.VarChar(255)
+  expiresAt   DateTime                @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime?               @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  requestedIp String?                 @map("requested_ip") @db.VarChar(64)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("account_tokens")
+}
+
+/// Segundo factor TOTP de una persona (PLT-05). El secreto va cifrado con
+/// AES-256-GCM (`MFA_ENCRYPTION_KEY`). La fila existe también sin inscribir
+/// para contar los fallos seguidos y el bloqueo temporal.
+model UserMfa {
+  userId          String    @id @map("user_id") @db.Uuid
+  secretEncrypted String?   @map("secret_encrypted") @db.Text
+  enrolledAt      DateTime? @map("enrolled_at") @db.Timestamptz(6)
+  /// Último paso de 30 s aceptado: un mismo código no vale dos veces.
+  lastUsedStep    Int?      @map("last_used_step")
+  failedAttempts  Int       @default(0) @map("failed_attempts")
+  lockedUntil     DateTime? @map("locked_until") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_mfa")
+}
+
+/// Códigos de recuperación (10 por inscripción, un solo uso; se guarda su HMAC).
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.Char(64)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
+}
+
+/// Reto de segundo factor (`mfaToken`): 5 min, un solo uso. Lo emite el login
+/// (o aceptar una invitación de plataforma) sin abrir sesión.
+model MfaChallenge {
+  id                     String    @id @default(uuid()) @db.Uuid
+  userId                 String    @map("user_id") @db.Uuid
+  tokenHash              String    @unique @map("token_hash") @db.Char(64)
+  /// Secreto propuesto en `mfa/enroll`, pendiente de confirmar (cifrado).
+  pendingSecretEncrypted String?   @map("pending_secret_encrypted") @db.Text
+  /// Organización que queda activa al superarlo (invitación aceptada).
+  organizationId         String?   @map("organization_id") @db.Uuid
+  expiresAt              DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt                 DateTime? @map("used_at") @db.Timestamptz(6)
+  ip                     String?   @db.VarChar(64)
+  userAgent              String?   @map("user_agent") @db.VarChar(300)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("mfa_challenges")
+}
+
+enum InvitationStatusEnum {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+
+  @@map("invitation_status_enum")
+}
+
+/// Invitación a una organización (IAM-10, EQP-03, PLT-02). Una `PENDING` con
+/// `expires_at` vencido se presenta como `EXPIRED`.
+model Invitation {
+  id               String               @id @default(uuid()) @db.Uuid
+  email            String               @db.VarChar(255)
+  organizationId   String               @map("organization_id") @db.Uuid
+  role             MembershipRoleEnum
+  status           InvitationStatusEnum @default(PENDING)
+  tokenHash        String               @unique @map("token_hash") @db.Char(64)
+  expiresAt        DateTime             @map("expires_at") @db.Timestamptz(6)
+  invitedByUserId  String?              @map("invited_by_user_id") @db.Uuid
+  invitedByName    String               @map("invited_by_name") @db.VarChar(200)
+  viaPlatform      Boolean              @default(false) @map("via_platform")
+  /// Nombre propuesto (alta de bodega); la persona elige el suyo al aceptar.
+  inviteeName      String?              @map("invitee_name") @db.VarChar(200)
+  /// `MEMBER`, `OWNER_ONBOARDING` u `OWNERSHIP_TRANSFER` (alta y transferencia, §4).
+  purpose          String               @default("MEMBER") @db.VarChar(30)
+  /// Datos del proceso que la creó (p. ej. la transferencia de titularidad).
+  metadata         Json?                @db.JsonB
+  sentCount        Int                  @default(1) @map("sent_count")
+  lastSentAt       DateTime             @default(now()) @map("last_sent_at") @db.Timestamptz(6)
+  acceptedAt       DateTime?            @map("accepted_at") @db.Timestamptz(6)
+  acceptedByUserId String?              @map("accepted_by_user_id") @db.Uuid
+  revokedAt        DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invitedByUser User?        @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([email, status])
+  @@index([status, expiresAt])
+  @@map("invitations")
+}
+
+/// Obsoleto (H1): perfil del miembro en la bodega (matrícula) y autoría de la
+/// trazabilidad. La autorización usa `memberships` (mismo id); `is_active` se
+/// mantiene sincronizado con `memberships.status`.
 model WineryMember {
   id                        String               @id @default(uuid()) @db.Uuid
   userId                    String               @map("user_id") @db.Uuid

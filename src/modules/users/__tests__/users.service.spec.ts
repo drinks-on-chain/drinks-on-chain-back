@@ -2,13 +2,21 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UsersService } from '../users.service';
 import { UserRepository } from '../repositories/user.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
+import { MembershipsService } from '@modules/organizations/memberships.service';
+import { SessionsService } from '@modules/auth/sessions/sessions.service';
+import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { NotFoundException } from '@nestjs/common';
-import { UserRoleEnum, WineryMemberRoleEnum, WalletTypeEnum, WalletPurposeEnum } from '@prisma/client';
+import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import {
+  UserRoleEnum,
+  WineryMemberRoleEnum,
+  WalletTypeEnum,
+  WalletPurposeEnum,
+} from '@prisma/client';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let userRepository: UserRepository;
-  let walletsService: WalletsService;
 
   const mockUserRepository = {
     findById: jest.fn(),
@@ -20,18 +28,39 @@ describe('UsersService', () => {
     getUserPrimaryWallet: jest.fn(),
   };
 
+  const mockMemberships = {
+    listForUser: jest.fn(),
+  };
+
+  const mockSessions = {
+    revokeAllForUser: jest.fn().mockResolvedValue(2),
+  };
+
+  const txClient = { user: { update: jest.fn() } };
+  const mockPrisma = {
+    user: { findUnique: jest.fn() },
+    tx: txClient,
+    $transaction: jest.fn((fn: (tx: typeof txClient) => unknown) =>
+      fn(txClient),
+    ),
+  };
+
+  const mockAudit = { record: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         UsersService,
         { provide: UserRepository, useValue: mockUserRepository },
         { provide: WalletsService, useValue: mockWalletsService },
+        { provide: MembershipsService, useValue: mockMemberships },
+        { provide: SessionsService, useValue: mockSessions },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    userRepository = module.get<UserRepository>(UserRepository);
-    walletsService = module.get<WalletsService>(WalletsService);
 
     jest.clearAllMocks();
   });
@@ -65,7 +94,8 @@ describe('UsersService', () => {
             id: 'wallet-uuid-1',
             userId: 'user-uuid-1',
             wineryId: null,
-            stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+            stellarPublicAddress:
+              'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
             walletType: WalletTypeEnum.CUSTODIAL,
             walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
             isPrimary: true,
@@ -93,35 +123,107 @@ describe('UsersService', () => {
     });
   });
 
-  describe('updateProfile', () => {
-    it('debe actualizar los datos de perfil y retornar el perfil renovado', async () => {
-      mockUserRepository.update.mockResolvedValue({});
-      jest.spyOn(service, 'getProfile').mockResolvedValue({
+  describe('getMe y updateMe (contrato O0 §5, O1 §1)', () => {
+    const repoUser = {
+      id: 'user-uuid-1',
+      email: 'valeria@kohlberg.bo',
+      fullName: 'Valeria',
+      userRole: UserRoleEnum.ENOLOGIST,
+      phoneNumber: null,
+      preferredLocale: 'es',
+      isActive: true,
+      lastLoginAt: null,
+      createdAt: new Date('2026-09-01T00:00:00Z'),
+      notificationPrefs: { lotProgress: true },
+      promotionsConsentAt: null as Date | null,
+      wineryMemberships: [],
+      wallets: [],
+    };
+    const membership = {
+      id: 'm1',
+      organizationId: 'winery-1',
+      organizationType: 'WINERY' as const,
+      organizationName: 'Bodega',
+      organizationStatus: 'ACTIVE' as const,
+      role: 'ENOLOGIST' as const,
+      status: 'ACTIVE' as const,
+    };
+    const principal = {
+      id: 'user-uuid-1',
+      organizationId: 'winery-1',
+    } as AuthenticatedUser;
+
+    it('getMe: { user (audience y preferencias), memberships, activeOrganizationId }', async () => {
+      mockUserRepository.findById.mockResolvedValue(repoUser);
+      mockMemberships.listForUser.mockResolvedValue([membership]);
+
+      const me = await service.getMe(principal);
+
+      expect(me.user).toMatchObject({
         id: 'user-uuid-1',
-        email: 'valeria@kohlberg.bo',
-        fullName: 'Valeria Soliz Updated',
-        userRole: UserRoleEnum.ENOLOGIST,
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
-        isActive: true,
-        lastLoginAt: null,
-        createdAt: new Date(),
-        wineryMemberships: [],
-        primaryWallet: null,
+        audience: 'STAFF',
+        notificationPrefs: { lotProgress: true, redemptionReminders: true },
+        promotionsConsent: false,
+      });
+      expect(me.memberships).toEqual([membership]);
+      expect(me.activeOrganizationId).toBe('winery-1');
+    });
+
+    it('updateMe: preferencias parciales, consentimiento con fecha y bitácora', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(repoUser);
+      mockPrisma.tx.user.update.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({
+          ...repoUser,
+          ...data,
+        }),
+      );
+      mockUserRepository.findById.mockResolvedValue(repoUser);
+      mockMemberships.listForUser.mockResolvedValue([membership]);
+
+      const me = await service.updateMe(principal, {
+        fullName: '  Valeria Soliz ',
+        notificationPrefs: { redemptionReminders: false },
+        promotionsConsent: true,
       });
 
-      const result = await service.updateProfile('user-uuid-1', {
-        fullName: 'Valeria Soliz Updated',
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
+      const data = mockPrisma.tx.user.update.mock.calls[0][0].data;
+      expect(data.fullName).toBe('Valeria Soliz');
+      expect(data.notificationPrefs).toEqual({
+        lotProgress: true,
+        redemptionReminders: false,
       });
+      expect(data.promotionsConsentAt).toBeInstanceOf(Date);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockPrisma.tx,
+        expect.objectContaining({ action: 'USER_PROFILE_UPDATED' }),
+      );
+      expect(me).toHaveProperty('memberships');
+    });
+
+    it('updateMe sin cambios no escribe', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(repoUser);
+      mockUserRepository.findById.mockResolvedValue(repoUser);
+      mockMemberships.listForUser.mockResolvedValue([]);
+
+      await service.updateMe(principal, { promotionsConsent: false });
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('blockAccount (IAM-13)', () => {
+    it('desactiva la cuenta y revoca todas sus sesiones', async () => {
+      mockUserRepository.update.mockResolvedValue({});
+
+      await service.blockAccount('user-uuid-1');
 
       expect(mockUserRepository.update).toHaveBeenCalledWith('user-uuid-1', {
-        fullName: 'Valeria Soliz Updated',
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
+        isActive: false,
       });
-      expect(result.fullName).toBe('Valeria Soliz Updated');
+      expect(mockSessions.revokeAllForUser).toHaveBeenCalledWith(
+        'user-uuid-1',
+        'USER_BLOCKED',
+      );
     });
   });
 });

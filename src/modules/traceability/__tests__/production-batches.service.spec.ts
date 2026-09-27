@@ -2,7 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductionBatchesService } from '../services/production-batches.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { Prisma, ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
 
 describe('ProductionBatchesService', () => {
@@ -54,7 +55,9 @@ describe('ProductionBatchesService', () => {
   beforeEach(async () => {
     const mockStrategyFactory = {
       getStrategy: jest.fn().mockReturnValue({
-        validatePlotAndHarvest: jest.fn().mockReturnValue({ isValid: true, errors: [], warnings: [] }),
+        validatePlotAndHarvest: jest
+          .fn()
+          .mockReturnValue({ isValid: true, errors: [], warnings: [] }),
       }),
     };
 
@@ -64,6 +67,10 @@ describe('ProductionBatchesService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
         },
         {
           provide: TraceabilityStrategyFactory,
@@ -103,7 +110,7 @@ describe('ProductionBatchesService', () => {
       expect(result).toEqual(mockProdBatch);
     });
 
-    it('debe lanzar BadRequestException si el balance de masa excede el volumen cargado', async () => {
+    it('debe lanzar 422 VALIDATION_ERROR si el balance de masa excede el volumen cargado', async () => {
       mockPrismaService.fermentationTank.findFirst.mockResolvedValue(mockTank);
 
       const dto = {
@@ -115,15 +122,21 @@ describe('ProductionBatchesService', () => {
         wasteVolumeLiters: 500.0, // 900 + 500 = 1400 > 1000
       };
 
-      await expect(service.createDistillationBatch(mockWineryId, dto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.createDistillationBatch(mockWineryId, dto),
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'outputVolumeLiters', message: expect.any(String) }],
+      });
     });
   });
 
   describe('getRestStatus', () => {
     it('debe calcular días transcurridos y restantes respecto al reposo inerte', async () => {
-      mockPrismaService.productionBatch.findFirst.mockResolvedValue(mockProdBatch);
+      mockPrismaService.productionBatch.findFirst.mockResolvedValue(
+        mockProdBatch,
+      );
 
       const result = await service.getRestStatus(mockWineryId, mockProdId);
 

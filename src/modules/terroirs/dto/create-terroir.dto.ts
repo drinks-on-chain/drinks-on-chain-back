@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsString,
   IsNotEmpty,
@@ -37,7 +38,8 @@ export class CreateTerroirDto {
 
   @ApiProperty({
     example: 1850.0,
-    description: 'Altitud de la parcela en metros sobre el nivel del mar (m.s.n.m.)',
+    description:
+      'Altitud de la parcela en metros sobre el nivel del mar (m.s.n.m.)',
   })
   @IsNumber()
   @IsPositive()
@@ -76,7 +78,7 @@ export class CreateTerroirDto {
   })
   @IsOptional()
   @IsObject()
-  geographicPolygonGeojson?: Record<string, any>;
+  geographicPolygonGeojson?: Prisma.InputJsonObject;
 
   @ApiProperty({
     example: 'uva',
@@ -120,7 +122,8 @@ export class CreateTerroirDto {
 
   @ApiPropertyOptional({
     example: 'D.O. Singani',
-    description: 'Denominación de Origen a la que postula (ej. D.O. Singani, D.O. Tarija)',
+    description:
+      'Denominación de Origen a la que postula (ej. D.O. Singani, D.O. Tarija)',
   })
   @IsOptional()
   @IsString()

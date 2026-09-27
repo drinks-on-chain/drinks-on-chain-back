@@ -1,0 +1,324 @@
+import { execFileSync } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { PrismaClient } from '@prisma/client';
+import * as request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/app.setup';
+import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
+import { loadMockFixtures } from '../src/seed/fixtures';
+import { mockId } from '../src/seed/ids';
+import { runSeed } from '../src/seed/run-seed';
+import { SeedOptions } from '../src/seed/seed.options';
+import { demoInvitationToken } from '../src/seed/identity.seed';
+import { hashOpaqueToken } from '../src/shared/security/opaque-token';
+import { TEST_TOTP_SECRET, testMfaCrypto } from './helpers/identity';
+
+/**
+ * Semilla de demostración (0.10, OPS-09) sobre una base vacía: un esquema
+ * propio de Postgres con las migraciones aplicadas, para no depender de lo que
+ * dejen las demás suites (que corren a la vez sobre `public`).
+ */
+const run = `${Date.now()}${randomBytes(3).toString('hex')}`;
+const schema = `seed_e2e_${run}`;
+const baseUrl = process.env.DATABASE_URL ?? '';
+const originalUrl = process.env.DATABASE_URL;
+
+function urlWithSchema(url: string, name: string): string {
+  const parsed = new URL(url);
+  parsed.searchParams.set('schema', name);
+  return parsed.toString();
+}
+
+const databaseUrl = urlWithSchema(baseUrl, schema);
+const DEMO_PASSWORD = `demo-${randomBytes(8).toString('hex')}`;
+const options: SeedOptions = {
+  superadmin: {
+    email: `superadmin.${run}@example.test`,
+    password: `super-${randomBytes(8).toString('hex')}`,
+    fullName: 'Superusuario de la prueba',
+  },
+  demo: { password: DEMO_PASSWORD, totpSecret: TEST_TOTP_SECRET },
+  bcryptRounds: 4,
+  mfaKeys: {
+    jwtSecret: process.env.JWT_SECRET ?? null,
+    mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY ?? null,
+  },
+};
+
+const fx = loadMockFixtures();
+const ALTOS = mockId('winery:altos');
+const CINTI_VIEJO = mockId('winery:cintiviejo');
+
+async function countAll(prisma: PrismaClient) {
+  const [
+    users,
+    organizations,
+    memberships,
+    wineries,
+    wineryMembers,
+    wallets,
+    terroirs,
+    harvestBatches,
+    tanks,
+    logs,
+    treatments,
+    agings,
+    productions,
+    bottlings,
+    labs,
+  ] = await Promise.all([
+    prisma.user.count(),
+    prisma.organization.count(),
+    prisma.membership.count(),
+    prisma.winery.count(),
+    prisma.wineryMember.count(),
+    prisma.userWallet.count(),
+    prisma.terroir.count(),
+    prisma.harvestBatch.count(),
+    prisma.fermentationTank.count(),
+    prisma.fermentationLog.count(),
+    prisma.enologicalTreatment.count(),
+    prisma.wineAgingBatch.count(),
+    prisma.productionBatch.count(),
+    prisma.bottlingBatch.count(),
+    prisma.batchLabAnalysis.count(),
+  ]);
+  return {
+    users,
+    organizations,
+    memberships,
+    wineries,
+    wineryMembers,
+    wallets,
+    terroirs,
+    harvestBatches,
+    tanks,
+    logs,
+    treatments,
+    agings,
+    productions,
+    bottlings,
+    labs,
+  };
+}
+
+describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
+  let prisma: PrismaClient;
+  let app: INestApplication | undefined;
+  let ipSeq = 1;
+  const nextIp = () => `10.210.${Math.floor(Math.random() * 200)}.${ipSeq++}`;
+
+  beforeAll(async () => {
+    // Esquema vacío con todas las migraciones
+    execFileSync(
+      process.execPath,
+      [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
+      {
+        env: { ...process.env, DATABASE_URL: databaseUrl },
+        stdio: 'pipe',
+      },
+    );
+    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+  }, 300_000);
+
+  afterAll(async () => {
+    await app?.close();
+    if (prisma) {
+      await prisma.$executeRawUnsafe(
+        `DROP SCHEMA IF EXISTS "${schema}" CASCADE`,
+      );
+      await prisma.$disconnect();
+    }
+    process.env.DATABASE_URL = originalUrl;
+  });
+
+  it('se aplica dos veces sobre una base vacía sin errores ni duplicados', async () => {
+    const first = await runSeed(prisma, options, undefined, fx);
+    const afterFirst = await countAll(prisma);
+    const second = await runSeed(prisma, options, undefined, fx);
+    const afterSecond = await countAll(prisma);
+
+    expect(afterSecond).toEqual(afterFirst);
+    expect(first.superadmin?.created).toBe(true);
+    expect(second.superadmin?.created).toBe(false);
+    expect(second.superadmin?.id).toBe(first.superadmin?.id);
+    expect(second.demo).toEqual(first.demo);
+
+    // Mismo contenido que los fixtures de los mocks
+    const demo = first.demo!;
+    expect(afterFirst).toMatchObject({
+      // superusuario + personas de demostración
+      users: demo.users + 1,
+      // plataforma + bodegas
+      organizations: fx.wineries.length + 1,
+      wineries: fx.wineries.length,
+      wineryMembers: demo.wineryMemberships,
+      memberships: demo.wineryMemberships + demo.platformMemberships + 1,
+      // superusuario + billeteras de las personas de demostración
+      wallets: demo.wallets + 1,
+      terroirs: fx.terroirs.length,
+      harvestBatches: fx.harvestBatches.length,
+      tanks: fx.fermentationTanks.length,
+      logs: fx.fermentationLogs.length,
+      treatments: fx.enologicalTreatments.length,
+      agings: fx.wineAgings.length,
+      productions: fx.productionBatches.length,
+      bottlings: fx.bottlingBatches.length,
+      labs: fx.labAnalyses.length,
+    });
+    // Personal interno ADMIN, OPERATIONS, SUPPORT (sin el SUPERADMIN de los mocks)
+    expect(demo.platformMemberships).toBe(4);
+    expect(demo.users).toBe(17);
+  }, 120_000);
+
+  it('conserva ids, estados, códigos y bloqueos de los mocks', async () => {
+    const altos = await prisma.organization.findUniqueOrThrow({
+      where: { id: ALTOS },
+    });
+    expect(altos).toMatchObject({
+      type: 'WINERY',
+      name: 'Bodega Altos de Calamuchita',
+      status: 'ACTIVE',
+      wineryId: ALTOS,
+    });
+    const statuses = await prisma.winery.findMany({
+      select: { id: true, certificationStatus: true },
+    });
+    expect(
+      Object.fromEntries(statuses.map((w) => [w.id, w.certificationStatus])),
+    ).toEqual(
+      Object.fromEntries(fx.wineries.map((w) => [w.id, w.certificationStatus])),
+    );
+
+    // Una persona en dos bodegas: enóloga en Altos y dueña de Casa Uriondo
+    const sofia = await prisma.user.findUniqueOrThrow({
+      where: { email: 'sofia@aramayo.test' },
+      include: { memberships: { orderBy: { role: 'asc' } } },
+    });
+    expect(sofia.id).toBe(mockId('user:sofia'));
+    expect(sofia.memberships.map((m) => [m.organizationId, m.role])).toEqual(
+      expect.arrayContaining([
+        [ALTOS, 'ENOLOGIST'],
+        [mockId('winery:uriondo'), 'OWNER'],
+      ]),
+    );
+
+    // Bloqueo por la plataforma (Cinti Viejo) con su motivo
+    const blocked = await prisma.membership.findUniqueOrThrow({
+      where: { id: mockId('member:cvj_contable:cintiviejo') },
+    });
+    expect(blocked).toMatchObject({
+      organizationId: CINTI_VIEJO,
+      role: 'ACCOUNTANT',
+      status: 'BLOCKED',
+      blockedBy: 'PLATFORM',
+    });
+    // En las bodegas, membresía y miembro comparten id
+    await expect(
+      prisma.wineryMember.findUniqueOrThrow({ where: { id: blocked.id } }),
+    ).resolves.toMatchObject({ isActive: false });
+
+    const staff = await prisma.membership.findMany({
+      where: { organizationId: PLATFORM_ORGANIZATION_ID },
+      include: { user: { select: { email: true } } },
+    });
+    expect(staff.map((m) => `${m.user.email}:${m.role}`).sort()).toEqual(
+      [
+        'administracion@drinksonchain.test:ADMIN',
+        'analista@drinksonchain.test:OPERATIONS',
+        'operaciones@drinksonchain.test:OPERATIONS',
+        'soporte@drinksonchain.test:SUPPORT',
+        `${options.superadmin!.email}:SUPERADMIN`,
+      ].sort(),
+    );
+    await expect(
+      prisma.user.findUnique({ where: { email: 'gestor@drinksonchain.test' } }),
+    ).resolves.toBeNull();
+
+    // Trazabilidad con los códigos y fechas de los fixtures
+    const lot = await prisma.bottlingBatch.findUniqueOrThrow({
+      where: { internationalLotCode: 'CVJ-2026-SINGANI-001' },
+      include: { labAnalysis: true, productionBatch: true },
+    });
+    expect(lot.id).toBe(mockId('bottling:b01'));
+    expect(lot.bottlingDate.toISOString()).toBe('2026-03-01T00:00:00.000Z');
+    expect(lot.labAnalysis?.id).toBe(mockId('lab:l01'));
+    expect(lot.productionBatch?.restStatus).toBe('BOTTLED');
+  });
+
+  it('invitaciones de demostración con token secreto y TOTP del personal interno', async () => {
+    const invitations = await prisma.invitation.findMany();
+    expect(invitations).toHaveLength(fx.invitations.length);
+    const padcaya = fx.invitations.find(
+      (i) => i._mock.token === 'demo-invitacion-padcaya',
+    )!;
+    const row = invitations.find((i) => i.id === padcaya.id)!;
+    expect(row.tokenHash).toBe(
+      hashOpaqueToken(
+        demoInvitationToken(DEMO_PASSWORD, 'demo-invitacion-padcaya'),
+      ),
+    );
+    // El token legible de los mocks no sirve
+    expect(row.tokenHash).not.toBe(hashOpaqueToken('demo-invitacion-padcaya'));
+    expect(row.status).toBe('PENDING');
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    const soporte = invitations.find(
+      (i) => i.email === 'soporte2@drinksonchain.test',
+    )!;
+    expect(soporte.organizationId).toBe(PLATFORM_ORGANIZATION_ID);
+
+    const mfa = await prisma.userMfa.findMany({
+      include: { user: { select: { email: true } } },
+    });
+    expect(mfa.map((m) => m.user.email).sort()).toEqual([
+      'administracion@drinksonchain.test',
+      'operaciones@drinksonchain.test',
+      'soporte@drinksonchain.test',
+    ]);
+    expect(testMfaCrypto().decrypt(mfa[0].secretEncrypted!)).toBe(
+      TEST_TOTP_SECRET,
+    );
+  });
+
+  it('una dueña de demostración inicia sesión y ve sus parcelas', async () => {
+    process.env.DATABASE_URL = databaseUrl;
+    const moduleRef = await Test.createTestingModule({
+      imports: [AppModule],
+    }).compile();
+    app = moduleRef.createNestApplication();
+    configureApp(app);
+    await app.init();
+    const http = () => request(app!.getHttpServer());
+
+    const ip = nextIp();
+    const login = await http()
+      .post('/v1/auth/login')
+      .set('X-Forwarded-For', ip)
+      .send({ email: 'admin@altos.test', password: DEMO_PASSWORD })
+      .expect(200);
+    expect(login.body.data.activeOrganizationId).toBe(ALTOS);
+    expect(login.body.data.user.id).toBe(mockId('user:altos_admin'));
+
+    const terroirs = await http()
+      .get('/v1/terroirs')
+      .set('X-Forwarded-For', ip)
+      .set('Authorization', `Bearer ${login.body.data.tokens.accessToken}`)
+      .expect(200);
+    const expected = fx.terroirs.filter((t) => t.wineryId === ALTOS);
+    expect(terroirs.body.data.total).toBe(expected.length);
+    expect(
+      terroirs.body.data.items
+        .map((t: { id: string; parcelName: string }) => [t.id, t.parcelName])
+        .sort(),
+    ).toEqual(expected.map((t) => [t.id, t.parcelName]).sort());
+
+    // La contraseña de los mocks no sirve: solo la de SEED_DEMO_PASSWORD
+    await http()
+      .post('/v1/auth/login')
+      .set('X-Forwarded-For', nextIp())
+      .send({ email: 'admin@altos.test', password: 'demo1234' })
+      .expect(401);
+  }, 60_000);
+});

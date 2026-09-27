@@ -17,15 +17,26 @@ export class MockOnchainBatchAnchorHook implements IOnchainBatchAnchorHook {
     parents: string[],
     volumeOrUnits: number,
     metrics: number[],
-    metadata: Record<string, any>,
+    metadata: Record<string, unknown>,
   ): OnchainStagePayload {
-    const canonicalMetadata = JSON.stringify(metadata, Object.keys(metadata).sort());
-    const ipfsCidHash = '0x' + crypto.createHash('sha256').update(canonicalMetadata).digest('hex');
+    const canonicalMetadata = JSON.stringify(
+      metadata,
+      Object.keys(metadata).sort(),
+    );
+    const ipfsCidHash =
+      '0x' +
+      crypto.createHash('sha256').update(canonicalMetadata).digest('hex');
 
     return {
-      batchId: batchId.startsWith('0x') ? batchId : '0x' + crypto.createHash('sha256').update(batchId).digest('hex'),
+      batchId: batchId.startsWith('0x')
+        ? batchId
+        : '0x' + crypto.createHash('sha256').update(batchId).digest('hex'),
       stage,
-      parents: parents.map((p) => (p.startsWith('0x') ? p : '0x' + crypto.createHash('sha256').update(p).digest('hex'))),
+      parents: parents.map((p) =>
+        p.startsWith('0x')
+          ? p
+          : '0x' + crypto.createHash('sha256').update(p).digest('hex'),
+      ),
       volumeOrUnits,
       metrics,
       ipfsCidHash,
@@ -40,9 +51,13 @@ export class MockOnchainBatchAnchorHook implements IOnchainBatchAnchorHook {
     isApproved: boolean,
   ): OnchainCertPayload {
     return {
-      batchId: batchId.startsWith('0x') ? batchId : '0x' + crypto.createHash('sha256').update(batchId).digest('hex'),
+      batchId: batchId.startsWith('0x')
+        ? batchId
+        : '0x' + crypto.createHash('sha256').update(batchId).digest('hex'),
       certifierAddress,
-      reportIpfsCid: reportHash.startsWith('0x') ? reportHash : '0x' + crypto.createHash('sha256').update(reportHash).digest('hex'),
+      reportIpfsCid: reportHash.startsWith('0x')
+        ? reportHash
+        : '0x' + crypto.createHash('sha256').update(reportHash).digest('hex'),
       isApproved,
       timestamp: Math.floor(Date.now() / 1000),
     };

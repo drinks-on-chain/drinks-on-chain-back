@@ -1,31 +1,29 @@
-import {
-  createParamDecorator,
-  ExecutionContext,
-  ForbiddenException,
-} from '@nestjs/common';
-import { UserRoleEnum } from '@prisma/client';
+import { createParamDecorator, ExecutionContext } from '@nestjs/common';
+import { AppException } from '../exceptions/app.exception';
+import { ErrorCode } from '../exceptions/error-codes';
 
+/**
+ * Bodega de la petición, resuelta por el `TenantGuard` en las rutas
+ * `@OrgType('WINERY')`: la bodega activa, o la de `?wineryId=` si quien llama
+ * es personal de plataforma. `undefined` solo en lecturas de plataforma sin
+ * `?wineryId=` (todas las bodegas).
+ */
 export const TenantId = createParamDecorator(
-  (data: unknown, ctx: ExecutionContext): string | undefined => {
-    const request = ctx.switchToHttp().getRequest();
-    const user = request.user;
-    const isPlatformAdmin = user?.userRole === UserRoleEnum.PLATFORM_ADMIN;
-
-    const tenantId =
-      request.tenantId ||
-      request.query?.wineryId ||
-      request.params?.wineryId ||
-      user?.wineryId;
-
-    if (!tenantId) {
-      if (isPlatformAdmin) {
-        return undefined;
-      }
-      throw new ForbiddenException(
-        'Tenant context (wineryId) is required for this operation',
-      );
+  (_data: unknown, ctx: ExecutionContext): string | undefined => {
+    const request = ctx.switchToHttp().getRequest<{
+      tenantId?: string | null;
+      user?: { organizationType?: string | null };
+    }>();
+    if (request.tenantId) {
+      return request.tenantId;
     }
-
-    return tenantId as string;
+    if (request.user?.organizationType === 'PLATFORM') {
+      return undefined;
+    }
+    throw new AppException(
+      403,
+      ErrorCode.AUTH_INSUFFICIENT_PERMISSIONS,
+      'Esta operación requiere una bodega activa',
+    );
   },
 );

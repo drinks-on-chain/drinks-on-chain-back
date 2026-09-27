@@ -7,45 +7,68 @@ export interface EnvironmentVariables {
   // Base de Datos PostgreSQL
   DATABASE_URL: string;
 
-  // Redis (BullMQ)
+  // Redis
   REDIS_URL: string;
+  QUEUE_PREFIX: string;
 
   // JWT
   JWT_SECRET: string;
   JWT_EXPIRES_IN: string;
   JWT_REFRESH_SECRET: string;
-  JWT_REFRESH_EXPIRES_IN: string;
 
-  // Stellar / Soroban Blockchain
+  // Sesiones y límites (contrato O0 §5, SE-06, IAM-07)
+  SESSION_TTL_STAFF_DAYS?: number;
+  SESSION_TTL_CONSUMER_DAYS?: number;
+  REFRESH_GRACE_SECONDS?: number;
+  FEATURE_ENFORCE_ACTIVE_ORG?: boolean;
+  TRUST_PROXY?: string;
+  PROXY_SHARED_SECRET?: string;
+  RATE_LIMIT_GLOBAL_PER_MINUTE?: number;
+  RATE_LIMIT_AUTH_PER_MINUTE?: number;
+  RATE_LIMIT_LOGIN_PER_MINUTE?: number;
+  RATE_LIMIT_SIGNUP_PER_MINUTE?: number;
+  RATE_LIMIT_REFRESH_PER_MINUTE?: number;
+  LOGIN_LOCK_EMAIL_THRESHOLD?: number;
+  LOGIN_LOCK_IP_THRESHOLD?: number;
+
+  // Cuenta, segundo factor e invitaciones (contrato O1 §1–§2)
+  MFA_ENCRYPTION_KEY?: string;
+  TURNSTILE_SECRET_KEY?: string;
+  APP_URL_ERP?: string;
+  APP_URL_BACKOFFICE?: string;
+  APP_URL_POS?: string;
+  APP_URL_MARKETPLACE?: string;
+
+  // Stellar / Soroban (opcional hasta la Ola 3)
   STELLAR_NETWORK: 'testnet' | 'mainnet' | 'futurenet' | 'standalone';
   STELLAR_HORIZON_URL: string;
   STELLAR_SOROBAN_RPC_URL: string;
-  STELLAR_RELAYER_SECRET_KEY: string;
+  STELLAR_RELAYER_SECRET_KEY?: string;
 
-  // Contratos Soroban
-  CONTRACT_PRODUCER_REGISTRY: string;
-  CONTRACT_BATCH_ANCHOR: string;
-  CONTRACT_PRODUCT_NFT: string;
-  CONTRACT_CLAIM_ESCROW: string;
+  // Almacenamiento de objetos privado
+  STORAGE_DRIVER: 'local' | 's3';
+  STORAGE_LOCAL_PATH: string;
+  STORAGE_BASE_URL?: string;
+  STORAGE_SIGNED_URL_TTL_SECONDS: number;
+  STORAGE_SIGNING_SECRET?: string;
+  S3_ENDPOINT?: string;
+  S3_PUBLIC_ENDPOINT?: string;
+  S3_REGION: string;
+  S3_FORCE_PATH_STYLE: boolean;
+  S3_BUCKET?: string;
+  S3_ACCESS_KEY?: string;
+  S3_SECRET_KEY?: string;
 
-  // Dynamic Wallets
-  DYNAMIC_ENVIRONMENT_ID: string;
-  DYNAMIC_API_KEY: string;
+  // Logs
+  LOG_FORMAT: 'json' | 'text';
 
-  // Supabase Storage
-  SUPABASE_URL: string;
-  SUPABASE_SERVICE_ROLE_KEY: string;
-
-  // Pasarela de Pagos (Banco API)
-  PAYMENT_BANK_API_KEY: string;
-  PAYMENT_BANK_API_SECRET: string;
-  PAYMENT_BANK_BASE_URL: string;
-  PAYMENT_BANK_WEBHOOK_SECRET: string;
-
-  // Indexer
+  // Indexador (opcional hasta la Ola 3)
   STELLAR_INDEXER_POLL_INTERVAL_MS: number;
   STELLAR_INDEXER_START_LEDGER: number;
 
-  // CORS
-  CORS_ALLOWED_ORIGINS: string;
+  // Swagger UI (/docs) y documento (/docs-json)
+  SWAGGER_ENABLED?: boolean;
+
+  // CORS: orígenes exactos separados por comas
+  CORS_ALLOWED_ORIGINS?: string;
 }

@@ -1,0 +1,21 @@
+# Solo entra en la imagen lo que el Dockerfile copia explícitamente
+.git
+.github
+.vscode
+.idea
+node_modules
+dist
+coverage
+uploads
+test-uploads
+*.log
+.env
+.env.*
+!.env.example
+docs
+deploy
+test
+README.md
+Dockerfile
+.dockerignore
+docker-compose*.yml

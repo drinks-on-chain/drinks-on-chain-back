@@ -1,22 +1,28 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
 import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
 import { QueryHarvestBatchesDto } from './dto/query-harvest-batches.dto';
 import { Prisma, HarvestBatch, PhytoStatusEnum } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ValidationException } from '@shared/exceptions/validation.exception';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 
 @Injectable()
 export class HarvestBatchesService {
   private readonly logger = new Logger(HarvestBatchesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
-  async create(wineryId: string, dto: CreateHarvestBatchDto): Promise<HarvestBatch> {
+  async create(
+    wineryId: string,
+    dto: CreateHarvestBatchDto,
+  ): Promise<HarvestBatch> {
     // 1. Validar que la parcela pertenezca a la bodega
     const terroir = await this.prisma.terroir.findFirst({
       where: { id: dto.terroirId, wineryId },
@@ -30,7 +36,8 @@ export class HarvestBatchesService {
 
     // 2. Validar balance de pesaje
     if (dto.grossWeightKg <= dto.tareWeightKg) {
-      throw new BadRequestException(
+      throw ValidationException.forField(
+        'grossWeightKg',
         'El peso bruto debe ser estrictamente mayor al peso tara',
       );
     }
@@ -63,34 +70,43 @@ export class HarvestBatchesService {
       `Registrando lote de vendimia "${harvestBatchCode}" (${netWeight} kg netos)`,
     );
 
-    return this.prisma.harvestBatch.create({
-      data: {
-        wineryId,
-        terroirId: dto.terroirId,
-        harvestBatchCode,
-        intakeDate: new Date(dto.intakeDate),
-        harvestYear: dto.harvestYear,
-        grossWeightKg: new Prisma.Decimal(dto.grossWeightKg),
-        tareWeightKg: new Prisma.Decimal(dto.tareWeightKg),
-        netWeightKg: new Prisma.Decimal(netWeight),
-        brixDegrees: new Prisma.Decimal(dto.brixDegrees),
-        initialPh: new Prisma.Decimal(dto.initialPh),
-        initialAcidityGl: new Prisma.Decimal(dto.initialAcidityGl),
-        temperatureAtIntakeC:
-          dto.temperatureAtIntakeC !== undefined
-            ? new Prisma.Decimal(dto.temperatureAtIntakeC)
-            : null,
-        phytosanitaryStatus:
-          dto.phytosanitaryStatus ?? PhytoStatusEnum.PENDING_INSPECTION,
-        notes: dto.notes,
-      },
-    });
+    return this.audit.transaction(
+      (tx) =>
+        tx.harvestBatch.create({
+          data: {
+            wineryId,
+            terroirId: dto.terroirId,
+            harvestBatchCode,
+            intakeDate: new Date(dto.intakeDate),
+            harvestYear: dto.harvestYear,
+            grossWeightKg: new Prisma.Decimal(dto.grossWeightKg),
+            tareWeightKg: new Prisma.Decimal(dto.tareWeightKg),
+            netWeightKg: new Prisma.Decimal(netWeight),
+            brixDegrees: new Prisma.Decimal(dto.brixDegrees),
+            initialPh: new Prisma.Decimal(dto.initialPh),
+            initialAcidityGl: new Prisma.Decimal(dto.initialAcidityGl),
+            temperatureAtIntakeC:
+              dto.temperatureAtIntakeC !== undefined
+                ? new Prisma.Decimal(dto.temperatureAtIntakeC)
+                : null,
+            phytosanitaryStatus:
+              dto.phytosanitaryStatus ?? PhytoStatusEnum.PENDING_INSPECTION,
+            notes: dto.notes,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.HARVEST_BATCH_CREATED,
+        resource: { type: 'harvest_batch', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
   }
 
   async findAll(
     wineryId: string | undefined,
     query: QueryHarvestBatchesDto,
-  ): Promise<{ items: HarvestBatch[]; total: number }> {
+  ): Promise<Paginated<HarvestBatch>> {
     const where: Prisma.HarvestBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.harvestYear && { harvestYear: query.harvestYear }),
@@ -103,8 +119,7 @@ export class HarvestBatchesService {
     const [items, total] = await Promise.all([
       this.prisma.harvestBatch.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { intakeDate: 'desc' },
         include: {
           terroir: true,
@@ -113,13 +128,10 @@ export class HarvestBatchesService {
       this.prisma.harvestBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
-  async findById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<HarvestBatch & { terroir?: any; fermentationTanks?: any[] }> {
+  async findById(wineryId: string | undefined, id: string) {
     const batch = await this.prisma.harvestBatch.findFirst({
       where: {
         id,
@@ -146,7 +158,7 @@ export class HarvestBatchesService {
     userId: string | null,
     dto: UpdatePhytoStatusDto,
   ): Promise<HarvestBatch> {
-    await this.findById(wineryId, id);
+    const before = await this.findById(wineryId, id);
 
     let memberId: string | null = null;
     if (userId) {
@@ -162,16 +174,30 @@ export class HarvestBatchesService {
       `Actualizando estado fitosanitario de lote ${id} a ${dto.phytosanitaryStatus}`,
     );
 
-    return this.prisma.harvestBatch.update({
-      where: { id },
-      data: {
-        phytosanitaryStatus: dto.phytosanitaryStatus,
-        ...(dto.phytoInspectionPdfUrl && {
-          phytoInspectionPdfUrl: dto.phytoInspectionPdfUrl,
+    return this.audit.transaction(
+      (tx) =>
+        tx.harvestBatch.update({
+          where: { id },
+          data: {
+            phytosanitaryStatus: dto.phytosanitaryStatus,
+            ...(dto.phytoInspectionPdfUrl && {
+              phytoInspectionPdfUrl: dto.phytoInspectionPdfUrl,
+            }),
+            ...(dto.notes && { notes: dto.notes }),
+            ...(memberId && { certifiedByMemberId: memberId }),
+          },
         }),
-        ...(dto.notes && { notes: dto.notes }),
-        ...(memberId && { certifiedByMemberId: memberId }),
-      },
-    });
+      (updated) => ({
+        action: AuditAction.HARVEST_BATCH_PHYTO_STATUS_CHANGED,
+        resource: { type: 'harvest_batch', id },
+        organizationId: updated.wineryId,
+        before: { phytosanitaryStatus: before.phytosanitaryStatus },
+        after: {
+          phytosanitaryStatus: updated.phytosanitaryStatus,
+          phytoInspectionPdfUrl: updated.phytoInspectionPdfUrl,
+          certifiedByMemberId: updated.certifiedByMemberId,
+        },
+      }),
+    );
   }
 }

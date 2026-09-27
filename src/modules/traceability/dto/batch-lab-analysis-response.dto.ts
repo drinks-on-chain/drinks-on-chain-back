@@ -13,7 +13,12 @@ export class BatchLabAnalysisResponseDto {
   @ApiProperty({ example: 'LAB-SENASAG-ISO-2026-991' })
   accreditedLabCertificationCode!: string;
 
-  @ApiPropertyOptional({ example: '2026-10-02' })
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-10-02',
+  })
   analysisRequestDate?: Date | null;
 
   @ApiProperty({ example: '2026-10-04' })
@@ -22,7 +27,7 @@ export class BatchLabAnalysisResponseDto {
   @ApiProperty({ example: 40.05 })
   actualAlcoholAbv!: number;
 
-  @ApiPropertyOptional({ example: 40.05 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 40.05 })
   totalAlcoholAbv?: number | null;
 
   @ApiProperty({ example: 4.8 })
@@ -31,32 +36,36 @@ export class BatchLabAnalysisResponseDto {
   @ApiProperty({ example: 0.22 })
   volatileAcidityAceticGl!: number;
 
-  @ApiPropertyOptional({ example: 22.0 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 22.0 })
   freeSulfurDioxideMgL?: number | null;
 
-  @ApiPropertyOptional({ example: 65.0 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 65.0 })
   totalSulfurDioxideMgL?: number | null;
 
-  @ApiPropertyOptional({ example: 1.2 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 1.2 })
   reducingSugarsGl?: number | null;
 
-  @ApiPropertyOptional({ example: 18.5 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 18.5 })
   totalDryExtractGl?: number | null;
 
-  @ApiPropertyOptional({ example: 17.3 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 17.3 })
   sugarFreeDryExtractGl?: number | null;
 
-  @ApiPropertyOptional({ example: 0.0 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 0.0 })
   overpressureBar?: number | null;
 
-  @ApiPropertyOptional({ example: 48.0 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 48.0 })
   methanolContentMgL?: number | null;
 
-  @ApiPropertyOptional({ example: 0.02 })
+  @ApiPropertyOptional({ type: Number, nullable: true, example: 0.02 })
   copperContentMgL?: number | null;
 
-  @ApiPropertyOptional()
-  additionalParams?: Record<string, any> | null;
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+  })
+  additionalParams?: Record<string, unknown> | null;
 
   @ApiProperty({ example: 'https://storage.drinksonchain.com/certs/lab.pdf' })
   laboratoryReportPdfUrl!: string;
@@ -70,7 +79,11 @@ export class BatchLabAnalysisResponseDto {
   @ApiProperty({ example: true })
   conformsToUsaStandards!: boolean;
 
-  @ApiPropertyOptional({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
+  })
   reviewedByMemberId?: string | null;
 
   @ApiProperty({ example: '2026-10-04T12:00:00.000Z' })

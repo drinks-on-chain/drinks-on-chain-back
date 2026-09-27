@@ -25,7 +25,8 @@ export class CreateBottlingBatchDto {
 
   @ApiPropertyOptional({
     example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-    description: 'ID del lote de destilación/producción (para Singani o licores)',
+    description:
+      'ID del lote de destilación/producción (para Singani o licores)',
   })
   @IsOptional()
   @IsUUID()
@@ -67,7 +68,8 @@ export class CreateBottlingBatchDto {
 
   @ApiProperty({
     example: 75,
-    description: 'Formato o volumen nominal de la botella en centilitros (cL: 75, 70, 50, 37, 33)',
+    description:
+      'Formato o volumen nominal de la botella en centilitros (cL: 75, 70, 50, 37, 33)',
   })
   @IsInt()
   @IsPositive()
@@ -82,7 +84,8 @@ export class CreateBottlingBatchDto {
   bottleType?: string;
 
   @ApiPropertyOptional({
-    example: 'https://storage.drinksonchain.com/labels/singani-anniversary-750.png',
+    example:
+      'https://storage.drinksonchain.com/labels/singani-anniversary-750.png',
     description: 'URL del arte o diseño de etiqueta aprobado',
   })
   @IsOptional()

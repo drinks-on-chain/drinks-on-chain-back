@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WineryCategoryEnum, WineryStatusEnum, WineryMemberRoleEnum } from '@prisma/client';
+import {
+  WineryCategoryEnum,
+  WineryStatusEnum,
+  WineryMemberRoleEnum,
+} from '@prisma/client';
 
 export class WineryMemberItemDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
@@ -14,10 +18,17 @@ export class WineryMemberItemDto {
   @ApiProperty({ example: 'enologo@kohlberg.bo' })
   email!: string;
 
-  @ApiProperty({ enum: WineryMemberRoleEnum, example: WineryMemberRoleEnum.ENOLOGIST })
+  @ApiProperty({
+    enum: WineryMemberRoleEnum,
+    example: WineryMemberRoleEnum.ENOLOGIST,
+  })
   memberRole!: WineryMemberRoleEnum;
 
-  @ApiPropertyOptional({ example: 'MP-BOL-2024-9981' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'MP-BOL-2024-9981',
+  })
   professionalLicenseNumber?: string | null;
 
   @ApiProperty({ example: true })
@@ -43,7 +54,11 @@ export class WineryResponseDto {
   @ApiProperty({ example: '1028374029' })
   taxIdNit!: string;
 
-  @ApiPropertyOptional({ example: '08-01-03-01-0001' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '08-01-03-01-0001',
+  })
   senasagSanitaryReg?: string | null;
 
   @ApiProperty({ example: 'Valle Central de Tarija' })
@@ -52,34 +67,63 @@ export class WineryResponseDto {
   @ApiProperty({ example: 'BO' })
   countryCode!: string;
 
-  @ApiPropertyOptional({ example: 'Km 15 Carretera a Bermejo' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'Km 15 Carretera a Bermejo',
+  })
   address?: string | null;
 
   @ApiProperty({ example: 'contacto@kohlberg.bo' })
   contactEmail!: string;
 
-  @ApiPropertyOptional({ example: '+59146642345' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '+59146642345',
+  })
   contactPhone?: string | null;
 
-  @ApiPropertyOptional({ example: 'https://storage.supabase.co/logos/kohlberg.png' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'https://storage.supabase.co/logos/kohlberg.png',
+  })
   logoUrl?: string | null;
 
-  @ApiPropertyOptional({ example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+  })
   stellarPublicKey?: string | null;
 
-  @ApiPropertyOptional({ example: 'PROD_BO_1028374029' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: 'PROD_BO_1028374029',
+  })
   onchainProducerId?: string | null;
 
-  @ApiPropertyOptional({ example: '0x_simulated_tx_88a1b2c3' })
+  @ApiPropertyOptional({
+    type: String,
+    nullable: true,
+    example: '0x_simulated_tx_88a1b2c3',
+  })
   onchainRegisterTxHash?: string | null;
 
   @ApiProperty({ example: false })
   isExportCertified!: boolean;
 
-  @ApiProperty({ enum: WineryStatusEnum, example: WineryStatusEnum.PENDING })
+  @ApiProperty({ enum: WineryStatusEnum, example: WineryStatusEnum.INVITED })
   certificationStatus!: WineryStatusEnum;
 
-  @ApiPropertyOptional({ example: '2026-09-06T21:00:00.000Z' })
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    example: '2026-09-06T21:00:00.000Z',
+  })
   approvedAt?: Date | null;
 
   @ApiProperty({ example: '2026-09-06T20:00:00.000Z' })

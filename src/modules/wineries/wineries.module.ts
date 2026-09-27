@@ -7,9 +7,17 @@ import { OnchainProducerHook } from './hooks/onchain-producer.hook';
 import { WalletsModule } from '@modules/wallets/wallets.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { AuthModule } from '@modules/auth/auth.module';
+import { OutboxModule } from '@shared/outbox/outbox.module';
+import { OrganizationsModule } from '@modules/organizations/organizations.module';
 
 @Module({
-  imports: [PrismaModule, WalletsModule, AuthModule],
+  imports: [
+    PrismaModule,
+    WalletsModule,
+    AuthModule,
+    OutboxModule,
+    OrganizationsModule,
+  ],
   controllers: [WineriesController],
   providers: [
     WineriesService,

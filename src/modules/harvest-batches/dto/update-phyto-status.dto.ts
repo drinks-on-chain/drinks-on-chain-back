@@ -1,4 +1,10 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUrl,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { PhytoStatusEnum } from '@prisma/client';
 
@@ -21,7 +27,8 @@ export class UpdatePhytoStatusDto {
   phytoInspectionPdfUrl?: string;
 
   @ApiPropertyOptional({
-    example: 'Lote aprobado sin presencia de botritis ni plagas cuarentenarias.',
+    example:
+      'Lote aprobado sin presencia de botritis ni plagas cuarentenarias.',
     description: 'Notas o justificación del dictamen enológico/agronómico',
   })
   @IsOptional()

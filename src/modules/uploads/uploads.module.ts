@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
+import { AuthModule } from '@modules/auth/auth.module';
 import { UploadsController } from './uploads.controller';
-import { StorageModule } from '../../shared/storage/storage.module';
+import { UploadsService } from './uploads.service';
 
+/** Subidas privadas; el almacenamiento lo da `StorageModule` (global). */
 @Module({
-  imports: [StorageModule],
+  imports: [AuthModule],
   controllers: [UploadsController],
+  providers: [UploadsService],
 })
 export class UploadsModule {}

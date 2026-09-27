@@ -1,8 +1,9 @@
-import { IsOptional, IsString, IsBoolean, IsInt, Min } from 'class-validator';
-import { Type, Transform } from 'class-transformer';
+import { IsOptional, IsString, IsBoolean } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 
-export class QueryTerroirsDto {
+export class QueryTerroirsDto extends WineryScopedPaginationQueryDto {
   @ApiPropertyOptional({
     description: 'Filtrar por elegibilidad de Denominación de Origen',
   })
@@ -32,24 +33,4 @@ export class QueryTerroirsDto {
   @Transform(({ value }) => value === 'true' || value === true)
   @IsBoolean()
   isActive?: boolean;
-
-  @ApiPropertyOptional({
-    default: 50,
-    description: 'Límite de resultados',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
-
-  @ApiPropertyOptional({
-    default: 0,
-    description: 'Desplazamiento para paginación',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number = 0;
 }

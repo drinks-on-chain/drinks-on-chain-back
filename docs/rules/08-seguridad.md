@@ -19,13 +19,29 @@
 ### C. Idempotencia en Transacciones Blockchain
 - Antes de enviar una transacción de minteo o anclaje, el backend verifica si la entidad ya cuenta con un `tx_hash` registrado para evitar doble emisión o consumo innecesario de comisiones (fees de Stellar).
 
+### D. Idempotencia en la API (`Idempotency-Key`) — ajustado por A-33 (27-09-2026)
+- Los clientes envían `Idempotency-Key: <UUID>` en las operaciones que no deben repetirse (cabecera permitida en CORS). `@Idempotent()` guarda en Redis, 24 h, la huella del cuerpo y la respuesta por persona + ruta + clave: un reintento devuelve la misma respuesta sin repetir la operación; otro cuerpo con la misma clave → 409 `IDEMPOTENCY_KEY_REUSED`; dos peticiones a la vez → 409 `IDEMPOTENCY_IN_PROGRESS`.
+- Obligatoria (`@Idempotent({ required: true })`) desde la Ola 3 en pedidos, pases, canjes, aprobaciones de tokenización y reembolsos; hoy se aplica a las altas del ERP. Complementa, no sustituye, las restricciones `UNIQUE` y las comprobaciones de estado de la base.
+
 ---
 
 ## 2. Aislamiento Multi-Tenant (Tenant Boundary Isolation)
 
 ### A. Filtrado Obligatorio por `wineryId`
 - Todo `Service` y `Repository` que maneje entidades B2B (terroirs, cosechas, tanques, lotes, análisis) **debe** incluir `wineryId` en el `WHERE` de la consulta.
-- Los decoradores `@TenantId()` y el guardia `TenantGuard` aseguran que el contexto del tenant provenga exclusivamente del token JWT firmado.
+- Los decoradores `@TenantId()` y el guardia `TenantGuard` aseguran que el contexto del tenant provenga exclusivamente de la **organización activa** del token firmado (claim `org`), o de `?wineryId=` solo para el personal de plataforma, que en las escrituras debe indicarlo siempre (OP-07). *Ajustado por A-33.*
+
+### C. Organizaciones y roles por membresía — ajustado por A-33 (27-09-2026)
+- Los permisos van **por membresía** (persona + organización + rol), nunca por un rol global de la persona. `users.user_role` y `winery_members` quedan obsoletos (solo compatibilidad hasta H1).
+- Una ruta de una organización **solo escribe membresías de esa organización** (SE-01): `POST /wineries/my/members` añade o reactiva la membresía de esa bodega y nada más; nunca toca el rol global ni las membresías de otra organización (plataforma incluida).
+- `@Audience()`, `@OrgType()` y `@Roles()` se evalúan contra la organización activa de la sesión; la matriz de roles del ERP está en `docs/arquitectura/identidad.md`.
+- Toda ruta del ERP lleva `@RequireActiveOrg()` (SE-05).
+
+### D. Sesiones — ajustado por A-33 (27-09-2026)
+- Acceso JWT de **15 min** con `sid`; renovación **rotativa** en la cookie `doc_rt` (`HttpOnly; Secure; SameSite=Lax; Path=/`), guardada solo como hash, 7 días el personal y 30 los consumidores (deslizante).
+- **Reutilización** de un refresco ya rotado (fuera de un periodo de gracia de 20 s para pestañas concurrentes) → se revoca la sesión entera y 401 `AUTH_REFRESH_REUSED`.
+- **Revocación inmediata** (IAM-13): bloquear una persona o una membresía revoca sus sesiones; el guard consulta la lista de revocación en Redis y la sesión en la base en cada petición.
+- Nunca guardar ni registrar tokens completos; el refresco no va en `localStorage`/`sessionStorage` del cliente.
 
 ### B. Prevención de Fugas de Existencia de Recursos (Security by Obscurity)
 - Si un usuario intenta consultar o modificar un recurso que pertenece a otra bodega, la API **debe responder con HTTP 404 (Not Found)** en lugar de HTTP 403 (Forbidden).
@@ -91,7 +107,7 @@ export function verifyWebhookSignature(
 ## 4. Seguridad en Terminales POS (Puntos de Canje)
 
 ### A. Autenticación de Doble Factor Físico
-- El operador debe estar autenticado con su usuario individual (`role = POS_OPERATOR`).
+- El operador debe estar autenticado con su usuario individual (membresía `CASHIER` o `MANAGER` del punto de canje, Ola 5; ya no `POS_OPERATOR`, que era un rol global: OP-05).
 - Adicionalmente, el turno del POS requiere validar el `pin_hash` de la sucursal física almacenado con **bcrypt** (cost factor 12).
 
 ### B. Validación de Ubicación y Estado
@@ -113,12 +129,14 @@ Se configuran cabeceras defensivas para mitigar ataques XSS, Clickjacking y MIME
 - `Strict-Transport-Security` (HSTS)
 - `X-XSS-Protection`
 
-### B. Rate Limiting / Throttling con `@nestjs/throttler`
-Para mitigar ataques de fuerza bruta y denegación de servicio (DoS):
-- **Endpoints de Auth (`/v1/auth/*`):** Máximo 5 intentos por minuto por IP.
+### B. Rate Limiting / Throttling con `@nestjs/throttler` — ajustado por A-33
+Para mitigar ataques de fuerza bruta y denegación de servicio (DoS), siempre por **IP real** (`TRUST_PROXY=1` detrás de nginx; nunca `true`):
+- **Global** (guard global, un contador por IP para toda la API): 300 peticiones por minuto (`RATE_LIMIT_GLOBAL_PER_MINUTE`).
+- **Endpoints de Auth (`/v1/auth/*`):** 20 por minuto, IP y ruta; login 10, signup 5, refresh 30.
+- **Bloqueo progresivo del login** (IAM-07) en Redis por correo e IP: tras 5 fallos por correo o 20 por IP en una hora, 60 s que se duplican con cada fallo (tope 1 h) → 429 `AUTH_TOO_MANY_ATTEMPTS`.
 - **Endpoints de Webhooks (`/v1/webhooks/*`):** Máximo 30 peticiones por minuto.
 - **Endpoints de POS (`/v1/claims/validate`):** Máximo 60 peticiones por minuto por terminal.
-- **Endpoints Generales:** Máximo 120 peticiones por minuto por IP.
+- Todo 429 lleva `Retry-After`.
 
 ### C. Prevención de Inyección SQL
 - Todas las consultas a la base de datos se ejecutan a través de **Prisma ORM**, garantizando queries 100% parametrizadas.
@@ -128,7 +146,7 @@ Para mitigar ataques de fuerza bruta y denegación de servicio (DoS):
 - Todo endpoint con body o query params debe validar contra un DTO con `class-validator`.
 - Configuración global estricta en `main.ts`:
   - `whitelist: true` (descarta propiedades no declaradas en el DTO).
-  - `forbidNonWhitelisted: true` (rechaza con HTTP 400 si se envían campos adicionales maliciosos).
+  - `forbidNonWhitelisted: true` (rechaza con HTTP 422 `VALIDATION_ERROR` y un detalle por campo no declarado; ajustado por A-33, antes 400).
   - `transform: true` (convierte tipos primitivos de forma segura).
 
 ### E. CORS Restrictivo

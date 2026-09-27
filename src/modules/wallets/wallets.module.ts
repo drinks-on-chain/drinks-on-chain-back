@@ -20,7 +20,10 @@ import { PrismaModule } from '@shared/prisma/prisma.module';
     },
     {
       provide: WalletsService,
-      useFactory: (repo: WalletRepository, provider: MockDynamicWalletProvider) => {
+      useFactory: (
+        repo: WalletRepository,
+        provider: MockDynamicWalletProvider,
+      ) => {
         return new WalletsService(repo, provider);
       },
       inject: [WalletRepository, MockDynamicWalletProvider],

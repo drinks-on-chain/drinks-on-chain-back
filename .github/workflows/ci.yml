@@ -1,0 +1,170 @@
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+  workflow_dispatch:
+
+# En dev no se cancela: la ejecución puede estar desplegando (se encola).
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/dev' }}
+
+permissions:
+  contents: read
+
+env:
+  PRISMA_HIDE_UPDATE_MESSAGE: '1'
+
+jobs:
+  check:
+    name: Lint, tipos, unitarias y build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      # OPS-12: openapi.json versionado = el que genera el código compilado
+      - name: OpenAPI al día (openapi.json)
+        run: |
+          node dist/openapi/generate.js
+          if ! git diff --exit-code -- openapi.json || [ -n "$(git status --porcelain -- openapi.json)" ]; then
+            echo "::error::openapi.json no coincide con el código. Ejecuta 'pnpm openapi:generate' y versiona el resultado."
+            exit 1
+          fi
+
+  e2e:
+    name: e2e y migraciones (Postgres y Redis reales)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: drinks_on_chain_ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d drinks_on_chain_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      # Correo: el e2e encola un correo y lo lee en la API de Mailpit
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports: ['1025:1025', '8025:8025']
+        env:
+          MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+          MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:ci-only-password@localhost:5432/drinks_on_chain_ci?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-jwt-secret-at-least-32-characters
+      JWT_REFRESH_SECRET: ci-only-refresh-secret-at-least-32-chars
+      CORS_ALLOWED_ORIGINS: http://localhost:3002
+      SMTP_HOST: localhost
+      SMTP_PORT: '1025'
+      MAILPIT_API_URL: http://localhost:8025
+      # Subidas: el e2e repite el flujo contra MinIO con el driver s3
+      S3_E2E: 'true'
+      S3_ENDPOINT: http://localhost:9000
+      S3_BUCKET: doc-ci-uploads
+      S3_ACCESS_KEY: ci-minio
+      S3_SECRET_KEY: ci-only-minio-password
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # MinIO necesita `server <dir>` como argumento: no cabe en `services`
+      - name: MinIO (almacenamiento S3 compatible)
+        run: |
+          docker run -d --name minio -p 9000:9000             -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-only-minio-password             cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1             server /tmp/data
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          docker logs minio
+          exit 1
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec prisma generate
+      - name: Migraciones aplicables desde cero
+        run: pnpm exec prisma migrate deploy
+      - name: Schema sin cambios pendientes de migración
+        # Compara la base recién migrada con schema.prisma; exit 2 = hay diferencias
+        run: |
+          set +e
+          pnpm exec prisma migrate diff \
+            --from-schema-datasource prisma/schema.prisma \
+            --to-schema-datamodel prisma/schema.prisma \
+            --script --exit-code > migrate-diff.sql
+          code=$?
+          if [ "$code" -eq 2 ]; then
+            echo "::error::schema.prisma tiene cambios sin migración. Crea una con: pnpm prisma:migrate --name <cambio>"
+            cat migrate-diff.sql
+            exit 1
+          fi
+          exit "$code"
+      - run: pnpm test:e2e
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker build --pull -t drinks-on-chain-back:ci .
+      - name: La imagen arranca como usuario no root
+        run: test "$(docker image inspect -f '{{.Config.User}}' drinks-on-chain-back:ci)" = node
+      - name: La imagen trae la API, el worker y la semilla
+        run: |
+          docker run --rm --entrypoint sh drinks-on-chain-back:ci -c \
+            'test -f dist/main.js && test -f dist/worker.js && test -f dist/worker-healthcheck.js && test -f dist/seed.js && test -f dist/seed/fixtures/terroirs.json'
+          # Sin latido, el healthcheck del worker debe fallar
+          ! docker run --rm --entrypoint node drinks-on-chain-back:ci dist/worker-healthcheck.js
+
+  audit:
+    name: Auditoría de dependencias
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      # pnpm exacto de package.json#packageManager (el de pnpm/action-setup
+      # puede quedar en otra versión mayor y cambiar el código de salida)
+      - name: pnpm por corepack
+        run: |
+          corepack enable
+          pnpm --version
+      # Bloquea avisos altos o críticos de producción. Las excepciones sin
+      # arreglo están en package.json#pnpm.auditConfig.ignoreGhsas y en el README.
+      - run: pnpm audit --prod --audit-level high
+
+  deploy-dev:
+    name: Desplegar en desarrollo
+    needs: [check, e2e, docker, audit]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    uses: ./.github/workflows/deploy-dev.yml
+    secrets: inherit

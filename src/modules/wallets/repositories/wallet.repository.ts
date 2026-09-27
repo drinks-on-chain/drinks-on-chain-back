@@ -1,21 +1,30 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { UserWallet, WalletPurposeEnum, WalletTypeEnum, Prisma } from '@prisma/client';
+import {
+  Prisma,
+  UserWallet,
+  WalletPurposeEnum,
+  WalletTypeEnum,
+} from '@prisma/client';
 
+/** Los métodos aceptan `tx` para participar en una transacción (OP-01). */
 @Injectable()
 export class WalletRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: {
-    userId: string;
-    wineryId?: string | null;
-    stellarPublicAddress: string;
-    dynamicVaultId: string;
-    walletType?: WalletTypeEnum;
-    walletPurpose: WalletPurposeEnum;
-    isPrimary?: boolean;
-  }): Promise<UserWallet> {
-    return this.prisma.userWallet.create({
+  async create(
+    data: {
+      userId: string;
+      wineryId?: string | null;
+      stellarPublicAddress: string;
+      dynamicVaultId: string;
+      walletType?: WalletTypeEnum;
+      walletPurpose: WalletPurposeEnum;
+      isPrimary?: boolean;
+    },
+    tx?: Prisma.TransactionClient,
+  ): Promise<UserWallet> {
+    return (tx ?? this.prisma).userWallet.create({
       data: {
         userId: data.userId,
         wineryId: data.wineryId ?? null,
@@ -28,19 +37,27 @@ export class WalletRepository {
     });
   }
 
-  async findByUserId(userId: string): Promise<UserWallet | null> {
-    return this.prisma.userWallet.findFirst({
+  async findByUserId(
+    userId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<UserWallet | null> {
+    return (tx ?? this.prisma).userWallet.findFirst({
       where: { userId, isPrimary: true },
     });
   }
 
-  async findByWineryId(wineryId: string): Promise<UserWallet | null> {
-    return this.prisma.userWallet.findFirst({
+  async findByWineryId(
+    wineryId: string,
+    tx?: Prisma.TransactionClient,
+  ): Promise<UserWallet | null> {
+    return (tx ?? this.prisma).userWallet.findFirst({
       where: { wineryId, isPrimary: true },
     });
   }
 
-  async findByAddress(stellarPublicAddress: string): Promise<UserWallet | null> {
+  async findByAddress(
+    stellarPublicAddress: string,
+  ): Promise<UserWallet | null> {
     return this.prisma.userWallet.findUnique({
       where: { stellarPublicAddress },
     });

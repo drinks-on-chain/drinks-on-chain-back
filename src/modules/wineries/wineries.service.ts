@@ -2,7 +2,6 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { WineryRepository } from './repositories/winery.repository';
@@ -25,10 +24,44 @@ import {
   WineryStatusEnum,
   WineryMemberRoleEnum,
   WalletPurposeEnum,
-  UserRoleEnum,
   Prisma,
+  Winery,
+  WineryMember,
+  User,
 } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import {
+  PaginationQueryDto,
+  toPage,
+  toPrismaPage,
+} from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ConflictException as AppConflictException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
+import { OutboxService } from '@shared/outbox/outbox.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
+import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
+import { OrganizationsService } from '@modules/organizations/organizations.service';
+import { MembershipsService } from '@modules/organizations/memberships.service';
+import { legacyUserRoleForNewMember } from '@modules/organizations/organization.constants';
+import {
+  RevocationReason,
+  SessionsService,
+} from '@modules/auth/sessions/sessions.service';
+import {
+  MEMBER_ADDED,
+  MemberAddedPayload,
+  WINERY_AGGREGATE,
+  WINERY_CREATED,
+  WineryCreatedPayload,
+} from './wineries.events';
+
+type WineryWithMembers = Winery & {
+  members?: (WineryMember & {
+    user?: Pick<User, 'fullName' | 'email'> | null;
+  })[];
+};
 
 @Injectable()
 export class WineriesService {
@@ -40,10 +73,21 @@ export class WineriesService {
     private readonly walletsService: WalletsService,
     private readonly onchainProducerHook: OnchainProducerHook,
     private readonly prisma: PrismaService,
+    private readonly outbox: OutboxService,
+    private readonly organizations: OrganizationsService,
+    private readonly memberships: MembershipsService,
+    private readonly sessions: SessionsService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
-   * Solicitud de onboarding de una nueva bodega (Estado inicial: PENDING)
+   * Solicitud de onboarding de una nueva bodega (Estado inicial: INVITED).
+   *
+   * Bodega, su organización (mismo id), membresía de dueño, billetera, claves
+   * de la bodega y el evento
+   * `winery.created` del outbox se escriben en una sola transacción (OP-01):
+   * si un paso falla no queda nada a medias. La activación de la bóveda en el
+   * proveedor la hace el worker a partir del evento.
    */
   async createWinery(
     userId: string,
@@ -56,44 +100,82 @@ export class WineriesService {
       );
     }
 
-    // 1. Crear bodega en estado PENDING
-    const winery = await this.wineryRepository.create({
-      legalName: dto.legalName.trim(),
-      commercialName: dto.commercialName.trim(),
-      beverageCategory: dto.beverageCategory,
-      taxIdNit: dto.taxIdNit.trim(),
-      senasagSanitaryReg: dto.senasagSanitaryReg?.trim() ?? null,
-      geographicRegion: dto.geographicRegion.trim(),
-      countryCode: dto.countryCode?.trim() ?? 'BO',
-      address: dto.address?.trim() ?? null,
-      contactEmail: dto.contactEmail.toLowerCase().trim(),
-      contactPhone: dto.contactPhone?.trim() ?? null,
-      logoUrl: dto.logoUrl?.trim() ?? null,
-      certificationStatus: WineryStatusEnum.PENDING,
-    });
+    const { updatedWinery, wineryWallet } = await this.prisma.$transaction(
+      async (tx) => {
+        // 1. Crear bodega en estado INVITED
+        const winery = await this.wineryRepository.create(
+          {
+            legalName: dto.legalName.trim(),
+            commercialName: dto.commercialName.trim(),
+            beverageCategory: dto.beverageCategory,
+            taxIdNit: dto.taxIdNit.trim(),
+            senasagSanitaryReg: dto.senasagSanitaryReg?.trim() ?? null,
+            geographicRegion: dto.geographicRegion.trim(),
+            countryCode: dto.countryCode?.trim() ?? 'BO',
+            address: dto.address?.trim() ?? null,
+            contactEmail: dto.contactEmail.toLowerCase().trim(),
+            contactPhone: dto.contactPhone?.trim() ?? null,
+            logoUrl: dto.logoUrl?.trim() ?? null,
+            certificationStatus: WineryStatusEnum.INVITED,
+          },
+          tx,
+        );
 
-    // 2. Vincular al usuario creador como OWNER / WINERY_ADMIN
-    await this.wineryMemberRepository.create({
-      userId,
-      wineryId: winery.id,
-      memberRole: WineryMemberRoleEnum.OWNER,
-    });
+        // 2. Organización de la bodega (mismo id) y membresía OWNER del creador
+        await this.organizations.createForWinery(tx, winery);
+        await this.memberships.addToWinery(tx, {
+          wineryId: winery.id,
+          userId,
+          role: WineryMemberRoleEnum.OWNER,
+        });
 
-    // 3. Aprovisionar billetera custodial institucional para la bodega
-    const wineryWallet = await this.walletsService.provisionWineryWallet(
-      userId,
-      winery.id,
-      WalletPurposeEnum.PRODUCER_SIGNING,
+        // 3. Aprovisionar billetera custodial institucional para la bodega
+        const wallet = await this.walletsService.provisionWineryWallet(
+          userId,
+          winery.id,
+          WalletPurposeEnum.PRODUCER_SIGNING,
+          tx,
+        );
+
+        // 4. Actualizar las claves públicas y vault de la bodega
+        const updated = await this.wineryRepository.update(
+          winery.id,
+          {
+            stellarPublicKey: wallet.stellarPublicAddress,
+            dynamicVaultId: wallet.dynamicVaultId,
+          },
+          tx,
+        );
+
+        // 5. Efectos externos por el outbox (los procesa el worker)
+        await this.outbox.add<WineryCreatedPayload>(tx, {
+          type: WINERY_CREATED,
+          aggregateType: WINERY_AGGREGATE,
+          aggregateId: winery.id,
+          queue: QUEUE_CHAIN,
+          payload: {
+            wineryId: winery.id,
+            ownerUserId: userId,
+            walletId: wallet.id,
+            vaultId: wallet.dynamicVaultId,
+            stellarPublicKey: wallet.stellarPublicAddress,
+          },
+        });
+
+        // 6. Bitácora (último paso: toma el candado de la cadena)
+        await this.audit.record(tx, {
+          action: AuditAction.WINERY_CREATED,
+          resource: { type: 'winery', id: winery.id },
+          organizationId: winery.id,
+          after: updated,
+        });
+
+        return { updatedWinery: updated, wineryWallet: wallet };
+      },
     );
 
-    // 4. Actualizar las claves públicas y vault de la bodega
-    const updatedWinery = await this.wineryRepository.update(winery.id, {
-      stellarPublicKey: wineryWallet.stellarPublicAddress,
-      dynamicVaultId: wineryWallet.dynamicVaultId,
-    });
-
     this.logger.log(
-      `Bodega creada en estado PENDING: ${updatedWinery.id} ("${updatedWinery.commercialName}") con Stellar Key: ${wineryWallet.stellarPublicAddress}`,
+      `Bodega creada en estado INVITED: ${updatedWinery.id} ("${updatedWinery.commercialName}") con Stellar Key: ${wineryWallet.stellarPublicAddress}`,
     );
 
     return this.mapToWineryResponse(updatedWinery);
@@ -118,12 +200,20 @@ export class WineriesService {
     wineryId: string,
     dto: UpdateWineryDto,
   ): Promise<WineryResponseDto> {
-    const updated = await this.wineryRepository.update(wineryId, {
-      commercialName: dto.commercialName?.trim(),
-      address: dto.address?.trim(),
-      contactEmail: dto.contactEmail?.toLowerCase().trim(),
-      contactPhone: dto.contactPhone?.trim(),
-      logoUrl: dto.logoUrl?.trim(),
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const winery = await this.wineryRepository.update(
+        wineryId,
+        {
+          commercialName: dto.commercialName?.trim(),
+          address: dto.address?.trim(),
+          contactEmail: dto.contactEmail?.toLowerCase().trim(),
+          contactPhone: dto.contactPhone?.trim(),
+          logoUrl: dto.logoUrl?.trim(),
+        },
+        tx,
+      );
+      await this.organizations.syncWinery(tx, winery);
+      return winery;
     });
 
     this.logger.log(`Bodega actualizada: ${wineryId}`);
@@ -131,56 +221,34 @@ export class WineriesService {
   }
 
   /**
-   * Incorpora un nuevo miembro operativo a la bodega
+   * Incorpora a una persona existente a la bodega, o reactiva su membresía
+   * (SE-01): solo escribe la membresía de **esta** bodega. No toca el rol
+   * global ni membresías de otras organizaciones (plataforma incluida).
    */
   async addMember(
     wineryId: string,
     dto: AddMemberDto,
   ): Promise<WineryMemberItemDto> {
-    // Validar existencia del usuario
     const user = await this.prisma.user.findUnique({
       where: { id: dto.userId },
       select: { id: true, fullName: true, email: true },
     });
-
     if (!user) {
       throw new NotFoundException('El usuario especificado no existe');
     }
 
-    // Validar si ya es miembro
-    const existingMembership =
-      await this.wineryMemberRepository.findMembership(dto.userId, wineryId);
-    if (existingMembership) {
-      throw new ConflictException(
-        'El usuario ya se encuentra registrado como miembro de esta bodega',
-      );
-    }
-
-    const member = await this.wineryMemberRepository.create({
-      userId: dto.userId,
-      wineryId,
-      memberRole: dto.memberRole,
-      professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
-      professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
-    });
-
-    // Sincronizar userRole con el rol operativo asignado
-    const roleMapping: Partial<Record<WineryMemberRoleEnum, UserRoleEnum>> = {
-      [WineryMemberRoleEnum.ENOLOGIST]: UserRoleEnum.ENOLOGIST,
-      [WineryMemberRoleEnum.AGRONOMIST]: UserRoleEnum.AGRONOMIST,
-      [WineryMemberRoleEnum.OPERATOR]: UserRoleEnum.POS_OPERATOR,
-      [WineryMemberRoleEnum.OWNER]: UserRoleEnum.WINERY_ADMIN,
-    };
-    const targetUserRole = roleMapping[dto.memberRole];
-    if (targetUserRole) {
-      await this.prisma.user.update({
-        where: { id: dto.userId },
-        data: { userRole: targetUserRole },
-      });
-    }
+    const member = await this.prisma.$transaction((tx) =>
+      this.memberships.addToWinery(tx, {
+        wineryId,
+        userId: dto.userId,
+        role: dto.memberRole,
+        professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
+        professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+      }),
+    );
 
     this.logger.log(
-      `Nuevo miembro añadido a bodega ${wineryId}: ${user.fullName} (${dto.memberRole})`,
+      `Miembro ${user.id} incorporado a la bodega ${wineryId} (${dto.memberRole})`,
     );
 
     return {
@@ -196,7 +264,10 @@ export class WineriesService {
   }
 
   /**
-   * Crea un nuevo usuario y lo incorpora directamente como miembro operativo de la bodega
+   * Crea un nuevo usuario y lo incorpora directamente como miembro operativo de la bodega.
+   *
+   * Usuario, billetera, membresía y el evento `member.added` del outbox van en
+   * una sola transacción (OP-01). La activación de la bóveda la hace el worker.
    */
   async createAndAddMember(
     wineryId: string,
@@ -212,40 +283,56 @@ export class WineriesService {
       );
     }
 
-    const roleMapping: Partial<Record<WineryMemberRoleEnum, UserRoleEnum>> = {
-      [WineryMemberRoleEnum.ENOLOGIST]: UserRoleEnum.ENOLOGIST,
-      [WineryMemberRoleEnum.AGRONOMIST]: UserRoleEnum.AGRONOMIST,
-      [WineryMemberRoleEnum.OPERATOR]: UserRoleEnum.POS_OPERATOR,
-      [WineryMemberRoleEnum.OWNER]: UserRoleEnum.WINERY_ADMIN,
-    };
-    const userRole = roleMapping[dto.memberRole] ?? UserRoleEnum.CONSUMER;
+    // Cuenta nueva: `user_role` (obsoleto) solo informativo; el operario de
+    // planta ya no es POS_OPERATOR (OP-05)
+    const userRole = legacyUserRoleForNewMember(dto.memberRole);
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email.toLowerCase().trim(),
-        passwordHash,
-        fullName: dto.fullName.trim(),
-        userRole,
-        phoneNumber: dto.phoneNumber?.trim() ?? null,
-        preferredLocale: 'es',
-        isActive: true,
-      },
-    });
+    const { user, member } = await this.prisma.$transaction(async (tx) => {
+      const createdUser = await tx.user.create({
+        data: {
+          email: dto.email.toLowerCase().trim(),
+          passwordHash,
+          fullName: dto.fullName.trim(),
+          userRole,
+          phoneNumber: dto.phoneNumber?.trim() ?? null,
+          preferredLocale: 'es',
+          isActive: true,
+        },
+      });
 
-    // Aprovisionar billetera custodial para el nuevo miembro
-    await this.walletsService.provisionUserWallet(
-      user.id,
-      WalletPurposeEnum.CONSUMER_NFT,
-    );
+      // Aprovisionar billetera custodial para el nuevo miembro
+      const wallet = await this.walletsService.provisionUserWallet(
+        createdUser.id,
+        WalletPurposeEnum.CONSUMER_NFT,
+        tx,
+      );
 
-    const member = await this.wineryMemberRepository.create({
-      userId: user.id,
-      wineryId,
-      memberRole: dto.memberRole,
-      professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
-      professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+      const createdMember = await this.memberships.addToWinery(tx, {
+        wineryId,
+        userId: createdUser.id,
+        role: dto.memberRole,
+        professionalLicenseNumber: dto.professionalLicenseNumber?.trim(),
+        professionalLicensePdfUrl: dto.professionalLicensePdfUrl?.trim(),
+      });
+
+      await this.outbox.add<MemberAddedPayload>(tx, {
+        type: MEMBER_ADDED,
+        aggregateType: WINERY_AGGREGATE,
+        aggregateId: wineryId,
+        queue: QUEUE_CHAIN,
+        payload: {
+          wineryId,
+          userId: createdUser.id,
+          memberId: createdMember.id,
+          memberRole: createdMember.memberRole,
+          walletId: wallet.id,
+          vaultId: wallet.dynamicVaultId,
+        },
+      });
+
+      return { user: createdUser, member: createdMember };
     });
 
     this.logger.log(
@@ -267,10 +354,17 @@ export class WineriesService {
   /**
    * Lista todos los miembros operativos de la bodega
    */
-  async getMyMembers(wineryId: string): Promise<WineryMemberItemDto[]> {
-    const members = await this.wineryMemberRepository.findMembersByWineryId(wineryId);
+  async getMyMembers(
+    wineryId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<WineryMemberItemDto>> {
+    const [members, total] =
+      await this.wineryMemberRepository.findMembersByWineryId(
+        wineryId,
+        toPrismaPage(query),
+      );
 
-    return members.map((m) => ({
+    const items = members.map((m) => ({
       id: m.id,
       userId: m.user.id,
       fullName: m.user.fullName,
@@ -280,14 +374,23 @@ export class WineriesService {
       isActive: m.isActive,
       joinedAt: m.joinedAt,
     }));
+    return toPage(items, total, query);
   }
 
   /**
    * Lista todas las bodegas pendientes de aprobación (Solo Platform Admin)
    */
-  async getPendingWineries(): Promise<WineryResponseDto[]> {
-    const wineries = await this.wineryRepository.findPendingWineries();
-    return wineries.map((w) => this.mapToWineryResponse(w));
+  async getPendingWineries(
+    query: PaginationQueryDto,
+  ): Promise<Paginated<WineryResponseDto>> {
+    const [wineries, total] = await this.wineryRepository.findPendingWineries(
+      toPrismaPage(query),
+    );
+    return toPage(
+      wineries.map((w) => this.mapToWineryResponse(w)),
+      total,
+      query,
+    );
   }
 
   /**
@@ -296,15 +399,16 @@ export class WineriesService {
   async approveWinery(
     wineryId: string,
     adminUserId: string,
-    dto?: ApproveWineryDto,
+    _dto?: ApproveWineryDto,
   ): Promise<WineryResponseDto> {
     const winery = await this.wineryRepository.findById(wineryId);
     if (!winery) {
       throw new NotFoundException('Bodega no encontrada');
     }
 
-    if (winery.certificationStatus !== WineryStatusEnum.PENDING) {
-      throw new BadRequestException(
+    if (winery.certificationStatus !== WineryStatusEnum.INVITED) {
+      throw new AppConflictException(
+        ErrorCode.WINERY_NOT_PENDING,
         `La bodega se encuentra en estado '${winery.certificationStatus}' y no puede ser aprobada nuevamente`,
       );
     }
@@ -319,13 +423,33 @@ export class WineriesService {
         stellarKey,
       );
 
-    // Actualización de estado en base de datos
-    const approvedWinery = await this.wineryRepository.update(wineryId, {
-      certificationStatus: WineryStatusEnum.ACTIVE,
-      approvedAt: new Date(),
-      approvedByUser: { connect: { id: adminUserId } },
-      onchainProducerId: onchainResult.onchainProducerId,
-      onchainRegisterTxHash: onchainResult.txHash,
+    // Estado, organización y bitácora en una transacción
+    const approvedWinery = await this.prisma.$transaction(async (tx) => {
+      const updated = await this.wineryRepository.update(
+        wineryId,
+        {
+          certificationStatus: WineryStatusEnum.ACTIVE,
+          approvedAt: new Date(),
+          approvedByUser: { connect: { id: adminUserId } },
+          onchainProducerId: onchainResult.onchainProducerId,
+          onchainRegisterTxHash: onchainResult.txHash,
+        },
+        tx,
+      );
+      await this.organizations.syncWinery(tx, updated);
+      await this.audit.record(tx, {
+        action: AuditAction.WINERY_APPROVED,
+        resource: { type: 'winery', id: wineryId },
+        organizationId: wineryId,
+        before: { certificationStatus: winery.certificationStatus },
+        after: {
+          certificationStatus: updated.certificationStatus,
+          approvedAt: updated.approvedAt,
+          onchainProducerId: updated.onchainProducerId,
+          onchainRegisterTxHash: updated.onchainRegisterTxHash,
+        },
+      });
+      return updated;
     });
 
     this.logger.log(
@@ -348,17 +472,39 @@ export class WineriesService {
       throw new NotFoundException('Bodega no encontrada');
     }
 
-    if (winery.certificationStatus !== WineryStatusEnum.PENDING) {
-      throw new BadRequestException(
+    if (winery.certificationStatus !== WineryStatusEnum.INVITED) {
+      throw new AppConflictException(
+        ErrorCode.WINERY_NOT_PENDING,
         `La bodega se encuentra en estado '${winery.certificationStatus}' y no puede ser rechazada`,
       );
     }
 
-    const rejectedWinery = await this.wineryRepository.update(wineryId, {
-      certificationStatus: WineryStatusEnum.REVOKED,
-      approvedAt: new Date(),
-      approvedByUser: { connect: { id: adminUserId } },
+    const rejectedWinery = await this.prisma.$transaction(async (tx) => {
+      const updated = await this.wineryRepository.update(
+        wineryId,
+        {
+          certificationStatus: WineryStatusEnum.REVOKED,
+          approvedAt: new Date(),
+          approvedByUser: { connect: { id: adminUserId } },
+        },
+        tx,
+      );
+      await this.organizations.syncWinery(tx, updated);
+      await this.audit.record(tx, {
+        action: AuditAction.WINERY_REJECTED,
+        resource: { type: 'winery', id: wineryId },
+        organizationId: wineryId,
+        before: { certificationStatus: winery.certificationStatus },
+        after: { certificationStatus: updated.certificationStatus },
+        reason: dto.rejectionReason,
+      });
+      return updated;
     });
+    // Organización revocada: fuera las sesiones que la tienen activa
+    await this.sessions.revokeForOrganization(
+      wineryId,
+      RevocationReason.ORGANIZATION_REVOKED,
+    );
 
     this.logger.log(
       `Bodega ${wineryId} RECHAZADA por admin ${adminUserId}. Motivo: ${dto.rejectionReason}`,
@@ -372,10 +518,12 @@ export class WineriesService {
    */
   async findAllWineries(
     query: QueryWineriesDto,
-  ): Promise<{ items: WineryResponseDto[]; total: number }> {
+  ): Promise<Paginated<WineryResponseDto>> {
     const where: Prisma.WineryWhereInput = {
       ...(query.status && { certificationStatus: query.status }),
-      ...(query.beverageCategory && { beverageCategory: query.beverageCategory }),
+      ...(query.beverageCategory && {
+        beverageCategory: query.beverageCategory,
+      }),
       ...(query.search && {
         OR: [
           { legalName: { contains: query.search, mode: 'insensitive' } },
@@ -388,8 +536,7 @@ export class WineriesService {
     const [items, total] = await Promise.all([
       this.prisma.winery.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { createdAt: 'desc' },
         include: {
           wallets: true,
@@ -401,15 +548,16 @@ export class WineriesService {
       this.prisma.winery.count({ where }),
     ]);
 
-    return {
-      items: items.map((w) => this.mapToWineryResponse(w)),
+    return toPage(
+      items.map((w) => this.mapToWineryResponse(w)),
       total,
-    };
+      query,
+    );
   }
 
-  private mapToWineryResponse(winery: any): WineryResponseDto {
+  private mapToWineryResponse(winery: WineryWithMembers): WineryResponseDto {
     const members: WineryMemberItemDto[] | undefined = winery.members?.map(
-      (m: any) => ({
+      (m) => ({
         id: m.id,
         userId: m.userId,
         fullName: m.user?.fullName ?? '',

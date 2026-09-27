@@ -5,7 +5,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -15,24 +14,28 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { ProductionBatchesService } from '../services/production-batches.service';
 import { CreateDistillationBatchDto } from '../dto/create-distillation-batch.dto';
 import { QueryProductionBatchesDto } from '../dto/query-production-batches.dto';
-import { ProductionBatchResponseDto } from '../dto/production-batch-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
+import {
+  ProductionBatchResponseDto,
+  RestStatusResponseDto,
+} from '../dto/production-batch-response.dto';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Destilación y Procesos Especiales (Singani)')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@ApiBearerAuth()
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('production-batches')
 export class ProductionBatchesController {
   constructor(
@@ -41,7 +44,8 @@ export class ProductionBatchesController {
 
   @Post('distillation')
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Idempotent()
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Registrar proceso de destilación de Singani',
     description:
@@ -60,11 +64,7 @@ export class ProductionBatchesController {
   }
 
   @Get(':id/rest-status')
-  @Roles(
-    UserRoleEnum.WINERY_ADMIN,
-    UserRoleEnum.ENOLOGIST,
-    UserRoleEnum.PLATFORM_ADMIN,
-  )
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Verificar días de reposo inerte (D.O. Singani)',
     description:
@@ -73,6 +73,7 @@ export class ProductionBatchesController {
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Estado de reposo inerte',
+    type: RestStatusResponseDto,
   })
   async getRestStatus(
     @TenantId() wineryId: string | undefined,
@@ -82,10 +83,11 @@ export class ProductionBatchesController {
   }
 
   @Get(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de lote de producción/destilación',
-    description: 'Retorna volúmenes de corte, parámetros térmicos y cuba de vino base de origen.',
+    description:
+      'Retorna volúmenes de corte, parámetros térmicos y cuba de vino base de origen.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -101,10 +103,14 @@ export class ProductionBatchesController {
   }
 
   @Get()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar lotes de destilación y producción',
-    description: 'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
+    description:
+      'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
+  })
+  @ApiPaginatedResponse(ProductionBatchResponseDto, {
+    description: 'Página de lotes de destilación y producción',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,

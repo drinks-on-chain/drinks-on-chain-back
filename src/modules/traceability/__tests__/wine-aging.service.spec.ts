@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WineAgingService } from '../services/wine-aging.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
+import { NotFoundException } from '@nestjs/common';
 import { Prisma, AgingStatusEnum } from '@prisma/client';
 
 describe('WineAgingService', () => {
@@ -55,6 +57,10 @@ describe('WineAgingService', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
       ],
     }).compile();
 
@@ -91,7 +97,7 @@ describe('WineAgingService', () => {
       expect(result).toEqual(mockAgingBatch);
     });
 
-    it('debe lanzar BadRequestException si la cuba ya tiene un lote de crianza asignado', async () => {
+    it('debe lanzar 409 FERMENTATION_TANK_ALREADY_TRANSFERRED si la cuba ya tiene un lote de crianza asignado', async () => {
       mockPrismaService.fermentationTank.findFirst.mockResolvedValue({
         ...mockTank,
         wineAgingBatch: { id: 'existing-aging' },
@@ -103,17 +109,25 @@ describe('WineAgingService', () => {
         plannedMonths: 12,
       };
 
-      await expect(service.createAgingBatch(mockWineryId, dto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.createAgingBatch(mockWineryId, dto),
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'FERMENTATION_TANK_ALREADY_TRANSFERRED',
+      });
     });
   });
 
   describe('findAgingBatchById', () => {
     it('debe retornar el lote de crianza si existe', async () => {
-      mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(mockAgingBatch);
+      mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(
+        mockAgingBatch,
+      );
 
-      const result = await service.findAgingBatchById(mockWineryId, mockAgingId);
+      const result = await service.findAgingBatchById(
+        mockWineryId,
+        mockAgingId,
+      );
 
       expect(result.id).toBe(mockAgingId);
     });
@@ -121,9 +135,9 @@ describe('WineAgingService', () => {
     it('debe lanzar NotFoundException si no existe', async () => {
       mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(null);
 
-      await expect(service.findAgingBatchById(mockWineryId, 'random')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findAgingBatchById(mockWineryId, 'random'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

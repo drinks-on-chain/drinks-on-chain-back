@@ -1,16 +1,25 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
-import { Prisma, BottlingBatch } from '@prisma/client';
+import {
+  Prisma,
+  BottlingBatch,
+  WineAgingBatch,
+  ProductionBatch,
+} from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 
 @Injectable()
 export class BottlingService {
@@ -19,6 +28,7 @@ export class BottlingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly strategyFactory: TraceabilityStrategyFactory,
+    private readonly audit: AuditService,
   ) {}
 
   async create(
@@ -27,9 +37,12 @@ export class BottlingService {
     dto: CreateBottlingBatchDto,
   ): Promise<BottlingBatch> {
     if (!dto.wineAgingBatchId && !dto.productionBatchId) {
-      throw new BadRequestException(
-        'Debe especificar un lote de crianza (wineAgingBatchId) o un lote de producción/destilación (productionBatchId)',
-      );
+      const message =
+        'Debe especificar un lote de crianza (wineAgingBatchId) o un lote de producción/destilación (productionBatchId)';
+      throw new ValidationException([
+        { field: 'wineAgingBatchId', message },
+        { field: 'productionBatchId', message },
+      ]);
     }
 
     const winery = await this.prisma.winery.findUnique({
@@ -42,7 +55,7 @@ export class BottlingService {
 
     const strategy = this.strategyFactory.getStrategy(dto.productType);
 
-    let sourceBatch: any;
+    let sourceBatch: WineAgingBatch | ProductionBatch | null = null;
     if (dto.wineAgingBatchId) {
       sourceBatch = await this.prisma.wineAgingBatch.findFirst({
         where: { id: dto.wineAgingBatchId, wineryId },
@@ -64,10 +77,15 @@ export class BottlingService {
     }
 
     // 1. Validación de reglas enológicas D.O. (ej. 180 días de reposo inerte o bloqueo de barrica)
-    const validation = strategy.validateBottlingEligibility(sourceBatch);
+    // Sin lote de origen se delega igual en la estrategia (comportamiento
+    // actual); la derivación del tipo desde el origen llega con EA-01/EA-02.
+    const validation = strategy.validateBottlingEligibility(
+      sourceBatch as WineAgingBatch | ProductionBatch,
+    );
     if (!validation.isValid) {
       throw new UnprocessableEntityException(
-        validation.errors.join('; ') || 'El lote no cumple los requisitos para embotellado',
+        validation.errors.join('; ') ||
+          'El lote no cumple los requisitos para embotellado',
       );
     }
 
@@ -113,35 +131,44 @@ export class BottlingService {
       `Registrando lote de embotellado "${internationalLotCode}" (${dto.totalBottlesPackaged} botellas de ${dto.packagingFormatCl} cL a ${dto.finalAlcoholAbv}% ABV)`,
     );
 
-    return this.prisma.bottlingBatch.create({
-      data: {
-        wineryId,
-        wineAgingBatchId: dto.wineAgingBatchId,
-        productionBatchId: dto.productionBatchId,
-        productType: dto.productType,
-        internationalLotCode,
-        finalAlcoholAbv: new Prisma.Decimal(dto.finalAlcoholAbv),
-        waterDilutionLiters:
-          dto.waterDilutionLiters !== undefined
-            ? new Prisma.Decimal(dto.waterDilutionLiters)
-            : null,
-        totalBottlesPackaged: dto.totalBottlesPackaged,
-        packagingFormatCl: dto.packagingFormatCl,
-        bottleType: dto.bottleType,
-        labelDesignUrl: dto.labelDesignUrl,
-        bottlingDate: new Date(dto.bottlingDate),
-        releasedByMemberId,
-        blockchainDataHash,
-        isAnchoredOnChain: false,
-        qrBatchUrl,
-      },
-    });
+    return this.audit.transaction(
+      (tx) =>
+        tx.bottlingBatch.create({
+          data: {
+            wineryId,
+            wineAgingBatchId: dto.wineAgingBatchId,
+            productionBatchId: dto.productionBatchId,
+            productType: dto.productType,
+            internationalLotCode,
+            finalAlcoholAbv: new Prisma.Decimal(dto.finalAlcoholAbv),
+            waterDilutionLiters:
+              dto.waterDilutionLiters !== undefined
+                ? new Prisma.Decimal(dto.waterDilutionLiters)
+                : null,
+            totalBottlesPackaged: dto.totalBottlesPackaged,
+            packagingFormatCl: dto.packagingFormatCl,
+            bottleType: dto.bottleType,
+            labelDesignUrl: dto.labelDesignUrl,
+            bottlingDate: new Date(dto.bottlingDate),
+            releasedByMemberId,
+            blockchainDataHash,
+            isAnchoredOnChain: false,
+            qrBatchUrl,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.BOTTLING_BATCH_CREATED,
+        resource: { type: 'bottling_batch', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
   }
 
   async findAll(
     wineryId: string | undefined,
     query: QueryBottlingBatchesDto,
-  ): Promise<{ items: BottlingBatch[]; total: number }> {
+  ): Promise<Paginated<BottlingBatch>> {
     const where: Prisma.BottlingBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.productType && { productType: query.productType }),
@@ -153,8 +180,7 @@ export class BottlingService {
     const [items, total] = await Promise.all([
       this.prisma.bottlingBatch.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { bottlingDate: 'desc' },
         include: {
           labAnalysis: true,
@@ -163,19 +189,10 @@ export class BottlingService {
       this.prisma.bottlingBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
-  async findById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<
-    BottlingBatch & {
-      labAnalysis?: any;
-      wineAgingBatch?: any;
-      productionBatch?: any;
-    }
-  > {
+  async findById(wineryId: string | undefined, id: string) {
     const batch = await this.prisma.bottlingBatch.findFirst({
       where: {
         id,

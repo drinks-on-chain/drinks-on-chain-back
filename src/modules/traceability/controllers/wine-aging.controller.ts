@@ -4,7 +4,7 @@ import {
   Post,
   Body,
   Param,
-  UseGuards,
+  Query,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -14,30 +14,33 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
 import { WineAgingService } from '../services/wine-aging.service';
 import { CreateWineAgingBatchDto } from '../dto/create-wine-aging-batch.dto';
 import { WineAgingResponseDto } from '../dto/wine-aging-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Crianza en Madera y Guarda (Vino)')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@ApiBearerAuth()
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('wine-aging')
 export class WineAgingController {
   constructor(private readonly wineAgingService: WineAgingService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Idempotent()
+  @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
     summary: 'Iniciar lote de crianza en barricas',
     description:
@@ -56,20 +59,27 @@ export class WineAgingController {
   }
 
   @Get()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar lotes de crianza',
     description: 'Obtiene el listado de barricas y lotes en guarda.',
   })
-  async findAll(@TenantId() wineryId: string | undefined) {
-    return this.wineAgingService.findAll(wineryId);
+  @ApiPaginatedResponse(WineAgingResponseDto, {
+    description: 'Página de lotes de crianza',
+  })
+  async findAll(
+    @TenantId() wineryId: string | undefined,
+    @Query() query: WineryScopedPaginationQueryDto,
+  ) {
+    return this.wineAgingService.findAll(wineryId, query);
   }
 
   @Get(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
+  @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de lote de crianza',
-    description: 'Retorna datos de barrica, meses planificados y fecha límite de bloqueo.',
+    description:
+      'Retorna datos de barrica, meses planificados y fecha límite de bloqueo.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

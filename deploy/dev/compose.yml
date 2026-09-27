@@ -1,0 +1,214 @@
+# -----------------------------------------------------------------------------
+# Drinks on Chain · backend · entorno de DESARROLLO del servidor
+#
+# Lo lanza deploy/dev/deploy.sh desde la release extraída:
+#   docker compose -p doc-dev -f ~/doc-dev/current/deploy/dev/compose.yml \
+#     --env-file ~/doc-dev/.env up -d --build --remove-orphans
+#
+# - La API se construye desde el código de esta misma release (context ../..).
+#   El worker usa la misma imagen con otro comando (node dist/worker.js).
+# - Solo se publican en el host la API (127.0.0.1:3000, detrás de nginx) y la
+#   UI de Mailpit (127.0.0.1:8025). Postgres, Redis, SMTP y MinIO quedan en la
+#   red interna.
+# - Los volúmenes de datos tienen nombre configurable para reutilizar los que
+#   ya existen en el servidor (ver deploy/dev/.env.example).
+# -----------------------------------------------------------------------------
+name: doc-dev
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    # Una etiqueta por release: el rollback reutiliza la imagen anterior
+    image: drinks-on-chain-back:dev-${RELEASE_SHA:-local}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${API_NODE_ENV:-production}
+      PORT: 4000
+      RELEASE_SHA: ${RELEASE_SHA:-local}
+      RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Define JWT_REFRESH_SECRET}
+      # Acceso de 15 min: un valor mayor en el .env del servidor se recorta a 900 s
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-900s}
+      # nginx delante (una capa): IP real para los límites de peticiones (SE-06)
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      # IP del cliente firmada por el proxy de las apps (O1-OPS-1). Sin valor
+      # por defecto: vacío = desactivado (se usa la IP de la conexión)
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS}
+      # Almacenamiento privado en MinIO (red interna) con URL firmadas. Las
+      # credenciales salen de las de MinIO del .env si no se definen S3_*.
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
+      STORAGE_LOCAL_PATH: /app/uploads
+      STORAGE_BASE_URL: ${STORAGE_BASE_URL:-}
+      S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+      # Endpoint que ve el navegador para las URL firmadas (nginx → minio:9000)
+      S3_PUBLIC_ENDPOINT: ${S3_PUBLIC_ENDPOINT:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_BUCKET: ${S3_BUCKET:-doc-dev-uploads}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-${MINIO_ROOT_USER:-doc-minio}}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD}}
+      S3_FORCE_PATH_STYLE: 'true'
+      STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      # Desarrollo publica /docs y /docs-json (el frontend lee el contrato de ahí);
+      # en producción queda apagado si no se define (SE-08)
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Solo para la semilla (exec api node dist/seed.js); la API no las lee
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+      SEED_DEMO_TOTP_SECRET: ${SEED_DEMO_TOTP_SECRET:-}
+      # Cuenta, segundo factor e invitaciones (Ola 1). Sin MFA_ENCRYPTION_KEY la
+      # API arranca con una clave derivada de JWT_SECRET y lo avisa en el log.
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      # Clave de prueba de Cloudflare Turnstile (siempre valida) hasta tener la real
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-1x0000000000000000000000000000000AA}
+      # Enlaces de los correos (invitación, recuperación, verificación)
+      APP_URL_ERP: ${APP_URL_ERP:-https://drinks-on-chain-erp.vercel.app}
+      APP_URL_BACKOFFICE: ${APP_URL_BACKOFFICE:-https://drinks-on-chain-backoffice.vercel.app}
+      APP_URL_POS: ${APP_URL_POS:-}
+      APP_URL_MARKETPLACE: ${APP_URL_MARKETPLACE:-}
+    ports:
+      - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
+    volumes:
+      - uploads:/app/uploads
+    networks: [internal]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-drinks_on_chain_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Define REDIS_PASSWORD}
+    command: ['sh', '-c', 'exec redis-server --requirepass "$${REDIS_PASSWORD}"']
+    volumes:
+      - redis_data:/data
+    networks: [internal]
+    healthcheck:
+      test: ['CMD-SHELL', 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 'true'
+      MP_SMTP_AUTH_ALLOW_INSECURE: 'true'
+      MP_MAX_MESSAGES: '5000'
+      MP_DATABASE: /data/mailpit.db
+    ports:
+      - '127.0.0.1:${MAILPIT_UI_HOST_PORT:-8025}:8025'
+    volumes:
+      - mailpit_data:/data
+    networks: [internal]
+
+  minio:
+    # minio/minio ya no se publica en Docker Hub: imagen de Chainguard fijada
+    # por digest (sin shell ni mc, así que sin healthcheck propio)
+    image: cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-doc-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD}
+    # API S3 solo en localhost: nginx la publica con su propio subdominio
+    # (S3_PUBLIC_ENDPOINT) para que el navegador abra las URL firmadas.
+    ports:
+      - '127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000'
+    volumes:
+      - minio_data:/data
+    networks: [internal]
+
+  # Worker: outbox → BullMQ, colas (chain, email, scheduled, default) y tareas
+  # programadas. Misma imagen que la API; arranca cuando la API está sana
+  # (las migraciones ya se aplicaron) y no publica ningún puerto.
+  worker:
+    image: drinks-on-chain-back:dev-${RELEASE_SHA:-local}
+    pull_policy: never
+    command: ['node', 'dist/worker.js']
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${API_NODE_ENV:-production}
+      RELEASE_SHA: ${RELEASE_SHA:-local}
+      RUN_MIGRATIONS: 'false'
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
+      OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
+      OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
+      WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
+      # Correo (cola `email`): en desarrollo, a Mailpit (UI en 127.0.0.1:8025)
+      SMTP_HOST: ${SMTP_HOST:-mailpit}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-Drinks on Chain (desarrollo) <no-reply@dev.drinksonchain.local>}
+      LOG_FORMAT: ${LOG_FORMAT:-json}
+    healthcheck:
+      test: ['CMD', 'node', 'dist/worker-healthcheck.js']
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 30s
+    networks: [internal]
+    depends_on:
+      api:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+networks:
+  internal:
+    name: doc-dev-internal
+
+# Nombres fijos (no dependen del nombre del proyecto). Para reutilizar los
+# volúmenes que ya existen en el servidor, pon su nombre en .env y
+# *_VOLUME_EXTERNAL=true (ver deploy/dev/.env.example).
+volumes:
+  postgres_data:
+    name: ${POSTGRES_VOLUME_NAME:-doc-dev_postgres_data}
+    external: ${POSTGRES_VOLUME_EXTERNAL:-false}
+  redis_data:
+    name: ${REDIS_VOLUME_NAME:-doc-dev_redis_data}
+    external: ${REDIS_VOLUME_EXTERNAL:-false}
+  uploads:
+    name: ${UPLOADS_VOLUME_NAME:-doc-dev_uploads}
+  mailpit_data:
+    name: ${MAILPIT_VOLUME_NAME:-doc-dev_mailpit_data}
+  minio_data:
+    name: ${MINIO_VOLUME_NAME:-doc-dev_minio_data}

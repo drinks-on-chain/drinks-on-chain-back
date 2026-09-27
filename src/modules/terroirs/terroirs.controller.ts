@@ -6,7 +6,6 @@ import {
   Body,
   Param,
   Query,
-  UseGuards,
   HttpCode,
   HttpStatus,
   ParseUUIDPipe,
@@ -25,23 +24,27 @@ import { CreateTerroirDto } from './dto/create-terroir.dto';
 import { UpdateTerroirDto } from './dto/update-terroir.dto';
 import { QueryTerroirsDto } from './dto/query-terroirs.dto';
 import { TerroirResponseDto } from './dto/terroir-response.dto';
-import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { RolesGuard } from '@modules/auth/guards/roles.guard';
-import { TenantGuard } from '@modules/auth/guards/tenant.guard';
-import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import {
+  OrgType,
+  RequireActiveOrg,
+  Roles,
+} from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Terroirs y Parcelas')
-@ApiBearerAuth('JWT-auth')
-@UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
+@ApiBearerAuth()
+@OrgType('WINERY')
+@RequireActiveOrg()
 @Controller('terroirs')
 export class TerroirsController {
   constructor(private readonly terroirsService: TerroirsService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
+  @Idempotent()
+  @Roles('OWNER', 'AGRONOMIST')
   @ApiOperation({
     summary: 'Registrar una nueva parcela de cultivo',
     description:
@@ -53,23 +56,22 @@ export class TerroirsController {
     type: TerroirResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado' })
-  @ApiForbiddenResponse({ description: 'Sin permisos de agrónomo o administrador de bodega' })
-  async create(
-    @TenantId() wineryId: string,
-    @Body() dto: CreateTerroirDto,
-  ) {
+  @ApiForbiddenResponse({
+    description: 'Sin permisos de agrónomo o administrador de bodega',
+  })
+  async create(@TenantId() wineryId: string, @Body() dto: CreateTerroirDto) {
     return this.terroirsService.create(wineryId, dto);
   }
 
   @Get()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST, UserRoleEnum.AGRONOMIST)
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar parcelas de la bodega',
-    description: 'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
+    description:
+      'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Listado de parcelas',
+  @ApiPaginatedResponse(TerroirResponseDto, {
+    description: 'Página de parcelas',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,
@@ -79,10 +81,11 @@ export class TerroirsController {
   }
 
   @Get(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST, UserRoleEnum.AGRONOMIST)
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de una parcela',
-    description: 'Retorna los datos agronómicos de la parcela y sus lotes de vendimia históricos.',
+    description:
+      'Retorna los datos agronómicos de la parcela y sus lotes de vendimia históricos.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -98,10 +101,11 @@ export class TerroirsController {
   }
 
   @Patch(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
+  @Roles('OWNER', 'AGRONOMIST')
   @ApiOperation({
     summary: 'Actualizar datos de una parcela',
-    description: 'Permite modificar datos agronómicos, polígono perimetral o estado activo.',
+    description:
+      'Permite modificar datos agronómicos, polígono perimetral o estado activo.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

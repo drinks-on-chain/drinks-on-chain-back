@@ -6,8 +6,12 @@ import { Winery, WineryStatusEnum, Prisma } from '@prisma/client';
 export class WineryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(data: Prisma.WineryCreateInput): Promise<Winery> {
-    return this.prisma.winery.create({ data });
+  /** `tx`: cliente de una transacción en curso (OP-01). */
+  async create(
+    data: Prisma.WineryCreateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Winery> {
+    return (tx ?? this.prisma).winery.create({ data });
   }
 
   async findById(id: string) {
@@ -35,15 +39,30 @@ export class WineryRepository {
     });
   }
 
-  async findPendingWineries(): Promise<Winery[]> {
-    return this.prisma.winery.findMany({
-      where: { certificationStatus: WineryStatusEnum.PENDING },
-      orderBy: { createdAt: 'desc' },
-    });
+  /** Bodegas pendientes de aprobación (INVITED, una página) y su total. */
+  async findPendingWineries(page: {
+    take: number;
+    skip: number;
+  }): Promise<[Winery[], number]> {
+    const where: Prisma.WineryWhereInput = {
+      certificationStatus: WineryStatusEnum.INVITED,
+    };
+    return Promise.all([
+      this.prisma.winery.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        ...page,
+      }),
+      this.prisma.winery.count({ where }),
+    ]);
   }
 
-  async update(id: string, data: Prisma.WineryUpdateInput): Promise<Winery> {
-    return this.prisma.winery.update({
+  async update(
+    id: string,
+    data: Prisma.WineryUpdateInput,
+    tx?: Prisma.TransactionClient,
+  ): Promise<Winery> {
+    return (tx ?? this.prisma).winery.update({
       where: { id },
       data,
     });

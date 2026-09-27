@@ -1,0 +1,84 @@
+name: Deploy dev
+
+# Despliegue al entorno de desarrollo. Lo llama ci.yml tras la CI verde de un
+# push a dev; también se puede lanzar a mano sobre dev. Ver deploy/README.md.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Subir release y ejecutar deploy.sh
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Nunca dos despliegues a la vez; el último en cola sustituye al pendiente
+    concurrency:
+      group: deploy-dev
+      cancel-in-progress: false
+    steps:
+      - name: Comprobar configuración
+        id: config
+        env:
+          DEV_SSH_HOST: ${{ secrets.DEV_SSH_HOST }}
+          REF: ${{ github.ref }}
+        run: |
+          if [ "$REF" != "refs/heads/dev" ]; then
+            echo "::error::El despliegue a desarrollo solo sale de dev (ref: $REF)"
+            exit 1
+          fi
+          if [ -z "$DEV_SSH_HOST" ]; then
+            echo "::notice::Faltan los secretos DEV_SSH_*: despliegue omitido (ver deploy/README.md)"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.config.outputs.enabled == 'true'
+
+      - name: Empaquetar el commit (git archive)
+        if: steps.config.outputs.enabled == 'true'
+        run: |
+          sha="$(git rev-parse HEAD)"
+          git archive --format=tar.gz -o release.tgz HEAD
+          echo "SHA=$sha" >> "$GITHUB_ENV"
+          ls -lh release.tgz
+
+      - name: Preparar SSH
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          DEV_SSH_KEY: ${{ secrets.DEV_SSH_KEY }}
+          DEV_SSH_KNOWN_HOSTS: ${{ secrets.DEV_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEV_SSH_KEY" > ~/.ssh/doc_dev_deploy
+          chmod 600 ~/.ssh/doc_dev_deploy
+          printf '%s\n' "$DEV_SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 644 ~/.ssh/known_hosts
+
+      - name: Subir la release
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          DEV_SSH_HOST: ${{ secrets.DEV_SSH_HOST }}
+          DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
+        run: |
+          scp -i ~/.ssh/doc_dev_deploy -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            release.tgz "$DEV_SSH_USER@$DEV_SSH_HOST:doc-dev/releases/$SHA.tgz.part"
+
+      - name: Desplegar
+        if: steps.config.outputs.enabled == 'true'
+        env:
+          DEV_SSH_HOST: ${{ secrets.DEV_SSH_HOST }}
+          DEV_SSH_USER: ${{ secrets.DEV_SSH_USER }}
+        run: |
+          ssh -i ~/.ssh/doc_dev_deploy -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$DEV_SSH_USER@$DEV_SSH_HOST" \
+            "mv ~/doc-dev/releases/$SHA.tgz.part ~/doc-dev/releases/$SHA.tgz && ~/doc-dev/bin/deploy.sh $SHA"
+          echo "### Desplegado en desarrollo: \`$SHA\`" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Limpiar la llave
+        if: always()
+        run: rm -f ~/.ssh/doc_dev_deploy

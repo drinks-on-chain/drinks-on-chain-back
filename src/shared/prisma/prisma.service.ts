@@ -23,6 +23,10 @@ export class PrismaService
               { emit: 'stdout', level: 'error' },
             ]
           : ['warn', 'error'],
+      // Las transacciones que escriben en la bitácora esperan su turno en el
+      // candado de la cadena (docs/arquitectura/bitacora.md): más margen que
+      // el de Prisma por defecto (2 s para empezar, 5 s en total)
+      transactionOptions: { maxWait: 10_000, timeout: 15_000 },
     });
   }
 

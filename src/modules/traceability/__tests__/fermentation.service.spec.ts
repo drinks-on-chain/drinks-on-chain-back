@@ -1,8 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FermentationService } from '../services/fermentation.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
-import { Prisma, TankStatusEnum, DestinationTypeEnum, TreatmentTypeEnum } from '@prisma/client';
+import {
+  Prisma,
+  TankStatusEnum,
+  DestinationTypeEnum,
+  TreatmentTypeEnum,
+} from '@prisma/client';
 
 describe('FermentationService', () => {
   let service: FermentationService;
@@ -64,6 +71,10 @@ describe('FermentationService', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
       ],
     }).compile();
 
@@ -74,7 +85,9 @@ describe('FermentationService', () => {
 
   describe('createTank', () => {
     it('debe registrar una nueva cuba de fermentación vinculada a la vendimia', async () => {
-      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(mockHarvestBatch);
+      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(
+        mockHarvestBatch,
+      );
       mockPrismaService.fermentationTank.create.mockResolvedValue(mockTank);
 
       const dto = {
@@ -126,7 +139,12 @@ describe('FermentationService', () => {
         recordedAt: '2026-03-16T08:00:00Z',
       };
 
-      const result = await service.addLog(mockWineryId, mockTankId, mockUserId, dto);
+      const result = await service.addLog(
+        mockWineryId,
+        mockTankId,
+        mockUserId,
+        dto,
+      );
 
       expect(prisma.fermentationLog.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
