@@ -28,6 +28,17 @@ function loggedUser(
   return { id, fullName: typeof fullName === 'string' ? fullName : null };
 }
 
+/**
+ * Respuesta de login con el reto del segundo factor (sin sesión): la entrada
+ * la escribe `MfaService` (`AUTH_MFA_CHALLENGED`) y, al superarlo,
+ * `AUTH_LOGIN_SUCCEEDED`.
+ */
+function isMfaChallenge(result: unknown): boolean {
+  if (typeof result !== 'object' || result === null) return false;
+  const body = result as { mfa?: unknown; data?: { mfa?: unknown } };
+  return Boolean(body.mfa ?? body.data?.mfa);
+}
+
 /** Estado HTTP de un error (HttpException de Nest o AppException propia). */
 function statusOf(error: unknown): number | undefined {
   if (error instanceof HttpException) return error.getStatus();
@@ -73,6 +84,9 @@ export class AuthAuditInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       mergeMap((result) => {
+        if (isMfaChallenge(result)) {
+          return from(Promise.resolve(result));
+        }
         const user = loggedUser(result);
         return from(
           this.safeRecord(() =>

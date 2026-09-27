@@ -11,6 +11,7 @@ import {
 import {
   ApiBearerAuth,
   ApiConflictResponse,
+  ApiExtraModels,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNoContentResponse,
@@ -21,6 +22,7 @@ import {
   ApiTooManyRequestsResponse,
   ApiUnauthorizedResponse,
   ApiUnprocessableEntityResponse,
+  getSchemaPath,
 } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
@@ -35,16 +37,16 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { MfaChallengeResponseDto } from './dto/mfa.dto';
 import { Public } from './decorators/public.decorator';
 import { bearerToken } from './guards/access-token.guard';
 import {
   clearRefreshCookie,
   readRefreshToken,
-  setRefreshCookie,
   useSecureCookie,
 } from './sessions/refresh-cookie';
 import { SESSION_SETTINGS, SessionSettings } from './sessions/session.config';
-import type { ClientInfo } from './sessions/sessions.service';
+import { clientInfo, respondWithSession } from './sessions/session-response';
 import {
   AUTH_THROTTLER,
   DEFAULT_RATE_LIMITS,
@@ -53,14 +55,6 @@ import {
 
 const SET_COOKIE_DESCRIPTION =
   'Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`';
-
-function clientInfo(req: Request): ClientInfo {
-  const agent = req.headers['user-agent'];
-  return {
-    ip: req.ip ?? null,
-    userAgent: typeof agent === 'string' ? agent : null,
-  };
-}
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -75,13 +69,7 @@ export class AuthController {
     res: Response,
     issued: IssuedSession,
   ): AuthResponseDto {
-    setRefreshCookie(
-      res,
-      issued.refreshToken,
-      issued.cookieMaxAgeSeconds,
-      useSecureCookie(this.settings.nodeEnv, req),
-    );
-    return issued.body;
+    return respondWithSession(req, res, issued, this.settings);
   }
 
   @Public()
@@ -136,12 +124,19 @@ export class AuthController {
   })
   @ApiOperation({
     summary: 'Iniciar sesión con credenciales',
-    description: `Valida correo y contraseña y abre una sesión: persona (con \`audience\`), membresías, organización activa (la última usada o la primera activa, plataforma antes que bodega) y tokens (acceso de 15 min). ${SET_COOKIE_DESCRIPTION}. Tras varios fallos seguidos (por correo o por IP) responde 429 \`AUTH_TOO_MANY_ATTEMPTS\` con \`Retry-After\` (bloqueo progresivo).`,
+    description: `Valida correo y contraseña y abre una sesión: persona (con \`audience\`), membresías, organización activa (la última usada o la primera activa, plataforma antes que bodega) y tokens (acceso de 15 min). ${SET_COOKIE_DESCRIPTION}. **Personal de plataforma** (membresía de plataforma activa): responde \`{ mfa: { required, enrolled, mfaToken } }\` sin tokens ni cookie; la sesión se abre con \`/v1/auth/mfa/verify\` o, la primera vez, \`/v1/auth/mfa/enroll\` + \`/v1/auth/mfa/enroll/confirm\` (PLT-05). Tras varios fallos seguidos (por correo o por IP) responde 429 \`AUTH_TOO_MANY_ATTEMPTS\` con \`Retry-After\` (bloqueo progresivo).`,
   })
+  @ApiExtraModels(AuthResponseDto, MfaChallengeResponseDto)
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Sesión abierta',
-    type: AuthResponseDto,
+    description:
+      'Sesión abierta o, para el personal de plataforma, reto del segundo factor',
+    schema: {
+      oneOf: [
+        { $ref: getSchemaPath(AuthResponseDto) },
+        { $ref: getSchemaPath(MfaChallengeResponseDto) },
+      ],
+    },
   })
   @ApiUnauthorizedResponse({
     description: 'AUTH_INVALID_CREDENTIALS',
@@ -155,12 +150,12 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<AuthResponseDto> {
-    return this.send(
-      req,
-      res,
-      await this.authService.login(dto, clientInfo(req)),
-    );
+  ): Promise<AuthResponseDto | MfaChallengeResponseDto> {
+    const outcome = await this.authService.login(dto, clientInfo(req));
+    if (outcome.kind === 'mfa') {
+      return outcome.body;
+    }
+    return this.send(req, res, outcome.issued);
   }
 
   @Public()
@@ -219,7 +214,7 @@ export class AuthController {
   })
   @ApiForbiddenResponse({
     description:
-      'ORG_MEMBERSHIP_BLOCKED (membresía bloqueada) u ORG_REVOKED (organización revocada)',
+      'ORG_MEMBERSHIP_BLOCKED (membresía bloqueada), ORG_REVOKED (organización revocada) o AUTH_MFA_REQUIRED (organización de plataforma sin segundo factor en la sesión)',
     type: ApiErrorResponseDto,
   })
   @ApiUnauthorizedResponse({

@@ -61,6 +61,7 @@
     "ioredis": "^5.6.0",
     "joi": "^17.13.3",
     "nodemailer": "^10.0.11",
+    "otplib": "^13.5.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "prisma": "^6.4.1",
@@ -129,7 +130,12 @@
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "<rootDir>/../tsconfig.jest.json"
+        }
+      ]
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"
@@ -140,6 +146,9 @@
       "^@shared/(.*)$": "<rootDir>/shared/$1",
       "^@modules/(.*)$": "<rootDir>/modules/$1",
       "^@config/(.*)$": "<rootDir>/config/$1"
-    }
+    },
+    "transformIgnorePatterns": [
+      "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib)"
+    ]
   }
 }

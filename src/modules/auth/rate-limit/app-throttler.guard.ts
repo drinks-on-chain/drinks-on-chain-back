@@ -34,8 +34,19 @@ export function authRouteLimit(
   return () => positiveInt(process.env[envName], fallback);
 }
 
+/**
+ * Controladores con el límite de `/auth/*` (por IP y ruta): sesión, cuenta,
+ * segundo factor y las rutas públicas de invitaciones (tokens).
+ */
+export const AUTH_RATE_LIMITED_CONTROLLERS: ReadonlySet<string> = new Set([
+  'AuthController',
+  'AccountController',
+  'MfaController',
+  'PublicInvitationsController',
+]);
+
 const isAuthRoute = (context: ExecutionContext): boolean =>
-  context.getClass().name === 'AuthController';
+  AUTH_RATE_LIMITED_CONTROLLERS.has(context.getClass().name);
 
 /**
  * Límites de peticiones (SE-06, IAM-07). La IP es la real (`request.ip` con

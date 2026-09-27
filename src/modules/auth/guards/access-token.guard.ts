@@ -7,12 +7,19 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { TokenExpiredError } from '@nestjs/jwt';
-import { MembershipStatusEnum, OrganizationStatusEnum } from '@prisma/client';
+import {
+  MembershipStatusEnum,
+  OrganizationStatusEnum,
+  OrganizationTypeEnum,
+} from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { setRequestContext } from '@shared/context/request-context';
-import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import {
+  IS_PUBLIC_KEY,
+  OPTIONAL_AUTH_KEY,
+} from '../decorators/public.decorator';
 import type { AccessTokenClaims } from '../interfaces/jwt-payload.interface';
 import { AccessTokenService } from '../sessions/access-token.service';
 import { SessionRevocationStore } from '../sessions/session-revocation.store';
@@ -65,12 +72,19 @@ export class AccessTokenGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) {
-      return true;
-    }
-
     const request = context.switchToHttp().getRequest<Request>();
     const token = bearerToken(request);
+    if (isPublic) {
+      // Pública con sesión opcional (aceptar una invitación con la cuenta
+      // existente): si llega un acceso, se valida igual que en las privadas
+      const optional = this.reflector.getAllAndOverride<boolean>(
+        OPTIONAL_AUTH_KEY,
+        [context.getHandler(), context.getClass()],
+      );
+      if (!optional || !token) {
+        return true;
+      }
+    }
     if (!token) {
       throw sessionUnauthorized(
         ErrorCode.AUTH_TOKEN_INVALID,
@@ -121,6 +135,7 @@ export class AccessTokenGuard implements CanActivate {
       select: {
         userId: true,
         revokedAt: true,
+        mfaVerifiedAt: true,
         user: {
           select: {
             isActive: true,
@@ -130,7 +145,7 @@ export class AccessTokenGuard implements CanActivate {
               take: organizationId ? 1 : 0,
               select: {
                 status: true,
-                organization: { select: { status: true } },
+                organization: { select: { status: true, type: true } },
               },
             },
           },
@@ -177,6 +192,18 @@ export class AccessTokenGuard implements CanActivate {
         throw sessionUnauthorized(
           ErrorCode.AUTH_SESSION_REVOKED,
           'La sesión fue revocada',
+        );
+      }
+      // PLT-05: una organización de plataforma activa exige el segundo factor
+      // en la sesión (las abiertas antes de exigirlo se revocan)
+      if (
+        membership.organization.type === OrganizationTypeEnum.PLATFORM &&
+        !session.mfaVerifiedAt
+      ) {
+        await this.sessions.revoke(claims.sid, RevocationReason.MFA_REQUIRED);
+        throw sessionUnauthorized(
+          ErrorCode.AUTH_SESSION_REVOKED,
+          'La sesión fue revocada: vuelve a entrar con tu segundo factor',
         );
       }
       organizationStatus = membership.organization.status;

@@ -4,6 +4,7 @@ import {
   MembershipRoleEnum,
   MembershipStatusEnum,
   OrganizationStatusEnum,
+  OrganizationTypeEnum,
   Prisma,
   WineryMember,
   WineryMemberRoleEnum,
@@ -13,6 +14,7 @@ import { AppException } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import {
   RevocationReason,
+  RevocationReasonValue,
   SessionsService,
 } from '@modules/auth/sessions/sessions.service';
 import { MembershipDto } from './dto/membership.dto';
@@ -38,12 +40,30 @@ export function isUsableMembership(
 export function pickActiveOrganizationId(
   memberships: readonly MembershipView[],
   preferred?: string | null,
+  options: { allowPlatform?: boolean } = {},
 ): string | null {
-  const usable = memberships.filter(isUsableMembership);
+  const allowPlatform = options.allowPlatform ?? true;
+  const usable = memberships.filter(
+    (m) =>
+      isUsableMembership(m) &&
+      (allowPlatform || m.organizationType !== OrganizationTypeEnum.PLATFORM),
+  );
   if (preferred && usable.some((m) => m.organizationId === preferred)) {
     return preferred;
   }
   return usable[0]?.organizationId ?? null;
+}
+
+/**
+ * ¿Debe pasar el segundo factor al iniciar sesión? Sí si tiene una membresía
+ * de plataforma activa (PLT-05, contrato O1 §1).
+ */
+export function requiresMfa(memberships: readonly MembershipView[]): boolean {
+  return memberships.some(
+    (m) =>
+      m.organizationType === OrganizationTypeEnum.PLATFORM &&
+      m.status === MembershipStatusEnum.ACTIVE,
+  );
 }
 
 type MembershipWithOrganization = Prisma.MembershipGetPayload<{
@@ -207,27 +227,10 @@ export class MembershipsService {
     membershipId: string,
     params: { by: MembershipBlockedByEnum; reason?: string | null },
   ): Promise<void> {
-    const membership = await this.prisma.$transaction(async (tx) => {
-      const updated = await tx.membership.update({
-        where: { id: membershipId },
-        data: {
-          status: MembershipStatusEnum.BLOCKED,
-          blockedBy: params.by,
-          blockedReason: params.reason?.slice(0, 500) ?? null,
-          blockedAt: new Date(),
-        },
-      });
-      await tx.wineryMember.updateMany({
-        where: { id: membershipId },
-        data: { isActive: false },
-      });
-      return updated;
-    });
-    const revoked = await this.sessions.revokeForOrganization(
-      membership.organizationId,
-      RevocationReason.MEMBERSHIP_BLOCKED,
-      membership.userId,
+    const membership = await this.prisma.$transaction((tx) =>
+      this.setBlocked(tx, membershipId, params),
     );
+    const revoked = await this.revokeSessionsOf(membership);
     this.logger.log(
       `Membresía ${membershipId} bloqueada por ${params.by}; ${revoked} sesiones revocadas`,
     );
@@ -235,20 +238,62 @@ export class MembershipsService {
 
   /** Reactiva una membresía bloqueada. */
   async unblock(membershipId: string): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await tx.membership.update({
-        where: { id: membershipId },
-        data: {
-          status: MembershipStatusEnum.ACTIVE,
-          blockedBy: null,
-          blockedReason: null,
-          blockedAt: null,
-        },
-      });
-      await tx.wineryMember.updateMany({
-        where: { id: membershipId },
-        data: { isActive: true },
-      });
+    await this.prisma.$transaction((tx) => this.setUnblocked(tx, membershipId));
+  }
+
+  /**
+   * Marca la membresía como bloqueada en la transacción `tx` (y su espejo en
+   * `winery_members`). Quien llama revoca después las sesiones con
+   * `revokeSessionsOf` (fuera de la transacción).
+   */
+  async setBlocked(
+    tx: Prisma.TransactionClient,
+    membershipId: string,
+    params: { by: MembershipBlockedByEnum; reason?: string | null },
+  ) {
+    const updated = await tx.membership.update({
+      where: { id: membershipId },
+      data: {
+        status: MembershipStatusEnum.BLOCKED,
+        blockedBy: params.by,
+        blockedReason: params.reason?.slice(0, 500) ?? null,
+        blockedAt: new Date(),
+      },
     });
+    await tx.wineryMember.updateMany({
+      where: { id: membershipId },
+      data: { isActive: false },
+    });
+    return updated;
+  }
+
+  /** Reactiva la membresía en la transacción `tx`. */
+  async setUnblocked(tx: Prisma.TransactionClient, membershipId: string) {
+    const updated = await tx.membership.update({
+      where: { id: membershipId },
+      data: {
+        status: MembershipStatusEnum.ACTIVE,
+        blockedBy: null,
+        blockedReason: null,
+        blockedAt: null,
+      },
+    });
+    await tx.wineryMember.updateMany({
+      where: { id: membershipId },
+      data: { isActive: true },
+    });
+    return updated;
+  }
+
+  /** Revoca las sesiones de la persona con esa organización activa. */
+  async revokeSessionsOf(
+    membership: { organizationId: string; userId: string },
+    reason: RevocationReasonValue = RevocationReason.MEMBERSHIP_BLOCKED,
+  ): Promise<number> {
+    return this.sessions.revokeForOrganization(
+      membership.organizationId,
+      reason,
+      membership.userId,
+    );
   }
 }

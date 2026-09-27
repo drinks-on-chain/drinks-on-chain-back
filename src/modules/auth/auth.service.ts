@@ -26,6 +26,7 @@ import {
   MembershipView,
   isUsableMembership,
   pickActiveOrganizationId,
+  requiresMfa,
 } from '@modules/organizations/memberships.service';
 import { legacyUserRoleFor } from '@modules/organizations/organization.constants';
 import { SignupDto } from './dto/signup.dto';
@@ -42,6 +43,8 @@ import { SessionRevocationStore } from './sessions/session-revocation.store';
 import { AccessTokenService } from './sessions/access-token.service';
 import { parseRefreshToken } from './sessions/refresh-token';
 import { LoginAttemptsService } from './rate-limit/login-attempts.service';
+import { MfaChallengeBody, MfaPassed, MfaService } from './mfa/mfa.service';
+import type { IssuedSession } from './sessions/session-response';
 
 /**
  * Hash bcrypt de un valor aleatorio descartado: si el correo no existe se
@@ -51,11 +54,32 @@ import { LoginAttemptsService } from './rate-limit/login-attempts.service';
 const DUMMY_PASSWORD_HASH =
   '$2b$12$WuVygc4/zA0DuyXc86ytwOqVAWPykc3ApfmtBtI/oFBa4CWWgGhPm';
 
-/** Sesión emitida: cuerpo de la respuesta y datos de la cookie `doc_rt`. */
-export interface IssuedSession {
-  body: AuthResponseDto;
-  refreshToken: string;
-  cookieMaxAgeSeconds: number;
+export type { IssuedSession };
+
+/**
+ * Resultado del login: la sesión o, para el personal de plataforma, el reto
+ * del segundo factor (sin tokens ni cookie; contrato O1 §1).
+ */
+export type LoginOutcome =
+  | { kind: 'session'; issued: IssuedSession }
+  | { kind: 'mfa'; body: MfaChallengeBody };
+
+function isPlatformOrganization(
+  memberships: readonly MembershipView[],
+  organizationId: string | null,
+): boolean {
+  return memberships.some(
+    (m) =>
+      m.organizationId === organizationId && m.organizationType === 'PLATFORM',
+  );
+}
+
+function mfaRequiredError(): AppException {
+  return new AppException(
+    403,
+    ErrorCode.AUTH_MFA_REQUIRED,
+    'La organización de plataforma exige el segundo factor: cierra la sesión y vuelve a entrar con tu código',
+  );
 }
 
 type SessionUser = Pick<
@@ -92,6 +116,7 @@ export class AuthService {
     private readonly memberships: MembershipsService,
     private readonly loginAttempts: LoginAttemptsService,
     private readonly walletsService: WalletsService,
+    private readonly mfa: MfaService,
   ) {}
 
   /** Registro público (consumidores; `WINERY_ADMIN` hasta H1). Abre sesión. */
@@ -150,8 +175,11 @@ export class AuthService {
     return this.openSession(user, [], client);
   }
 
-  /** Inicio de sesión con correo y contraseña (IAM-02, IAM-07). */
-  async login(dto: LoginDto, client: ClientInfo): Promise<IssuedSession> {
+  /**
+   * Inicio de sesión con correo y contraseña (IAM-02, IAM-07). El personal de
+   * plataforma no recibe tokens: recibe el reto del segundo factor (PLT-05).
+   */
+  async login(dto: LoginDto, client: ClientInfo): Promise<LoginOutcome> {
     const email = dto.email.toLowerCase().trim();
 
     const lockedFor = await this.loginAttempts.lockedFor(email, client.ip);
@@ -186,9 +214,71 @@ export class AuthService {
     await this.loginAttempts.recordSuccess(email);
 
     const memberships = await this.memberships.listForUser(user.id);
+    if (requiresMfa(memberships)) {
+      const body = await this.mfa.startChallenge(user, { client });
+      this.logger.log(`Segundo factor pedido a ${user.id}`);
+      return { kind: 'mfa', body };
+    }
     const issued = await this.openSession(user, memberships, client);
     this.logger.log(`Sesión abierta para ${user.id}`);
+    return { kind: 'session', issued };
+  }
+
+  /**
+   * Reto del segundo factor superado (`mfa/verify`, `mfa/enroll/confirm`):
+   * abre la sesión marcada con el segundo factor. La organización activa es
+   * la del reto (invitación aceptada) o la de por defecto.
+   */
+  async completeMfa(
+    passed: MfaPassed,
+    client: ClientInfo,
+  ): Promise<IssuedSession> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: passed.userId },
+    });
+    if (!user || !user.isActive) {
+      throw new AppException(
+        401,
+        ErrorCode.AUTH_MFA_TOKEN_INVALID,
+        'El reto de segundo factor caducó o no es válido: inicia sesión de nuevo',
+      );
+    }
+    await this.loginAttempts.recordSuccess(user.email);
+    const memberships = await this.memberships.listForUser(user.id);
+    const invited = passed.organizationId
+      ? memberships.find(
+          (m) =>
+            m.organizationId === passed.organizationId && isUsableMembership(m),
+        )
+      : undefined;
+    const issued = await this.openSession(user, memberships, client, {
+      mfaVerified: true,
+      preferredOrganizationId: invited
+        ? invited.organizationId
+        : user.lastOrganizationId,
+    });
+    this.logger.log(`Sesión abierta con segundo factor para ${user.id}`);
     return issued;
+  }
+
+  /**
+   * Abre una sesión para una persona ya comprobada por otro medio (invitación
+   * aceptada con una cuenta nueva), con `organizationId` como activa si
+   * puede. La organización de plataforma nunca queda activa así: el personal
+   * de plataforma pasa por el segundo factor.
+   */
+  async openSessionForUser(
+    userId: string,
+    options: { client: ClientInfo; organizationId: string | null },
+  ): Promise<IssuedSession> {
+    const user = await this.prisma.user.findUniqueOrThrow({
+      where: { id: userId },
+    });
+    const memberships = await this.memberships.listForUser(user.id);
+    return this.openSession(user, memberships, options.client, {
+      mfaVerified: false,
+      preferredOrganizationId: options.organizationId,
+    });
   }
 
   /**
@@ -201,10 +291,12 @@ export class AuthService {
 
     let activeOrganizationId = validated.session.activeOrganizationId;
     if (!activeOrganizationId) {
-      // Sin organización activa (p. ej. acaba de registrar su bodega): la de por defecto
+      // Sin organización activa (p. ej. acaba de registrar su bodega): la de
+      // por defecto (la de plataforma solo si la sesión pasó el TOTP)
       activeOrganizationId = pickActiveOrganizationId(
         memberships,
         user.lastOrganizationId,
+        { allowPlatform: Boolean(validated.session.mfaVerifiedAt) },
       );
     }
     return this.rotateAndIssue(
@@ -249,6 +341,13 @@ export class AuthService {
         ErrorCode.ORG_REVOKED,
         'La organización está revocada',
       );
+    }
+
+    if (membership.organizationType === 'PLATFORM') {
+      const current = await this.sessions.findById(principal.sessionId);
+      if (!current?.mfaVerifiedAt) {
+        throw mfaRequiredError();
+      }
     }
 
     const parsed = parseRefreshToken(rawRefreshToken);
@@ -321,22 +420,34 @@ export class AuthService {
 
   // ─── Internos ──────────────────────────────────────────────────────────
 
-  /** Abre una sesión nueva (login y signup). */
+  /**
+   * Abre una sesión nueva (login, signup, segundo factor, invitación). La
+   * organización de plataforma solo queda activa si pasó el segundo factor.
+   */
   private async openSession(
     user: SessionUser,
     memberships: MembershipView[],
     client: ClientInfo,
+    options: {
+      mfaVerified?: boolean;
+      preferredOrganizationId?: string | null;
+    } = {},
   ): Promise<IssuedSession> {
     const audience = audienceFor(memberships);
+    const mfaVerified = options.mfaVerified ?? false;
     const activeOrganizationId = pickActiveOrganizationId(
       memberships,
-      user.lastOrganizationId,
+      options.preferredOrganizationId !== undefined
+        ? options.preferredOrganizationId
+        : user.lastOrganizationId,
+      { allowPlatform: mfaVerified },
     );
     const { session, refreshToken } = await this.sessions.create({
       userId: user.id,
       audience,
       activeOrganizationId,
       client,
+      mfaVerified,
     });
     await this.prisma.user.update({
       where: { id: user.id },
@@ -400,6 +511,17 @@ export class AuthService {
           'La sesión fue revocada',
         );
       }
+    }
+    // Sesión de plataforma sin segundo factor (abierta antes de exigirlo)
+    if (
+      !session.mfaVerifiedAt &&
+      isPlatformOrganization(memberships, session.activeOrganizationId)
+    ) {
+      await this.sessions.revoke(session.id, RevocationReason.MFA_REQUIRED);
+      throw sessionUnauthorized(
+        ErrorCode.AUTH_SESSION_REVOKED,
+        'La sesión fue revocada: vuelve a entrar con tu segundo factor',
+      );
     }
     return { user, memberships };
   }

@@ -6,6 +6,8 @@ import { ApiErrorResponseDto } from '../shared/dto/api-error-response.dto';
 export const BEARER_AUTH = 'bearer';
 /** Extensión que `@Public()` pone en sus operaciones; se retira al generar. */
 export const PUBLIC_OPERATION_EXTENSION = 'x-public';
+/** Pública que además acepta una sesión (`@Public() @OptionalAuth()`). */
+export const OPTIONAL_AUTH_OPERATION_EXTENSION = 'x-optional-auth';
 
 export function buildOpenApiConfig(): Omit<OpenAPIObject, 'paths'> {
   return new DocumentBuilder()
@@ -55,6 +57,14 @@ export function markPublicOperations(document: OpenAPIObject): void {
       ) {
         delete operation[PUBLIC_OPERATION_EXTENSION];
         operation.security = [];
+      }
+      if (
+        operation &&
+        typeof operation === 'object' &&
+        OPTIONAL_AUTH_OPERATION_EXTENSION in operation
+      ) {
+        delete operation[OPTIONAL_AUTH_OPERATION_EXTENSION];
+        operation.security = [{}, { [BEARER_AUTH]: [] }];
       }
     }
   }
