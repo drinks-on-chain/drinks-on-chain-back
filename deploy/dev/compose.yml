@@ -36,6 +36,9 @@ services:
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-900s}
       # nginx delante (una capa): IP real para los límites de peticiones (SE-06)
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      # IP del cliente firmada por el proxy de las apps (O1-OPS-1). Sin valor
+      # por defecto: vacío = desactivado (se usa la IP de la conexión)
+      PROXY_SHARED_SECRET: ${PROXY_SHARED_SECRET:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?Define CORS_ALLOWED_ORIGINS}
       # Almacenamiento privado en MinIO (red interna) con URL firmadas. Las
       # credenciales salen de las de MinIO del .env si no se definen S3_*.
