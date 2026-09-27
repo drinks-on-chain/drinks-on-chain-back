@@ -38,7 +38,10 @@ export class LabAnalysesService {
 
     // Validación toxicológica automatizada (SENASAG / Norma Boliviana NB 324001)
     let conformsToSenasag = dto.conformsToSenasagStandards ?? true;
-    if (dto.methanolContentMgL !== undefined && dto.methanolContentMgL > 200.0) {
+    if (
+      dto.methanolContentMgL !== undefined &&
+      dto.methanolContentMgL > 200.0
+    ) {
       conformsToSenasag = false;
       this.logger.warn(
         `Alerta toxicológica: Metanol de ${dto.methanolContentMgL} mg/100ml excede límite legal (<200 mg/100ml)`,
@@ -79,7 +82,9 @@ export class LabAnalysesService {
             ? new Prisma.Decimal(dto.totalAlcoholAbv)
             : null,
         totalAcidityTartaricGl: new Prisma.Decimal(dto.totalAcidityTartaricGl),
-        volatileAcidityAceticGl: new Prisma.Decimal(dto.volatileAcidityAceticGl),
+        volatileAcidityAceticGl: new Prisma.Decimal(
+          dto.volatileAcidityAceticGl,
+        ),
         freeSulfurDioxideMgL:
           dto.freeSulfurDioxideMgL !== undefined
             ? new Prisma.Decimal(dto.freeSulfurDioxideMgL)

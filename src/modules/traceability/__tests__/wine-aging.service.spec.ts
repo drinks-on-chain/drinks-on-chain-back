@@ -111,9 +111,14 @@ describe('WineAgingService', () => {
 
   describe('findAgingBatchById', () => {
     it('debe retornar el lote de crianza si existe', async () => {
-      mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(mockAgingBatch);
+      mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(
+        mockAgingBatch,
+      );
 
-      const result = await service.findAgingBatchById(mockWineryId, mockAgingId);
+      const result = await service.findAgingBatchById(
+        mockWineryId,
+        mockAgingId,
+      );
 
       expect(result.id).toBe(mockAgingId);
     });
@@ -121,9 +126,9 @@ describe('WineAgingService', () => {
     it('debe lanzar NotFoundException si no existe', async () => {
       mockPrismaService.wineAgingBatch.findFirst.mockResolvedValue(null);
 
-      await expect(service.findAgingBatchById(mockWineryId, 'random')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.findAgingBatchById(mockWineryId, 'random'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { WineryCategoryEnum, WineryStatusEnum, WineryMemberRoleEnum } from '@prisma/client';
+import {
+  WineryCategoryEnum,
+  WineryStatusEnum,
+  WineryMemberRoleEnum,
+} from '@prisma/client';
 
 export class WineryMemberItemDto {
   @ApiProperty({ example: '3fa85f64-5717-4562-b3fc-2c963f66afa6' })
@@ -14,7 +18,10 @@ export class WineryMemberItemDto {
   @ApiProperty({ example: 'enologo@kohlberg.bo' })
   email!: string;
 
-  @ApiProperty({ enum: WineryMemberRoleEnum, example: WineryMemberRoleEnum.ENOLOGIST })
+  @ApiProperty({
+    enum: WineryMemberRoleEnum,
+    example: WineryMemberRoleEnum.ENOLOGIST,
+  })
   memberRole!: WineryMemberRoleEnum;
 
   @ApiPropertyOptional({ example: 'MP-BOL-2024-9981' })
@@ -61,10 +68,14 @@ export class WineryResponseDto {
   @ApiPropertyOptional({ example: '+59146642345' })
   contactPhone?: string | null;
 
-  @ApiPropertyOptional({ example: 'https://storage.supabase.co/logos/kohlberg.png' })
+  @ApiPropertyOptional({
+    example: 'https://storage.supabase.co/logos/kohlberg.png',
+  })
   logoUrl?: string | null;
 
-  @ApiPropertyOptional({ example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q' })
+  @ApiPropertyOptional({
+    example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+  })
   stellarPublicKey?: string | null;
 
   @ApiPropertyOptional({ example: 'PROD_BO_1028374029' })

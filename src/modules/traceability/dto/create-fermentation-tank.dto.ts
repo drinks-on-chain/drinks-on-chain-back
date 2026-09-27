@@ -57,7 +57,8 @@ export class CreateFermentationTankDto {
   @ApiPropertyOptional({
     enum: DestinationTypeEnum,
     example: DestinationTypeEnum.SINGANI_DIST,
-    description: 'Destino del proceso (WINE_AGING, SINGANI_DIST, BEER_MATURATION, etc.)',
+    description:
+      'Destino del proceso (WINE_AGING, SINGANI_DIST, BEER_MATURATION, etc.)',
   })
   @IsOptional()
   @IsEnum(DestinationTypeEnum)

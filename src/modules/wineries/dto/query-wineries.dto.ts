@@ -6,7 +6,8 @@ import { WineryStatusEnum, WineryCategoryEnum } from '@prisma/client';
 export class QueryWineriesDto {
   @ApiPropertyOptional({
     enum: WineryStatusEnum,
-    description: 'Filtrar por estado de certificación (PENDING, ACTIVE, SUSPENDED, REVOKED)',
+    description:
+      'Filtrar por estado de certificación (PENDING, ACTIVE, SUSPENDED, REVOKED)',
   })
   @IsOptional()
   @IsEnum(WineryStatusEnum)

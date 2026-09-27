@@ -23,7 +23,10 @@ export class FermentationTankResponseDto {
   @ApiPropertyOptional({ example: 10100.0 })
   volumeFilledLiters?: number | null;
 
-  @ApiPropertyOptional({ enum: DestinationTypeEnum, example: DestinationTypeEnum.SINGANI_DIST })
+  @ApiPropertyOptional({
+    enum: DestinationTypeEnum,
+    example: DestinationTypeEnum.SINGANI_DIST,
+  })
   destinationType?: DestinationTypeEnum | null;
 
   @ApiProperty({ enum: TankStatusEnum, example: TankStatusEnum.FERMENTING })

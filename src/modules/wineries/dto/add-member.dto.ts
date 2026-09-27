@@ -1,4 +1,11 @@
-import { IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+} from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WineryMemberRoleEnum } from '@prisma/client';
 
@@ -21,7 +28,8 @@ export class AddMemberDto {
 
   @ApiPropertyOptional({
     example: 'MP-BOL-2024-9981',
-    description: 'Número de matrícula profesional (obligatorio para enólogos/agrónomos)',
+    description:
+      'Número de matrícula profesional (obligatorio para enólogos/agrónomos)',
   })
   @IsOptional()
   @IsString()

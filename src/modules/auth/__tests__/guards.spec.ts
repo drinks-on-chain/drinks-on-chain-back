@@ -1,4 +1,8 @@
-import { ExecutionContext, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from '../guards/roles.guard';
 import { TenantGuard } from '../guards/tenant.guard';
@@ -18,14 +22,14 @@ describe('Auth Guards', () => {
       guard = new RolesGuard(reflector);
     });
 
-    const createMockContext = (user: any): ExecutionContext =>
+    const createMockContext = (user: unknown): ExecutionContext =>
       ({
         getHandler: jest.fn(),
         getClass: jest.fn(),
         switchToHttp: () => ({
           getRequest: () => ({ user }),
         }),
-      }) as any;
+      }) as unknown as ExecutionContext;
 
     it('debe permitir acceso si la ruta no requiere roles específicos', () => {
       jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(null);
@@ -38,7 +42,9 @@ describe('Auth Guards', () => {
       jest
         .spyOn(reflector, 'getAllAndOverride')
         .mockReturnValue([UserRoleEnum.WINERY_ADMIN]);
-      const context = createMockContext({ userRole: UserRoleEnum.PLATFORM_ADMIN });
+      const context = createMockContext({
+        userRole: UserRoleEnum.PLATFORM_ADMIN,
+      });
 
       expect(guard.canActivate(context)).toBe(true);
     });
@@ -70,10 +76,10 @@ describe('Auth Guards', () => {
     });
 
     const createMockContext = (
-      user: any,
-      params: any = {},
-      isPublic = false,
-      isSkipped = false,
+      user: unknown,
+      params: Record<string, string> = {},
+      // El flag público lo decide el mock de Reflector, no el contexto.
+      _isPublic = false,
     ): ExecutionContext =>
       ({
         getHandler: jest.fn(),
@@ -86,7 +92,7 @@ describe('Auth Guards', () => {
             body: {},
           }),
         }),
-      }) as any;
+      }) as unknown as ExecutionContext;
 
     it('debe permitir acceso inmediato si la ruta es pública', () => {
       jest

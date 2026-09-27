@@ -2,11 +2,16 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DagBuilderService } from '../services/dag-builder.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { NotFoundException } from '@nestjs/common';
-import { Prisma, BeverageTypeEnum, PhytoStatusEnum, TankStatusEnum } from '@prisma/client';
+import {
+  Prisma,
+  BeverageTypeEnum,
+  PhytoStatusEnum,
+  RestStatusEnum,
+  DestinationTypeEnum,
+} from '@prisma/client';
 
 describe('DagBuilderService', () => {
   let service: DagBuilderService;
-  let prisma: PrismaService;
 
   const mockBottlingId = '55555555-5555-5555-5555-555555555555';
 
@@ -40,13 +45,13 @@ describe('DagBuilderService', () => {
       initialAlcoholPercentage: new Prisma.Decimal(70.2),
       isDoEligible: true,
       processStartDate: new Date('2026-04-01'),
-      restStatus: 'READY' as any,
+      restStatus: RestStatusEnum.READY,
       fermentationTank: {
         id: 'tank-1',
         tankCode: 'TK-03',
         material: 'Acero Inox AISI 316',
         volumeFilledLiters: new Prisma.Decimal(10100.0),
-        destinationType: 'SINGANI_DIST' as any,
+        destinationType: DestinationTypeEnum.SINGANI_DIST,
         startDate: new Date('2026-03-15'),
         harvestBatch: {
           id: 'harvest-1',
@@ -89,13 +94,14 @@ describe('DagBuilderService', () => {
     }).compile();
 
     service = module.get<DagBuilderService>(DagBuilderService);
-    prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
   });
 
   describe('buildDagForBottlingBatch', () => {
     it('debe reconstruir el grafo DAG completo de 5 etapas para Singani D.O.', async () => {
-      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(mockFullBatch);
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(
+        mockFullBatch,
+      );
 
       const result = await service.buildDagForBottlingBatch(mockBottlingId);
 
@@ -132,9 +138,9 @@ describe('DagBuilderService', () => {
     it('debe lanzar NotFoundException si el lote no existe', async () => {
       mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(null);
 
-      await expect(service.buildDagForBottlingBatch('random-id')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.buildDagForBottlingBatch('random-id'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

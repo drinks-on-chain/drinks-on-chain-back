@@ -25,7 +25,10 @@ export class WineryMemberRepository {
     });
   }
 
-  async findMembership(userId: string, wineryId: string): Promise<WineryMember | null> {
+  async findMembership(
+    userId: string,
+    wineryId: string,
+  ): Promise<WineryMember | null> {
     return this.prisma.wineryMember.findUnique({
       where: {
         userId_wineryId: {

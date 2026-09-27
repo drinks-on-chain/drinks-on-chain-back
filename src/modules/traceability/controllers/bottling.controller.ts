@@ -15,8 +15,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
@@ -28,7 +26,10 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
 
@@ -71,7 +72,8 @@ export class BottlingController {
   )
   @ApiOperation({
     summary: 'Listar lotes embotellados',
-    description: 'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
+    description:
+      'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,
@@ -88,7 +90,8 @@ export class BottlingController {
   )
   @ApiOperation({
     summary: 'Obtener detalle de lote embotellado',
-    description: 'Retorna datos de fraccionamiento, código de lote internacional y certificado de laboratorio asociado.',
+    description:
+      'Retorna datos de fraccionamiento, código de lote internacional y certificado de laboratorio asociado.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

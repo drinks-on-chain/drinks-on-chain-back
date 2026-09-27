@@ -10,7 +10,12 @@ import { PrismaService } from '@shared/prisma/prisma.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
-import { Prisma, BottlingBatch } from '@prisma/client';
+import {
+  Prisma,
+  BottlingBatch,
+  WineAgingBatch,
+  ProductionBatch,
+} from '@prisma/client';
 
 @Injectable()
 export class BottlingService {
@@ -42,7 +47,7 @@ export class BottlingService {
 
     const strategy = this.strategyFactory.getStrategy(dto.productType);
 
-    let sourceBatch: any;
+    let sourceBatch: WineAgingBatch | ProductionBatch | null = null;
     if (dto.wineAgingBatchId) {
       sourceBatch = await this.prisma.wineAgingBatch.findFirst({
         where: { id: dto.wineAgingBatchId, wineryId },
@@ -64,10 +69,15 @@ export class BottlingService {
     }
 
     // 1. Validación de reglas enológicas D.O. (ej. 180 días de reposo inerte o bloqueo de barrica)
-    const validation = strategy.validateBottlingEligibility(sourceBatch);
+    // Sin lote de origen se delega igual en la estrategia (comportamiento
+    // actual); la derivación del tipo desde el origen llega con EA-01/EA-02.
+    const validation = strategy.validateBottlingEligibility(
+      sourceBatch as WineAgingBatch | ProductionBatch,
+    );
     if (!validation.isValid) {
       throw new UnprocessableEntityException(
-        validation.errors.join('; ') || 'El lote no cumple los requisitos para embotellado',
+        validation.errors.join('; ') ||
+          'El lote no cumple los requisitos para embotellado',
       );
     }
 
@@ -166,16 +176,7 @@ export class BottlingService {
     return { items, total };
   }
 
-  async findById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<
-    BottlingBatch & {
-      labAnalysis?: any;
-      wineAgingBatch?: any;
-      productionBatch?: any;
-    }
-  > {
+  async findById(wineryId: string | undefined, id: string) {
     const batch = await this.prisma.bottlingBatch.findFirst({
       where: {
         id,

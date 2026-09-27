@@ -16,7 +16,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiConflictResponse,
@@ -38,7 +37,10 @@ import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { SkipTenant } from '@modules/auth/decorators/skip-tenant.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
 
@@ -120,7 +122,9 @@ export class WineriesController {
     description: 'Datos de la bodega actualizados exitosamente',
     type: WineryResponseDto,
   })
-  @ApiForbiddenResponse({ description: 'No autorizado para modificar datos de la bodega' })
+  @ApiForbiddenResponse({
+    description: 'No autorizado para modificar datos de la bodega',
+  })
   async updateMyWinery(
     @TenantId() tenantId: string,
     @Body() dto: UpdateWineryDto,
@@ -154,7 +158,8 @@ export class WineriesController {
   @HttpCode(HttpStatus.CREATED)
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.PLATFORM_ADMIN)
   @ApiOperation({
-    summary: 'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
+    summary:
+      'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
     description:
       'Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.',
   })
@@ -163,7 +168,9 @@ export class WineriesController {
     description: 'Miembro operativo creado e incorporado exitosamente',
     type: WineryMemberItemDto,
   })
-  @ApiConflictResponse({ description: 'El correo electrónico ya se encuentra registrado' })
+  @ApiConflictResponse({
+    description: 'El correo electrónico ya se encuentra registrado',
+  })
   async createAndAddMember(
     @TenantId() tenantId: string,
     @Body() dto: CreateMemberDto,

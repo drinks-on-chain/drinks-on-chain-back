@@ -44,7 +44,9 @@ export class HarvestBatchResponseDto {
   @ApiProperty({ enum: PhytoStatusEnum, example: PhytoStatusEnum.APPROVED })
   phytosanitaryStatus!: PhytoStatusEnum;
 
-  @ApiPropertyOptional({ example: 'https://storage.drinksonchain.com/inspections/phyto-01.pdf' })
+  @ApiPropertyOptional({
+    example: 'https://storage.drinksonchain.com/inspections/phyto-01.pdf',
+  })
   phytoInspectionPdfUrl?: string | null;
 
   @ApiPropertyOptional({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })

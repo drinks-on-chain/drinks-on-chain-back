@@ -53,19 +53,23 @@ export class TerroirsController {
     type: TerroirResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado' })
-  @ApiForbiddenResponse({ description: 'Sin permisos de agrónomo o administrador de bodega' })
-  async create(
-    @TenantId() wineryId: string,
-    @Body() dto: CreateTerroirDto,
-  ) {
+  @ApiForbiddenResponse({
+    description: 'Sin permisos de agrónomo o administrador de bodega',
+  })
+  async create(@TenantId() wineryId: string, @Body() dto: CreateTerroirDto) {
     return this.terroirsService.create(wineryId, dto);
   }
 
   @Get()
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST, UserRoleEnum.AGRONOMIST)
+  @Roles(
+    UserRoleEnum.WINERY_ADMIN,
+    UserRoleEnum.ENOLOGIST,
+    UserRoleEnum.AGRONOMIST,
+  )
   @ApiOperation({
     summary: 'Listar parcelas de la bodega',
-    description: 'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
+    description:
+      'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -79,10 +83,15 @@ export class TerroirsController {
   }
 
   @Get(':id')
-  @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST, UserRoleEnum.AGRONOMIST)
+  @Roles(
+    UserRoleEnum.WINERY_ADMIN,
+    UserRoleEnum.ENOLOGIST,
+    UserRoleEnum.AGRONOMIST,
+  )
   @ApiOperation({
     summary: 'Obtener detalle de una parcela',
-    description: 'Retorna los datos agronómicos de la parcela y sus lotes de vendimia históricos.',
+    description:
+      'Retorna los datos agronómicos de la parcela y sus lotes de vendimia históricos.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -101,7 +110,8 @@ export class TerroirsController {
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
   @ApiOperation({
     summary: 'Actualizar datos de una parcela',
-    description: 'Permite modificar datos agronómicos, polígono perimetral o estado activo.',
+    description:
+      'Permite modificar datos agronómicos, polígono perimetral o estado activo.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

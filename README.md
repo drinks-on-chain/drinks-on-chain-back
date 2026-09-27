@@ -41,9 +41,9 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `102/102` tests pasando (25 suites).
+- **Pruebas Unitarias:** `118/118` tests pasando (26 suites).
 - **Pruebas E2E:** `37/37` tests pasando (4 suites completas).
-- **Compilación TypeScript:** `100%` en modo estricto (`strict: true`) con 0 errores de tipado o linting.
+- **Compilación TypeScript:** modo estricto (`strict: true`) sin errores; ESLint 9 sin errores (CI en cada push y PR).
 - **Base de Datos:** 14 modelos relacionales y 14 enums migrados y sincronizados en PostgreSQL.
 
 ---
@@ -142,173 +142,64 @@ drinks-on-chain-backend/
 ## ⚙️ 5. Pasos para Levantar el Proyecto
 
 ### 📋 Prerrequisitos
-- **Node.js:** Versión 20.x o superior
-- **Gestor de Paquetes:** `pnpm` (recomendado) o `npm`
-- **Docker & Docker Compose:** Para PostgreSQL y Redis
+- **Node.js 22** (`.nvmrc`; `nvm use`) y **pnpm 10.28** (`corepack enable`: toma la versión de `package.json#packageManager`).
+- **Docker** con el plugin `compose`.
 
----
+### 🚀 Desarrollo local
 
-### 🚀 Instalación y Puesta en Marcha
-
-#### 1. Clonar el Repositorio e Instalar Dependencias
 ```bash
-git clone https://github.com/tu-organizacion/drinks-on-chain.git
-cd drinks-on-chain
 pnpm install
+cp .env.example .env              # cambia cada change-me (openssl rand -hex 32)
+docker compose up -d              # Postgres 5435, Redis 6379, Mailpit 1025/8025, MinIO 9000/9001
+pnpm prisma:deploy                # aplica las migraciones (o pnpm prisma:migrate al crear una nueva)
+pnpm prisma:seed                  # superadministrador inicial (idempotente)
+pnpm start:dev                    # API en http://localhost:4000/v1 · Swagger en /docs
 ```
 
-#### 2. Configurar Variables de Entorno
-Copia el archivo `.env.example` a `.env` y ajusta las credenciales locales:
-```bash
-cp .env.example .env
-```
-*Ejemplo de configuración local:*
-```env
-PORT=3000
-NODE_ENV=development
-API_PREFIX=v1
+- Todos los puertos de `docker-compose.yml` se publican solo en `127.0.0.1`; las contraseñas salen del `.env` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`) y deben coincidir con `DATABASE_URL` y `REDIS_URL`.
+- La API usa el puerto **4000** en local (el 3000 es del sitio de bodegas y el 3002 del ERP).
+- La API también puede correr en contenedor: `docker compose --profile app up -d --build` (migra al arrancar).
+- Mailpit: <http://localhost:8025>. MinIO: consola en <http://localhost:9001> (aún sin uso en el código; llega con la Ola 0 · 0.9).
 
-# PostgreSQL
-DATABASE_URL="postgresql://postgres:postgres@127.0.0.1:5435/drinks_on_chain_db?schema=public"
+#### Variables de entorno
 
-# Redis
-REDIS_HOST=localhost
-REDIS_PORT=6379
+`.env.example` documenta cada variable; la validación está en `src/config/env.validation.ts`. Solo son obligatorias `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` y `JWT_REFRESH_SECRET` (y `CORS_ALLOWED_ORIGINS` en producción). Stellar y el indexador son opcionales hasta la Ola 3; las variables de Dynamic, Supabase, pasarela bancaria y los contratos `CONTRACT_*` antiguos ya no se leen.
 
-# Autenticación JWT
-JWT_SECRET="drinks_on_chain_ultra_secure_jwt_secret_key_2026"
-JWT_EXPIRES_IN="7d"
-JWT_REFRESH_SECRET="drinks_on_chain_ultra_secure_refresh_secret_2026"
-JWT_REFRESH_EXPIRES_IN="30d"
+**CORS**: `CORS_ALLOWED_ORIGINS` es una lista de orígenes exactos separada por comas (`https://erp.ejemplo.com,http://localhost:3002`). No se admiten comodines ni se refleja el origen de la petición; vacía fuera de producción equivale a `http://localhost:3002,http://localhost:3009`. Cabeceras permitidas: `Authorization`, `Content-Type`, `X-Correlation-ID`, `Idempotency-Key`, `Accept-Language`; expuestas: `X-Correlation-ID`, `Retry-After`.
 
-# Credenciales del Superadmin Inicial (Seeder)
-SUPERADMIN_EMAIL="superadmin@drinksonchain.com"
-SUPERADMIN_PASSWORD="SuperSecureAdminPassword2026!"
-SUPERADMIN_NAME="Platform Administrator"
+### ✅ Puertas de calidad
 
-# Stellar Soroban (Testnet)
-STELLAR_NETWORK="TESTNET"
-STELLAR_HORIZON_URL="https://horizon-testnet.stellar.org"
-STELLAR_SOROBAN_RPC_URL="https://soroban-testnet.stellar.org"
-```
-
-#### 3. Iniciar Servicios en Docker (PostgreSQL & Redis)
-```bash
-docker-compose up -d
-```
-
-#### 4. Ejecutar Migraciones de Base de Datos (Prisma)
-```bash
-pnpm prisma:migrate
-# o con npx:
-npx prisma migrate dev
-```
-
-#### 5. Inicializar el Superadmin (Seeder Idempotente)
-Crea el usuario `PLATFORM_ADMIN` inicial y su billetera custodial en Stellar a partir de las variables definidas en `.env`:
-```bash
-pnpm prisma:seed
-# o directamente con prisma CLI:
-npx prisma db seed
-```
-> **Nota de Seguridad:** El seeder es **100% idempotente**. Si el usuario ya existe, actualizará su nombre y hash de contraseña asegurando consistencia sin duplicar registros ni fallar en re-ejecuciones.
-
-#### 6. Iniciar la Aplicación en Modo Desarrollo
-```bash
-pnpm start:dev
-```
-La API estará disponible en: **`http://localhost:3000`**
-
----
-
-### 🐳 Encadenamiento en Pipelines de Docker y CI/CD
-
-Para despliegues automatizados (Docker Compose, Kubernetes o CI/CD), se recomienda encadenar las migraciones y el seeder antes de arrancar el servidor Node.js.
-
-#### A. Patrón Docker `entrypoint.sh` (Recomendado para Producción)
-Crea un script de entrada ejecutable (por ejemplo `docker-entrypoint.sh`):
+Se ejecutan en la CI (`.github/workflows/ci.yml`) en cada push y PR a `dev` y `main`, y en local antes de integrar:
 
 ```bash
-#!/bin/sh
-set -e
-
-echo "🚀 [1/3] Aplicando migraciones de base de datos..."
-npx prisma migrate deploy
-
-echo "🌱 [2/3] Ejecutando Seeder de inicialización (Superadmin)..."
-npx prisma db seed
-
-echo "🍷 [3/3] Levantando servidor NestJS en producción..."
-exec node dist/main.js
+pnpm lint            # ESLint 9 (flat config) + Prettier, sin --fix (pnpm lint:fix para corregir)
+pnpm typecheck       # tsc --noEmit en modo estricto
+pnpm test            # unitarias (118)
+pnpm test:e2e        # e2e contra Postgres y Redis reales (37): con docker compose up -d y el .env
+pnpm build
+docker build .       # imagen de producción
+pnpm audit --prod --audit-level high
 ```
 
-Asegúrate de otorgarle permisos de ejecución en el `Dockerfile`:
-```dockerfile
-COPY docker-entrypoint.sh ./
-RUN chmod +x docker-entrypoint.sh
-ENTRYPOINT ["./docker-entrypoint.sh"]
-```
+La CI además aplica las migraciones sobre una base vacía (`prisma migrate deploy`) y falla si `schema.prisma` tiene cambios sin migración (`prisma migrate diff --exit-code`).
 
-#### B. Encadenamiento directo en `docker-compose.yml`
-Si no deseas un script separado, puedes encadenar los comandos en la directiva `command` de tu servicio de aplicación:
+**Auditoría de dependencias**: bloquea avisos altos o críticos de producción. Excepciones sin arreglo dentro de la versión mayor actual, en `package.json#pnpm.auditConfig.ignoreGhsas`:
 
-```yaml
-services:
-  api:
-    build: .
-    restart: always
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/drinks_on_chain_db?schema=public
-      - SUPERADMIN_EMAIL=${SUPERADMIN_EMAIL}
-      - SUPERADMIN_PASSWORD=${SUPERADMIN_PASSWORD}
-      - SUPERADMIN_NAME=${SUPERADMIN_NAME}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: >
-      sh -c "npx prisma migrate deploy &&
-             npx prisma db seed &&
-             node dist/main.js"
-```
+| Aviso | Paquete (ruta) | Motivo |
+|---|---|---|
+| GHSA-ggr8-5vv4-36mx | `deepmerge-ts` (`prisma` → `@prisma/config`) | Solo lo usa la CLI de Prisma al leer su configuración; se va con Prisma 7 |
+| GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j | `toml` (`@stellar/stellar-sdk` 13) | Solo para resolver `stellar.toml`, que el backend no usa; el SDK se actualiza en la Ola 3 (SE-02) |
 
-#### C. Ejemplo en Pipeline de CI/CD (GitHub Actions / GitLab CI)
-```yaml
-# .github/workflows/deploy.yml
-- name: Run Migrations & Seed
-  env:
-    DATABASE_URL: ${{ secrets.DATABASE_URL }}
-    SUPERADMIN_EMAIL: ${{ secrets.SUPERADMIN_EMAIL }}
-    SUPERADMIN_PASSWORD: ${{ secrets.SUPERADMIN_PASSWORD }}
-    SUPERADMIN_NAME: ${{ secrets.SUPERADMIN_NAME }}
-  run: |
-    pnpm prisma migrate deploy
-    pnpm prisma:seed
-```
+### 🐳 Imagen y despliegue
 
----
+- `Dockerfile` multi-etapa (`node:22-alpine`, pnpm por corepack, solo dependencias de producción, usuario `node`, `HEALTHCHECK` a `/v1/health`). Con `RUN_MIGRATIONS=true`, `docker/entrypoint.sh` ejecuta `prisma migrate deploy` antes de arrancar.
+- **Desarrollo**: cada push a `dev` con la CI en verde se despliega solo en el servidor de desarrollo (`deploy-dev.yml` → `git archive` → `scp` → `deploy.sh`), con rollback automático si la API no queda sana. Detalles, puesta en marcha y secretos en [`deploy/README.md`](deploy/README.md).
+- Ramas: trabajo en `dev` (o ramas `feat/…` integradas en `dev`); `main` solo por PR `dev → main`.
 
 ### 📚 Documentación Interactiva de la API (Swagger OpenAPI)
-Una vez levantado el servidor, accede a Swagger para explorar y probar todos los endpoints:
-- **Swagger UI:** [`http://localhost:3000/docs`](http://localhost:3000/docs)
-- **JSON OpenAPI Spec:** [`http://localhost:3000/docs-json`](http://localhost:3000/docs-json)
-
----
-
-### 🧪 Ejecución de Pruebas Automatizadas
-
-```bash
-# 1. Pruebas Unitarias (93 tests)
-pnpm test
-
-# 2. Pruebas de Integración E2E (31 tests)
-pnpm test:e2e
-
-# 3. Cobertura de Código
-pnpm test:cov
-
-# 4. Compilación del Bundle de Producción
-pnpm build
-```
+Con la API levantada:
+- **Swagger UI:** <http://localhost:4000/docs>
+- **JSON OpenAPI Spec:** <http://localhost:4000/docs-json>
 
 ---
 

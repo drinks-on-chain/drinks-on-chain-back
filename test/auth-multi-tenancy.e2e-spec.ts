@@ -10,7 +10,11 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
 import { GlobalExceptionFilter } from '../src/shared/filters/global-exception.filter';
-import { UserRoleEnum, WineryCategoryEnum, WineryMemberRoleEnum } from '@prisma/client';
+import {
+  UserRoleEnum,
+  WineryCategoryEnum,
+  WineryMemberRoleEnum,
+} from '@prisma/client';
 
 describe('Auth & Multi-Tenancy Flow (e2e)', () => {
   let app: INestApplication;
@@ -128,7 +132,9 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data.email).toBe(consumerEmail);
     expect(response.body.data.primaryWallet).toBeDefined();
-    expect(response.body.data.primaryWallet.stellarPublicAddress).toMatch(/^G[A-Z0-9]{55}$/);
+    expect(response.body.data.primaryWallet.stellarPublicAddress).toMatch(
+      /^G[A-Z0-9]{55}$/,
+    );
   });
 
   // 4. ACTUALIZACIÓN DE PERFIL
@@ -235,7 +241,11 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(200);
 
     expect(pendingRes.body.success).toBe(true);
-    expect(pendingRes.body.data.some((w: any) => w.id === createdWineryId)).toBe(true);
+    expect(
+      pendingRes.body.data.some(
+        (w: { id: string }) => w.id === createdWineryId,
+      ),
+    ).toBe(true);
 
     // 7.4 Aprobar bodega
     const approveRes = await request(app.getHttpServer())
@@ -299,7 +309,9 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(201);
 
     expect(addMemberRes.body.success).toBe(true);
-    expect(addMemberRes.body.data.memberRole).toBe(WineryMemberRoleEnum.ENOLOGIST);
+    expect(addMemberRes.body.data.memberRole).toBe(
+      WineryMemberRoleEnum.ENOLOGIST,
+    );
   });
 
   // 9. ACCESO DE ENÓLOGO Y AISLAMIENTO DE TENANT

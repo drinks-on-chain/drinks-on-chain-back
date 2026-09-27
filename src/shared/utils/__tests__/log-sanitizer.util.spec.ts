@@ -24,7 +24,8 @@ describe('LogSanitizerUtil', () => {
       'S0000000000000000000000000000000000000000000000000000000';
     const rawData = {
       relayerKey: stellarSecret,
-      stellarAccount: 'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
+      stellarAccount:
+        'GBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB',
     };
 
     const sanitized = sanitizeLogData(rawData) as Record<string, unknown>;

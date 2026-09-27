@@ -20,10 +20,12 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
-    const correlationId =
-      CorrelationIdMiddleware.getCorrelationId() || 'N/A';
+    const correlationId = CorrelationIdMiddleware.getCorrelationId() || 'N/A';
 
-    const errorResponse = this.buildErrorResponse(exception, request?.url ?? '');
+    const errorResponse = this.buildErrorResponse(
+      exception,
+      request?.url ?? '',
+    );
 
     // Logging del error sanitizado
     if (errorResponse.statusCode >= 500) {
@@ -67,10 +69,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const exceptionResponse = exception.getResponse();
 
-      if (
-        typeof exceptionResponse === 'object' &&
-        exceptionResponse !== null
-      ) {
+      if (typeof exceptionResponse === 'object' && exceptionResponse !== null) {
         const respObj = exceptionResponse as Record<string, unknown>;
 
         // Errores de validación de ValidationPipe

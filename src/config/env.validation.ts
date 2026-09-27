@@ -1,11 +1,21 @@
 import * as Joi from 'joi';
 
+/**
+ * Validación de variables de entorno (OP-03).
+ *
+ * Solo es obligatorio lo que el backend usa hoy: base de datos, Redis y JWT.
+ * Las integraciones que aún no existen (cadena, indexador) son opcionales y se
+ * validan solo si se definen. Las variables de proveedores descartados
+ * (Dynamic, Supabase, pasarela bancaria, contratos CONTRACT_* antiguos) ya no
+ * se leen; si siguen en un .env antiguo se ignoran (`allowUnknown`).
+ */
 export const envValidationSchema = Joi.object({
   // Servidor HTTP
   NODE_ENV: Joi.string()
     .valid('development', 'production', 'test')
     .default('development'),
-  PORT: Joi.number().default(3000),
+  // 4000 en local: el 3000 lo usa el sitio de bodegas
+  PORT: Joi.number().port().default(4000),
   APP_NAME: Joi.string().default('Drinks on Chain Backend'),
 
   // Base de Datos PostgreSQL
@@ -17,7 +27,7 @@ export const envValidationSchema = Joi.object({
       'string.uri': 'DATABASE_URL must be a valid PostgreSQL connection string',
     }),
 
-  // Redis (BullMQ)
+  // Redis (salud hoy; BullMQ en la Ola 0 · 0.4)
   REDIS_URL: Joi.string()
     .uri({ scheme: ['redis', 'rediss'] })
     .required()
@@ -27,126 +37,62 @@ export const envValidationSchema = Joi.object({
     }),
 
   // JWT
-  JWT_SECRET: Joi.string()
-    .min(32)
-    .required()
-    .messages({
-      'any.required': 'JWT_SECRET is a required environment variable',
-      'string.min': 'JWT_SECRET must be at least 32 characters long',
-    }),
+  JWT_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_SECRET is a required environment variable',
+    'string.min': 'JWT_SECRET must be at least 32 characters long',
+  }),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
-  JWT_REFRESH_SECRET: Joi.string()
-    .min(32)
-    .required()
-    .messages({
-      'any.required': 'JWT_REFRESH_SECRET is a required environment variable',
-      'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters long',
-    }),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_REFRESH_SECRET is a required environment variable',
+    'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters long',
+  }),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
-  // Stellar / Soroban Blockchain
+  // Stellar / Soroban (opcional hasta la Ola 3)
   STELLAR_NETWORK: Joi.string()
     .valid('testnet', 'mainnet', 'futurenet', 'standalone')
     .default('testnet'),
   STELLAR_HORIZON_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
-    .required()
-    .messages({
-      'any.required': 'STELLAR_HORIZON_URL is a required environment variable',
-    }),
+    .default('https://horizon-testnet.stellar.org'),
   STELLAR_SOROBAN_RPC_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
-    .required()
-    .messages({
-      'any.required': 'STELLAR_SOROBAN_RPC_URL is a required environment variable',
-    }),
+    .default('https://soroban-testnet.stellar.org'),
   STELLAR_RELAYER_SECRET_KEY: Joi.string()
     .regex(/^S[A-Z0-9]{55}$/)
-    .required()
+    .optional()
     .messages({
-      'any.required': 'STELLAR_RELAYER_SECRET_KEY is a required environment variable',
       'string.pattern.base':
         'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed starting with S',
     }),
 
-  // Contratos Soroban (Direcciones C...)
-  CONTRACT_PRODUCER_REGISTRY: Joi.string()
-    .regex(/^C[A-Z0-9]{55}$/)
-    .required()
-    .messages({
-      'any.required': 'CONTRACT_PRODUCER_REGISTRY is required',
-      'string.pattern.base':
-        'CONTRACT_PRODUCER_REGISTRY must be a valid 56-character Soroban contract address starting with C',
-    }),
-  CONTRACT_BATCH_ANCHOR: Joi.string()
-    .regex(/^C[A-Z0-9]{55}$/)
-    .required()
-    .messages({
-      'any.required': 'CONTRACT_BATCH_ANCHOR is required',
-      'string.pattern.base':
-        'CONTRACT_BATCH_ANCHOR must be a valid 56-character Soroban contract address starting with C',
-    }),
-  CONTRACT_PRODUCT_NFT: Joi.string()
-    .regex(/^C[A-Z0-9]{55}$/)
-    .required()
-    .messages({
-      'any.required': 'CONTRACT_PRODUCT_NFT is required',
-      'string.pattern.base':
-        'CONTRACT_PRODUCT_NFT must be a valid 56-character Soroban contract address starting with C',
-    }),
-  CONTRACT_CLAIM_ESCROW: Joi.string()
-    .regex(/^C[A-Z0-9]{55}$/)
-    .required()
-    .messages({
-      'any.required': 'CONTRACT_CLAIM_ESCROW is required',
-      'string.pattern.base':
-        'CONTRACT_CLAIM_ESCROW must be a valid 56-character Soroban contract address starting with C',
-    }),
-
-  // Dynamic Wallets
-  DYNAMIC_ENVIRONMENT_ID: Joi.string().required().messages({
-    'any.required': 'DYNAMIC_ENVIRONMENT_ID is required for custodial wallets',
-  }),
-  DYNAMIC_API_KEY: Joi.string().required().messages({
-    'any.required': 'DYNAMIC_API_KEY is required for Dynamic integration',
-  }),
-
-  // Almacenamiento de Archivos e Imágenes (Local / S3 / Supabase)
-  STORAGE_DRIVER: Joi.string()
-    .valid('local', 's3', 'supabase')
-    .default('local'),
+  // Almacenamiento de archivos (local hoy; objetos privados en la Ola 0 · 0.9)
+  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
   STORAGE_LOCAL_PATH: Joi.string().default('./uploads'),
+  // Si falta, se deriva de PORT: http://localhost:<PORT>/uploads
   STORAGE_BASE_URL: Joi.string()
     .uri({ scheme: ['http', 'https'] })
-    .default('http://localhost:3000/uploads'),
-
-  // Proveedores Externos Opcionales (Supabase / S3)
-  SUPABASE_URL: Joi.string()
-    .uri({ scheme: ['http', 'https'] })
     .optional(),
-  SUPABASE_SERVICE_ROLE_KEY: Joi.string().optional(),
 
-  // Pasarela de Pagos (Banco API)
-  PAYMENT_BANK_API_KEY: Joi.string().required().messages({
-    'any.required': 'PAYMENT_BANK_API_KEY is required for payments',
-  }),
-  PAYMENT_BANK_API_SECRET: Joi.string().required().messages({
-    'any.required': 'PAYMENT_BANK_API_SECRET is required for payments',
-  }),
-  PAYMENT_BANK_BASE_URL: Joi.string()
-    .uri({ scheme: ['http', 'https'] })
-    .required()
-    .messages({
-      'any.required': 'PAYMENT_BANK_BASE_URL is required',
-    }),
-  PAYMENT_BANK_WEBHOOK_SECRET: Joi.string().required().messages({
-    'any.required': 'PAYMENT_BANK_WEBHOOK_SECRET is required for HMAC validation',
-  }),
-
-  // Indexer
+  // Indexador (opcional hasta la Ola 3)
   STELLAR_INDEXER_POLL_INTERVAL_MS: Joi.number().min(1000).default(5000),
   STELLAR_INDEXER_START_LEDGER: Joi.number().min(0).default(0),
 
-  // CORS
-  CORS_ALLOWED_ORIGINS: Joi.string().default('http://localhost:3000'),
+  // CORS: lista de orígenes exactos separada por comas; sin comodines.
+  // Obligatoria en producción. El formato de cada origen se valida al
+  // arrancar (src/config/cors.config.ts).
+  CORS_ALLOWED_ORIGINS: Joi.string()
+    .allow('')
+    .pattern(/^[^*]*$/)
+    .messages({
+      'string.pattern.base':
+        'CORS_ALLOWED_ORIGINS must list exact origins; "*" is not allowed',
+    })
+    .when('NODE_ENV', {
+      is: 'production',
+      then: Joi.string().required().invalid('').messages({
+        'any.required': 'CORS_ALLOWED_ORIGINS is required in production',
+        'any.invalid': 'CORS_ALLOWED_ORIGINS is required in production',
+      }),
+    }),
 });

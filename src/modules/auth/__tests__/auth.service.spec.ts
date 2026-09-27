@@ -11,9 +11,6 @@ import { WalletsService } from '@modules/wallets/wallets.service';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let prisma: PrismaService;
-  let jwtService: JwtService;
-  let walletsService: WalletsService;
 
   const mockPrisma = {
     user: {
@@ -64,9 +61,6 @@ describe('AuthService', () => {
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    prisma = module.get<PrismaService>(PrismaService);
-    jwtService = module.get<JwtService>(JwtService);
-    walletsService = module.get<WalletsService>(WalletsService);
 
     jest.clearAllMocks();
   });

@@ -1,0 +1,29 @@
+# Roadmap del backend
+
+Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `drinks-on-chain-docsback`) y del plan maestro (`PLAN-MAESTRO.md`, olas). Se marca cada paso al terminarlo: `- [x] … · fecha`.
+
+## Etapa 0 · Cimientos (Ola 0)
+
+**Objetivo**: la base sobre la que se construye todo lo demás, sin romper el ERP que ya consume el frontend.
+**Terminado cuando**: cada PR pasa CI; `dev` se despliega solo al entorno de desarrollo; el inicio de sesión usa tokens cortos y organización activa; una acción de prueba deja su entrada en la bitácora y un correo sale por la cola; el ERP del frontend sigue funcionando.
+
+- [ ] **0.1 Acceso y servidor** (D7, OP-02) — contraseñas del servidor y del superadministrador cambiadas, acceso por llave SSH con usuario revocable, inventario del despliegue actual, copia de la base. *Coordinación / OPS.*
+- [ ] **0.2 Flujo de trabajo y entrega** (OPS-07, OPS-08, OPS-11) — parcial:
+  - [x] Rama `dev` creada desde `main` · 2026-09-27
+  - [x] Node 22 (`.nvmrc`), pnpm 10.28 (`packageManager`), ESLint 9 *flat config* + Prettier, errores de lint corregidos · 2026-09-27
+  - [x] CI: lint, tipos, unitarias, e2e con Postgres y Redis reales, migraciones desde cero y `migrate diff`, `docker build`, auditoría de dependencias · 2026-09-27
+  - [x] `Dockerfile` multi-etapa y `docker/entrypoint.sh` (migraciones opcionales al arrancar) · 2026-09-27
+  - [x] `docker-compose.yml` local (Postgres, Redis, Mailpit, MinIO en `127.0.0.1`) y `deploy/dev/compose.yml` del servidor · 2026-09-27
+  - [x] CORS por lista de orígenes (`CORS_ALLOWED_ORIGINS`, sin reflejo) y `.env.example` limpio (OP-03) · 2026-09-27
+  - [x] Despliegue reproducible a desarrollo desde `dev` (`deploy-dev.yml` + `deploy/dev/deploy.sh` con rollback) · 2026-09-27
+  - [ ] Puesta en marcha en el servidor y secretos `DEV_SSH_*` en GitHub (coordinación, ver `deploy/README.md`)
+  - [ ] Proceso `worker` en compose (llega con 0.4)
+  - [ ] Copias diarias de la base fuera del servidor
+- [ ] **0.3 Estándares de API** (OPS-02, A-33) — `details` por campo, listas `{ items, total, limit, offset }` con máximo, `Idempotency-Key` (ya admitida en CORS), `docs/rules/` con los cinco ajustes.
+- [ ] **0.4 Outbox, worker y colas** (OPS-04, OPS-05, OP-01) — outbox en la misma transacción, proceso `worker`, BullMQ, tareas programadas, transacciones en operaciones de varios pasos.
+- [ ] **0.5 Sesiones seguras** (IAM-02/03/04/07/13, SE-03, SE-06) — acceso de 15 min, renovación rotativa en cookie con detección de reutilización, cierre de sesión, revocación inmediata, rate limit por IP real.
+- [ ] **0.6 Organizaciones y membresías** (EQP-01, EQP-09, IAM-08, SE-01, OP-05) — organización activa en la sesión, migración de datos, fin de la escritura del rol global.
+- [ ] **0.7 Bitácora base** (AUD-01, AUD-02) — registro en la misma transacción, solo inserción, encadenada por hash.
+- [ ] **0.8 Configuración base** (CFG-01, CFG-05) — definiciones de parámetros y valor efectivo con caché.
+- [ ] **0.9 Servicios comunes** (CMP-01, OPS-06, OPS-12, OPS-01, OPS-03, SE-04, SE-08) — correo con plantillas y cola (Mailpit en desarrollo), almacenamiento privado con URL firmadas (MinIO), OpenAPI publicado, healthcheck y logs JSON.
+- [ ] **0.10 Datos de demostración** (OPS-09) — semilla determinista alineada con los mocks del frontend.

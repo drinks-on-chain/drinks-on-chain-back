@@ -3,12 +3,15 @@ import { UsersService } from '../users.service';
 import { UserRepository } from '../repositories/user.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { NotFoundException } from '@nestjs/common';
-import { UserRoleEnum, WineryMemberRoleEnum, WalletTypeEnum, WalletPurposeEnum } from '@prisma/client';
+import {
+  UserRoleEnum,
+  WineryMemberRoleEnum,
+  WalletTypeEnum,
+  WalletPurposeEnum,
+} from '@prisma/client';
 
 describe('UsersService', () => {
   let service: UsersService;
-  let userRepository: UserRepository;
-  let walletsService: WalletsService;
 
   const mockUserRepository = {
     findById: jest.fn(),
@@ -30,8 +33,6 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    userRepository = module.get<UserRepository>(UserRepository);
-    walletsService = module.get<WalletsService>(WalletsService);
 
     jest.clearAllMocks();
   });
@@ -65,7 +66,8 @@ describe('UsersService', () => {
             id: 'wallet-uuid-1',
             userId: 'user-uuid-1',
             wineryId: null,
-            stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+            stellarPublicAddress:
+              'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
             walletType: WalletTypeEnum.CUSTODIAL,
             walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
             isPrimary: true,

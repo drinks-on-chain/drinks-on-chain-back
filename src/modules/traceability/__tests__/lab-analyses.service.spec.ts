@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LabAnalysesService } from '../services/lab-analyses.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 describe('LabAnalysesService', () => {
@@ -65,8 +65,12 @@ describe('LabAnalysesService', () => {
 
   describe('create', () => {
     it('debe registrar un análisis de laboratorio válido', async () => {
-      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(mockBottlingBatch);
-      mockPrismaService.wineryMember.findFirst.mockResolvedValue({ id: mockMemberId });
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(
+        mockBottlingBatch,
+      );
+      mockPrismaService.wineryMember.findFirst.mockResolvedValue({
+        id: mockMemberId,
+      });
       mockPrismaService.batchLabAnalysis.create.mockResolvedValue(mockAnalysis);
 
       const dto = {
@@ -98,8 +102,12 @@ describe('LabAnalysesService', () => {
     });
 
     it('debe marcar conformsToSenasagStandards como false si el metanol supera 200 mg/100ml', async () => {
-      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(mockBottlingBatch);
-      mockPrismaService.wineryMember.findFirst.mockResolvedValue({ id: mockMemberId });
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(
+        mockBottlingBatch,
+      );
+      mockPrismaService.wineryMember.findFirst.mockResolvedValue({
+        id: mockMemberId,
+      });
       mockPrismaService.batchLabAnalysis.create.mockResolvedValue({
         ...mockAnalysis,
         conformsToSenasagStandards: false,
@@ -143,9 +151,9 @@ describe('LabAnalysesService', () => {
         laboratoryReportPdfUrl: 'https://example.com/lab.pdf',
       };
 
-      await expect(service.create(mockWineryId, mockUserId, dto)).rejects.toThrow(
-        ConflictException,
-      );
+      await expect(
+        service.create(mockWineryId, mockUserId, dto),
+      ).rejects.toThrow(ConflictException);
     });
   });
 });

@@ -10,8 +10,13 @@ import { LocalStorageService } from './local-storage.service';
     LocalStorageService,
     {
       provide: STORAGE_SERVICE,
-      useFactory: (configService: ConfigService, localStorageService: LocalStorageService) => {
-        const driver = configService.get<string>('STORAGE_DRIVER', 'local').toLowerCase();
+      useFactory: (
+        configService: ConfigService,
+        localStorageService: LocalStorageService,
+      ) => {
+        const driver = configService
+          .get<string>('STORAGE_DRIVER', 'local')
+          .toLowerCase();
 
         switch (driver) {
           case 'local':

@@ -35,7 +35,9 @@ export class BottlingBatchResponseDto {
   @ApiPropertyOptional({ example: 'Vidrio Extra-Flint 750ml' })
   bottleType?: string | null;
 
-  @ApiPropertyOptional({ example: 'https://storage.drinksonchain.com/labels/singani.png' })
+  @ApiPropertyOptional({
+    example: 'https://storage.drinksonchain.com/labels/singani.png',
+  })
   labelDesignUrl?: string | null;
 
   @ApiProperty({ example: '2026-10-01' })
@@ -56,7 +58,9 @@ export class BottlingBatchResponseDto {
   @ApiPropertyOptional({ example: '2026-10-01T12:00:00.000Z' })
   anchoredAt?: Date | null;
 
-  @ApiPropertyOptional({ example: 'https://drinksonchain.com/trace/batch/KHL-2026-SINGANI-001' })
+  @ApiPropertyOptional({
+    example: 'https://drinksonchain.com/trace/batch/KHL-2026-SINGANI-001',
+  })
   qrBatchUrl?: string | null;
 
   @ApiProperty({ example: '2026-10-01T12:00:00.000Z' })

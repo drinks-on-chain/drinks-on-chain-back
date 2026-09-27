@@ -95,7 +95,6 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         fullName: 'Winery Admin Singani',
         userRole: UserRoleEnum.WINERY_ADMIN,
       });
-    const wineryAdminId = wAdminRes.body.data.user.id;
     const initialWineryAdminToken = wAdminRes.body.data.tokens.accessToken;
 
     // 3. Crear Bodega 1
@@ -332,7 +331,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .set('Authorization', `Bearer ${enologistToken}`)
         .send({
           phytosanitaryStatus: PhytoStatusEnum.APPROVED,
-          phytoInspectionPdfUrl: 'https://storage.drinksonchain.com/inspections/phyto-potrero.pdf',
+          phytoInspectionPdfUrl:
+            'https://storage.drinksonchain.com/inspections/phyto-potrero.pdf',
           notes: 'Aprobado sin presencia de botritis',
         });
 
@@ -451,7 +451,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           totalBottlesPackaged: 4080,
           packagingFormatCl: 75,
           bottleType: 'Vidrio Extra-Flint 750ml',
-          labelDesignUrl: 'https://storage.drinksonchain.com/labels/singani-anniversary.png',
+          labelDesignUrl:
+            'https://storage.drinksonchain.com/labels/singani-anniversary.png',
           bottlingDate: '2026-10-01',
         });
 
@@ -469,7 +470,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .set('Authorization', `Bearer ${enologistToken}`)
         .send({
           bottlingBatchId,
-          certifiedLaboratoryName: 'Laboratorio de Servicios Analíticos ISO 17025',
+          certifiedLaboratoryName:
+            'Laboratorio de Servicios Analíticos ISO 17025',
           accreditedLabCertificationCode: 'LAB-SENASAG-2026-991',
           analysisRequestDate: '2026-10-02',
           testPerformedAt: '2026-10-04',
@@ -478,7 +480,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           volatileAcidityAceticGl: 0.22,
           methanolContentMgL: 48.0,
           copperContentMgL: 0.02,
-          laboratoryReportPdfUrl: 'https://storage.drinksonchain.com/certs/lab-report-991.pdf',
+          laboratoryReportPdfUrl:
+            'https://storage.drinksonchain.com/certs/lab-report-991.pdf',
           conformsToSenasagStandards: true,
         });
 
@@ -497,7 +500,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.body.data.nodes).toHaveLength(5);
 
       // Verificar encadenamiento de nodos
-      const [plotNode, harvestNode, vinifNode, distNode, bottleNode] = res.body.data.nodes;
+      const [plotNode, harvestNode, vinifNode, distNode, bottleNode] =
+        res.body.data.nodes;
       expect(plotNode.stageName).toBe('Plot');
       expect(harvestNode.stageName).toBe('Harvest');
       expect(harvestNode.parents).toContain(plotNode.batchId);
@@ -659,8 +663,16 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.productType).toBe('WINE');
       expect(res.body.data.nodes).toHaveLength(5);
-      const stageNames = res.body.data.nodes.map((n: any) => n.stageName);
-      expect(stageNames).toEqual(['Plot', 'Harvest', 'Vinification', 'Aging', 'Bottling']);
+      const stageNames = res.body.data.nodes.map(
+        (n: { stageName: string }) => n.stageName,
+      );
+      expect(stageNames).toEqual([
+        'Plot',
+        'Harvest',
+        'Vinification',
+        'Aging',
+        'Bottling',
+      ]);
     });
   });
 

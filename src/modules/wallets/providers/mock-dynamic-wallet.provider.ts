@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { IWalletProvider, CustodialVaultResult } from '../interfaces/wallet-provider.interface';
+import {
+  IWalletProvider,
+  CustodialVaultResult,
+} from '../interfaces/wallet-provider.interface';
 import { WalletPurposeEnum } from '@prisma/client';
 import { Keypair } from '@stellar/stellar-sdk';
 import { v4 as uuidv4 } from 'uuid';
@@ -30,9 +33,11 @@ export class MockDynamicWalletProvider implements IWalletProvider {
 
   async signTransactionPlaceholder(
     vaultId: string,
-    transactionPayload: unknown,
+    _transactionPayload: unknown,
   ): Promise<{ signedPayload: string; txHashPlaceholder: string }> {
-    this.logger.log(`[SIMULATED HOOK] Firma on-chain invocada para vault ${vaultId}`);
+    this.logger.log(
+      `[SIMULATED HOOK] Firma on-chain invocada para vault ${vaultId}`,
+    );
     return {
       signedPayload: 'MOCK_SIGNED_XDR_PAYLOAD',
       txHashPlaceholder: `0x${uuidv4().replace(/-/g, '')}`,

@@ -151,10 +151,15 @@ describe('HarvestBatchesService', () => {
 
   describe('findAll', () => {
     it('debe retornar lotes de vendimia paginados', async () => {
-      mockPrismaService.harvestBatch.findMany.mockResolvedValue([mockHarvestBatch]);
+      mockPrismaService.harvestBatch.findMany.mockResolvedValue([
+        mockHarvestBatch,
+      ]);
       mockPrismaService.harvestBatch.count.mockResolvedValue(1);
 
-      const result = await service.findAll(mockWineryId, { limit: 10, offset: 0 });
+      const result = await service.findAll(mockWineryId, {
+        limit: 10,
+        offset: 0,
+      });
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);
@@ -163,7 +168,9 @@ describe('HarvestBatchesService', () => {
 
   describe('findById', () => {
     it('debe retornar lote si existe', async () => {
-      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(mockHarvestBatch);
+      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(
+        mockHarvestBatch,
+      );
 
       const result = await service.findById(mockWineryId, mockHarvestId);
 
@@ -181,8 +188,12 @@ describe('HarvestBatchesService', () => {
 
   describe('updatePhytoStatus', () => {
     it('debe actualizar el estado fitosanitario', async () => {
-      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(mockHarvestBatch);
-      mockPrismaService.wineryMember.findFirst.mockResolvedValue({ id: mockMemberId });
+      mockPrismaService.harvestBatch.findFirst.mockResolvedValue(
+        mockHarvestBatch,
+      );
+      mockPrismaService.wineryMember.findFirst.mockResolvedValue({
+        id: mockMemberId,
+      });
       mockPrismaService.harvestBatch.update.mockResolvedValue({
         ...mockHarvestBatch,
         phytosanitaryStatus: PhytoStatusEnum.APPROVED,

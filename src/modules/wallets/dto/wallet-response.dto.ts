@@ -20,7 +20,10 @@ export class WalletResponseDto {
   @ApiProperty({ enum: WalletTypeEnum, example: WalletTypeEnum.CUSTODIAL })
   walletType!: WalletTypeEnum;
 
-  @ApiProperty({ enum: WalletPurposeEnum, example: WalletPurposeEnum.CONSUMER_NFT })
+  @ApiProperty({
+    enum: WalletPurposeEnum,
+    example: WalletPurposeEnum.CONSUMER_NFT,
+  })
   walletPurpose!: WalletPurposeEnum;
 
   @ApiProperty({ example: true })

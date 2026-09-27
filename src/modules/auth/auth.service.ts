@@ -4,7 +4,6 @@ import {
   ConflictException,
   ForbiddenException,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -87,7 +86,9 @@ export class AuthService {
       WalletPurposeEnum.CONSUMER_NFT,
     );
 
-    this.logger.log(`Usuario registrado exitosamente: ${user.id} (${user.email})`);
+    this.logger.log(
+      `Usuario registrado exitosamente: ${user.id} (${user.email})`,
+    );
 
     const tokens = await this.generateTokens({
       sub: user.id,
@@ -132,7 +133,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales de acceso inválidas');
     }
 
-    const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(
+      dto.password,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
       throw new UnauthorizedException('Credenciales de acceso inválidas');
     }
@@ -155,7 +159,9 @@ export class AuthService {
       memberRole,
     });
 
-    this.logger.log(`Usuario autenticado exitosamente: ${user.id} (${user.email})`);
+    this.logger.log(
+      `Usuario autenticado exitosamente: ${user.id} (${user.email})`,
+    );
 
     return {
       user: {
@@ -177,7 +183,8 @@ export class AuthService {
    */
   async refreshTokens(refreshToken: string): Promise<AuthTokensDto> {
     try {
-      const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
+      const refreshSecret =
+        this.configService.get<string>('JWT_REFRESH_SECRET');
       const payload: JwtPayload = this.jwtService.verify(refreshToken, {
         secret: refreshSecret,
       });
@@ -208,7 +215,9 @@ export class AuthService {
         memberRole,
       });
     } catch {
-      throw new UnauthorizedException('Token de actualización inválido o expirado');
+      throw new UnauthorizedException(
+        'Token de actualización inválido o expirado',
+      );
     }
   }
 
@@ -217,7 +226,8 @@ export class AuthService {
    */
   private async generateTokens(payload: JwtPayload): Promise<AuthTokensDto> {
     const jwtSecret = this.configService.get<string>('JWT_SECRET');
-    const jwtExpiresIn = this.configService.get<string>('JWT_EXPIRES_IN') || '7d';
+    const jwtExpiresIn =
+      this.configService.get<string>('JWT_EXPIRES_IN') || '7d';
     const refreshSecret = this.configService.get<string>('JWT_REFRESH_SECRET');
     const refreshExpiresIn =
       this.configService.get<string>('JWT_REFRESH_EXPIRES_IN') || '30d';
@@ -233,7 +243,7 @@ export class AuthService {
         },
         {
           secret: jwtSecret,
-          expiresIn: jwtExpiresIn as any,
+          expiresIn: jwtExpiresIn,
         },
       ),
       this.jwtService.signAsync(
@@ -246,7 +256,7 @@ export class AuthService {
         },
         {
           secret: refreshSecret,
-          expiresIn: refreshExpiresIn as any,
+          expiresIn: refreshExpiresIn,
         },
       ),
     ]);

@@ -1,3 +1,4 @@
+import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { BadRequestException } from '@nestjs/common';
@@ -8,7 +9,7 @@ import { LocalStorageService } from '../local-storage.service';
 describe('LocalStorageService', () => {
   let service: LocalStorageService;
   const mockConfigService = {
-    get: jest.fn((key: string, defaultValue?: any) => {
+    get: jest.fn((key: string, defaultValue?: unknown) => {
       if (key === 'STORAGE_LOCAL_PATH') return './test-uploads';
       if (key === 'STORAGE_BASE_URL') return 'http://localhost:3000/uploads';
       if (key === 'PORT') return 3000;
@@ -53,7 +54,7 @@ describe('LocalStorageService', () => {
         mimetype: 'application/pdf',
         buffer: Buffer.from('%PDF-1.4 test content'),
         size: 21,
-        stream: null as any,
+        stream: Readable.from([]),
         destination: '',
         filename: '',
         path: '',
@@ -69,7 +70,11 @@ describe('LocalStorageService', () => {
       expect(result.url).toBe(`http://localhost:3000/uploads/${result.key}`);
 
       // Verificar que el archivo realmente se escribió en disco
-      const fullPath = path.resolve(process.cwd(), './test-uploads', result.key);
+      const fullPath = path.resolve(
+        process.cwd(),
+        './test-uploads',
+        result.key,
+      );
       const exists = await fs
         .access(fullPath)
         .then(() => true)
@@ -81,7 +86,9 @@ describe('LocalStorageService', () => {
     });
 
     it('debe lanzar BadRequestException si el archivo o su buffer son nulos', async () => {
-      await expect(service.uploadFile(null as any)).rejects.toThrow(BadRequestException);
+      await expect(
+        service.uploadFile(null as unknown as Express.Multer.File),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('debe sanitizar carpetas con caracteres maliciosos para prevenir Directory Traversal', async () => {
@@ -92,7 +99,7 @@ describe('LocalStorageService', () => {
         mimetype: 'image/png',
         buffer: Buffer.from('fake image'),
         size: 10,
-        stream: null as any,
+        stream: Readable.from([]),
         destination: '',
         filename: '',
         path: '',
@@ -116,7 +123,7 @@ describe('LocalStorageService', () => {
         mimetype: 'image/png',
         buffer: Buffer.from('fake image'),
         size: 10,
-        stream: null as any,
+        stream: Readable.from([]),
         destination: '',
         filename: '',
         path: '',

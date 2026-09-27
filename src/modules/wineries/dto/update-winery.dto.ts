@@ -24,7 +24,9 @@ export class UpdateWineryDto {
   @MaxLength(20)
   contactPhone?: string;
 
-  @ApiPropertyOptional({ example: 'https://storage.supabase.co/logos/new-logo.png' })
+  @ApiPropertyOptional({
+    example: 'https://storage.supabase.co/logos/new-logo.png',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(500)

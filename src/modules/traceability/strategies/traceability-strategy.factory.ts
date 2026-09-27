@@ -13,7 +13,9 @@ export class TraceabilityStrategyFactory {
     private readonly beerStrategy: BeerTraceabilityStrategy,
   ) {}
 
-  getStrategy(type: BeverageTypeEnum | WineryCategoryEnum | string): ITraceabilityStrategy {
+  getStrategy(
+    type: BeverageTypeEnum | WineryCategoryEnum | string,
+  ): ITraceabilityStrategy {
     const normalized = type.toUpperCase();
 
     if (normalized === 'WINE' || normalized === 'WINERY') {

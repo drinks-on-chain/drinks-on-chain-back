@@ -16,8 +16,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiBadRequestResponse,
 } from '@nestjs/swagger';
@@ -30,7 +28,10 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
 
@@ -75,7 +76,8 @@ export class HarvestBatchesController {
   )
   @ApiOperation({
     summary: 'Listar lotes de vendimia',
-    description: 'Obtiene el listado de lotes de vendimia con soporte de filtros por año y estado fitosanitario.',
+    description:
+      'Obtiene el listado de lotes de vendimia con soporte de filtros por año y estado fitosanitario.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -96,7 +98,8 @@ export class HarvestBatchesController {
   )
   @ApiOperation({
     summary: 'Obtener detalle de un lote de vendimia',
-    description: 'Retorna los datos de pesaje, análisis de madurez y tanques de fermentación asociados.',
+    description:
+      'Retorna los datos de pesaje, análisis de madurez y tanques de fermentación asociados.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

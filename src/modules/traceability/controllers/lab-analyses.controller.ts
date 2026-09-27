@@ -14,8 +14,6 @@ import {
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
-  ApiUnauthorizedResponse,
-  ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiConflictResponse,
 } from '@nestjs/swagger';
@@ -26,7 +24,10 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
 
@@ -54,7 +55,9 @@ export class LabAnalysesController {
     description: 'Informe de laboratorio registrado',
     type: BatchLabAnalysisResponseDto,
   })
-  @ApiConflictResponse({ description: 'El lote ya tiene un informe oficial registrado' })
+  @ApiConflictResponse({
+    description: 'El lote ya tiene un informe oficial registrado',
+  })
   async create(
     @TenantId() wineryId: string,
     @CurrentUser() user: AuthenticatedUser,
@@ -72,8 +75,10 @@ export class LabAnalysesController {
     UserRoleEnum.CONSUMER,
   )
   @ApiOperation({
-    summary: 'Consultar certificado de laboratorio por ID de lote de embotellado',
-    description: 'Obtiene el informe físico-químico oficial emitido para un lote embotellado.',
+    summary:
+      'Consultar certificado de laboratorio por ID de lote de embotellado',
+    description:
+      'Obtiene el informe físico-químico oficial emitido para un lote embotellado.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

@@ -10,6 +10,11 @@ import { GlobalExceptionFilter } from './shared/filters/global-exception.filter'
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
 import * as fs from 'fs';
+import { ConfigService } from '@nestjs/config';
+import {
+  buildCorsOptions,
+  parseCorsAllowedOrigins,
+} from './config/cors.config';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -34,21 +39,14 @@ async function bootstrap() {
     prefix: '/uploads/',
   });
 
-  // 2. CORS restrictivo por entorno
-  const allowedOrigins = process.env.CORS_ALLOWED_ORIGINS?.split(',') || [
-    'http://localhost:3000',
-  ];
-  app.enableCors({
-    origin: allowedOrigins,
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'X-Correlation-ID',
-      'Accept-Language',
-    ],
-  });
+  // 2. CORS: solo los orígenes exactos de CORS_ALLOWED_ORIGINS (nunca reflejo)
+  const config = app.get(ConfigService);
+  const allowedOrigins = parseCorsAllowedOrigins(
+    config.get<string>('CORS_ALLOWED_ORIGINS'),
+    config.get<string>('NODE_ENV'),
+  );
+  app.enableCors(buildCorsOptions(allowedOrigins));
+  logger.log(`CORS habilitado para: ${allowedOrigins.join(', ')}`);
 
   // 3. Versionado global de API (/v1/...)
   app.enableVersioning({
@@ -93,11 +91,15 @@ async function bootstrap() {
     },
   });
 
-  const port = process.env.PORT || 3000;
+  app.enableShutdownHooks();
+
+  const port = config.get<number>('PORT', 4000);
   await app.listen(port);
 
   logger.log(`🚀 Application is running on: http://localhost:${port}/v1`);
-  logger.log(`📚 Swagger documentation available at: http://localhost:${port}/docs`);
+  logger.log(
+    `📚 Swagger documentation available at: http://localhost:${port}/docs`,
+  );
 }
 
 bootstrap();

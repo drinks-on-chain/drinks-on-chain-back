@@ -26,7 +26,7 @@ export class TerroirResponseDto {
   longitude?: number | null;
 
   @ApiPropertyOptional()
-  geographicPolygonGeojson?: Record<string, any> | null;
+  geographicPolygonGeojson?: Record<string, unknown> | null;
 
   @ApiProperty({ example: 'uva' })
   rawMaterialType!: string;
@@ -46,7 +46,9 @@ export class TerroirResponseDto {
   @ApiPropertyOptional({ example: 'D.O. Singani' })
   doType?: string | null;
 
-  @ApiPropertyOptional({ example: 'https://storage.drinksonchain.com/cert/do-potrero.pdf' })
+  @ApiPropertyOptional({
+    example: 'https://storage.drinksonchain.com/cert/do-potrero.pdf',
+  })
   doCertificateUrl?: string | null;
 
   @ApiProperty({ example: true })
