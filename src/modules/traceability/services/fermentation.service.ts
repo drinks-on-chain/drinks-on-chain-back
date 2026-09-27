@@ -89,16 +89,7 @@ export class FermentationService {
     return { items, total };
   }
 
-  async findTankById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<
-    FermentationTank & {
-      harvestBatch?: any;
-      logs?: FermentationLog[];
-      treatments?: EnologicalTreatment[];
-    }
-  > {
+  async findTankById(wineryId: string | undefined, id: string) {
     const tank = await this.prisma.fermentationTank.findFirst({
       where: {
         id,

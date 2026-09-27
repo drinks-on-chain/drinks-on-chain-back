@@ -21,7 +21,10 @@ import {
   ApiQuery,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
-import { IStorageService, STORAGE_SERVICE } from '../../shared/storage/storage.interface';
+import {
+  IStorageService,
+  STORAGE_SERVICE,
+} from '../../shared/storage/storage.interface';
 import { UploadResponseDto } from './dto/upload-response.dto';
 
 const ALLOWED_MIME_TYPES = [
@@ -70,7 +73,8 @@ export class UploadsController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'Archivo binario a subir (Máx 15MB. Formatos: PDF, JPEG, PNG, WEBP, SVG, GIF)',
+          description:
+            'Archivo binario a subir (Máx 15MB. Formatos: PDF, JPEG, PNG, WEBP, SVG, GIF)',
         },
       },
     },
@@ -82,7 +86,8 @@ export class UploadsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Archivo faltante, excede el tamaño máximo (15MB) o tipo MIME no permitido.',
+    description:
+      'Archivo faltante, excede el tamaño máximo (15MB) o tipo MIME no permitido.',
   })
   @UseInterceptors(
     FileInterceptor('file', {

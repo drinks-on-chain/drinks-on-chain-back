@@ -48,7 +48,7 @@ export class ProductionBatchResponseDto {
   restStatus!: RestStatusEnum;
 
   @ApiPropertyOptional()
-  additionalParams?: Record<string, any> | null;
+  additionalParams?: Record<string, unknown> | null;
 
   @ApiPropertyOptional({ example: 'Destilación simple discontinua' })
   notes?: string | null;

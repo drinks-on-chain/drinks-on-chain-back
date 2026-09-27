@@ -26,7 +26,7 @@ export class TerroirResponseDto {
   longitude?: number | null;
 
   @ApiPropertyOptional()
-  geographicPolygonGeojson?: Record<string, any> | null;
+  geographicPolygonGeojson?: Record<string, unknown> | null;
 
   @ApiProperty({ example: 'uva' })
   rawMaterialType!: string;

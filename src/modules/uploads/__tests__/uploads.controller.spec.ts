@@ -1,7 +1,11 @@
+import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
 import { BadRequestException } from '@nestjs/common';
 import { UploadsController } from '../uploads.controller';
-import { STORAGE_SERVICE, IStorageService } from '../../../shared/storage/storage.interface';
+import {
+  STORAGE_SERVICE,
+  IStorageService,
+} from '../../../shared/storage/storage.interface';
 
 describe('UploadsController', () => {
   let controller: UploadsController;
@@ -40,7 +44,7 @@ describe('UploadsController', () => {
         mimetype: 'application/pdf',
         buffer: Buffer.from('%PDF test'),
         size: 512,
-        stream: null as any,
+        stream: Readable.from([]),
         destination: '',
         filename: '',
         path: '',
@@ -56,7 +60,10 @@ describe('UploadsController', () => {
 
       const response = await controller.uploadFile(mockFile, 'inspections');
 
-      expect(mockStorageService.uploadFile).toHaveBeenCalledWith(mockFile, 'inspections');
+      expect(mockStorageService.uploadFile).toHaveBeenCalledWith(
+        mockFile,
+        'inspections',
+      );
       expect(response).toEqual({
         url: 'http://localhost:3000/uploads/inspections/12345.pdf',
         key: 'inspections/12345.pdf',
@@ -67,7 +74,9 @@ describe('UploadsController', () => {
     });
 
     it('debe lanzar BadRequestException si no se envía ningún archivo', async () => {
-      await expect(controller.uploadFile(null as any)).rejects.toThrow(BadRequestException);
+      await expect(
+        controller.uploadFile(null as unknown as Express.Multer.File),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });

@@ -6,8 +6,6 @@ import { WalletPurposeEnum, WalletTypeEnum } from '@prisma/client';
 
 describe('WalletsService', () => {
   let service: WalletsService;
-  let repository: WalletRepository;
-  let provider: MockDynamicWalletProvider;
 
   const mockWalletRepository = {
     findByUserId: jest.fn(),
@@ -39,8 +37,6 @@ describe('WalletsService', () => {
     }).compile();
 
     service = module.get<WalletsService>(WalletsService);
-    repository = module.get<WalletRepository>(WalletRepository);
-    provider = module.get<MockDynamicWalletProvider>(MockDynamicWalletProvider);
 
     jest.clearAllMocks();
   });

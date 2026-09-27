@@ -19,7 +19,7 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
 
   validatePlotAndHarvest(
     terroir: Terroir,
-    harvest: HarvestBatch,
+    _harvest: HarvestBatch,
   ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -78,7 +78,7 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
   }
 
   validateBottlingEligibility(
-    sourceBatch: WineAgingBatch | ProductionBatch,
+    _sourceBatch: WineAgingBatch | ProductionBatch,
   ): BatchValidationResult {
     return {
       isValid: true,
@@ -88,7 +88,7 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
 
   computeOnchainMetrics(
     stage: OnchainStageEnum,
-    data: Record<string, any>,
+    data: Record<string, unknown>,
   ): number[] {
     switch (stage) {
       case OnchainStageEnum.Plot:

@@ -12,8 +12,6 @@ import {
 
 describe('UsersService', () => {
   let service: UsersService;
-  let userRepository: UserRepository;
-  let walletsService: WalletsService;
 
   const mockUserRepository = {
     findById: jest.fn(),
@@ -35,8 +33,6 @@ describe('UsersService', () => {
     }).compile();
 
     service = module.get<UsersService>(UsersService);
-    userRepository = module.get<UserRepository>(UserRepository);
-    walletsService = module.get<WalletsService>(WalletsService);
 
     jest.clearAllMocks();
   });

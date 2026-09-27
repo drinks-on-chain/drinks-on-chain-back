@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsUUID,
   IsNotEmpty,
@@ -99,7 +100,7 @@ export class CreateDistillationBatchDto {
   })
   @IsOptional()
   @IsObject()
-  additionalParams?: Record<string, any>;
+  additionalParams?: Prisma.InputJsonObject;
 
   @ApiPropertyOptional({
     example:

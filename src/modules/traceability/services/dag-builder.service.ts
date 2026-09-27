@@ -17,7 +17,7 @@ export interface DagNode {
     role: string;
     wineryName: string;
   };
-  details: Record<string, any>;
+  details: Record<string, unknown>;
 }
 
 export interface DagGraphResult {
@@ -37,7 +37,7 @@ export class DagBuilderService {
     return '0x' + crypto.createHash('sha256').update(input).digest('hex');
   }
 
-  private computeMetadataHash(metadata: Record<string, any>): string {
+  private computeMetadataHash(metadata: Record<string, unknown>): string {
     const canonical = JSON.stringify(metadata, Object.keys(metadata).sort());
     return '0x' + crypto.createHash('sha256').update(canonical).digest('hex');
   }

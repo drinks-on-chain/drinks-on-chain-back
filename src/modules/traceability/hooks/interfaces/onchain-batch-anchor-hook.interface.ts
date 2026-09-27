@@ -31,7 +31,7 @@ export interface IOnchainBatchAnchorHook {
     parents: string[],
     volumeOrUnits: number,
     metrics: number[],
-    metadata: Record<string, any>,
+    metadata: Record<string, unknown>,
   ): OnchainStagePayload;
 
   prepareCertificationPayload(

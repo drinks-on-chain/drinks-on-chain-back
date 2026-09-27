@@ -176,12 +176,7 @@ export class ProductionBatchesService {
     };
   }
 
-  async findProductionBatchById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<
-    ProductionBatch & { fermentationTank?: any; bottlingBatches?: any[] }
-  > {
+  async findProductionBatchById(wineryId: string | undefined, id: string) {
     const batch = await this.prisma.productionBatch.findFirst({
       where: {
         id,

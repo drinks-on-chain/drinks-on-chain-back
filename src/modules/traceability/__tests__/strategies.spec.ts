@@ -4,7 +4,12 @@ import { SinganiTraceabilityStrategy } from '../strategies/singani-traceability.
 import { BeerTraceabilityStrategy } from '../strategies/beer-traceability.strategy';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { OnchainStageEnum } from '../strategies/interfaces/traceability-strategy.interface';
-import { Prisma } from '@prisma/client';
+import {
+  Prisma,
+  PhytoStatusEnum,
+  ProductionBatch,
+  WineAgingBatch,
+} from '@prisma/client';
 
 describe('Traceability Strategies & Factory', () => {
   let factory: TraceabilityStrategyFactory;
@@ -89,7 +94,7 @@ describe('Traceability Strategies & Factory', () => {
       initialPh: new Prisma.Decimal(3.45),
       initialAcidityGl: new Prisma.Decimal(6.8),
       temperatureAtIntakeC: null,
-      phytosanitaryStatus: 'APPROVED' as any,
+      phytosanitaryStatus: PhytoStatusEnum.APPROVED,
       phytoInspectionPdfUrl: null,
       certifiedByMemberId: null,
       notes: null,
@@ -135,10 +140,10 @@ describe('Traceability Strategies & Factory', () => {
       const recentEnd = new Date();
       recentEnd.setDate(recentEnd.getDate() - 30); // Solo 30 días transcurridos
 
-      const prodBatch: any = {
+      const prodBatch = {
         processType: 'SINGANI_DISTILLATION',
         processEndDate: recentEnd,
-      };
+      } as unknown as ProductionBatch;
 
       const result = singaniStrategy.validateBottlingEligibility(prodBatch);
       expect(result.isValid).toBe(false);
@@ -169,10 +174,10 @@ describe('Traceability Strategies & Factory', () => {
       const futureLockDate = new Date();
       futureLockDate.setMonth(futureLockDate.getMonth() + 6);
 
-      const agingBatch: any = {
+      const agingBatch = {
         plannedMonths: 12,
         lockUntilDate: futureLockDate,
-      };
+      } as unknown as WineAgingBatch;
 
       const result = wineStrategy.validateBottlingEligibility(agingBatch);
       expect(result.isValid).toBe(false);

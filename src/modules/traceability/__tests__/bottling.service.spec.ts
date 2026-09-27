@@ -3,16 +3,15 @@ import { BottlingService } from '../services/bottling.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import {
-  NotFoundException,
   BadRequestException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Prisma, BeverageTypeEnum } from '@prisma/client';
+import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 
 describe('BottlingService', () => {
   let service: BottlingService;
   let prisma: PrismaService;
-  let strategyFactory: TraceabilityStrategyFactory;
 
   const mockWineryId = '11111111-1111-1111-1111-111111111111';
   const mockProdId = '22222222-2222-2222-2222-222222222222';
@@ -88,9 +87,6 @@ describe('BottlingService', () => {
 
     service = module.get<BottlingService>(BottlingService);
     prisma = module.get<PrismaService>(PrismaService);
-    strategyFactory = module.get<TraceabilityStrategyFactory>(
-      TraceabilityStrategyFactory,
-    );
     jest.clearAllMocks();
   });
 
@@ -151,7 +147,7 @@ describe('BottlingService', () => {
       };
 
       await expect(
-        service.create(mockWineryId, mockUserId, dto as any),
+        service.create(mockWineryId, mockUserId, dto as CreateBottlingBatchDto),
       ).rejects.toThrow(BadRequestException);
     });
 

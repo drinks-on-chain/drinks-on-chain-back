@@ -121,7 +121,6 @@ describe('Uploads & File Storage System (e2e)', () => {
 
   describe('Flujos de Almacenamiento y Acceso Estático', () => {
     let uploadedPdfUrl: string;
-    let uploadedPngUrl: string;
 
     it('debe subir exitosamente un informe técnico en PDF y retornar URL pública', async () => {
       const pdfBuffer = Buffer.from('%PDF-1.4 informe fitosanitario de prueba');
@@ -155,8 +154,6 @@ describe('Uploads & File Storage System (e2e)', () => {
       expect(res.body.data.url).not.toContain('..');
       expect(res.body.data.url).toContain('/uploads/labelssafe/');
       expect(res.body.data.mimeType).toBe('image/png');
-
-      uploadedPngUrl = res.body.data.url;
     });
 
     it('debe permitir la descarga o visualización estática vía GET del archivo subido', async () => {

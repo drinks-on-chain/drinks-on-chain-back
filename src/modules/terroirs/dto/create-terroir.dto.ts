@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsString,
   IsNotEmpty,
@@ -77,7 +78,7 @@ export class CreateTerroirDto {
   })
   @IsOptional()
   @IsObject()
-  geographicPolygonGeojson?: Record<string, any>;
+  geographicPolygonGeojson?: Prisma.InputJsonObject;
 
   @ApiProperty({
     example: 'uva',

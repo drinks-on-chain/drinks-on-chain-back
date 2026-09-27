@@ -5,11 +5,7 @@ import { WineryMemberRepository } from '../repositories/winery-member.repository
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import {
-  ConflictException,
-  NotFoundException,
-  BadRequestException,
-} from '@nestjs/common';
+import { ConflictException, BadRequestException } from '@nestjs/common';
 import {
   WineryCategoryEnum,
   WineryStatusEnum,
@@ -19,11 +15,6 @@ import {
 
 describe('WineriesService', () => {
   let service: WineriesService;
-  let wineryRepository: WineryRepository;
-  let wineryMemberRepository: WineryMemberRepository;
-  let walletsService: WalletsService;
-  let onchainProducerHook: OnchainProducerHook;
-  let prisma: PrismaService;
 
   const mockWineryRepository = {
     create: jest.fn(),
@@ -75,13 +66,6 @@ describe('WineriesService', () => {
     }).compile();
 
     service = module.get<WineriesService>(WineriesService);
-    wineryRepository = module.get<WineryRepository>(WineryRepository);
-    wineryMemberRepository = module.get<WineryMemberRepository>(
-      WineryMemberRepository,
-    );
-    walletsService = module.get<WalletsService>(WalletsService);
-    onchainProducerHook = module.get<OnchainProducerHook>(OnchainProducerHook);
-    prisma = module.get<PrismaService>(PrismaService);
 
     jest.clearAllMocks();
   });

@@ -74,10 +74,7 @@ export class TerroirsService {
     return { items, total };
   }
 
-  async findById(
-    wineryId: string | undefined,
-    id: string,
-  ): Promise<Terroir & { harvestBatches?: any[] }> {
+  async findById(wineryId: string | undefined, id: string) {
     const terroir = await this.prisma.terroir.findFirst({
       where: {
         id,

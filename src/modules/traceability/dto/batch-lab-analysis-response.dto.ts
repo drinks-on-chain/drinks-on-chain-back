@@ -56,7 +56,7 @@ export class BatchLabAnalysisResponseDto {
   copperContentMgL?: number | null;
 
   @ApiPropertyOptional()
-  additionalParams?: Record<string, any> | null;
+  additionalParams?: Record<string, unknown> | null;
 
   @ApiProperty({ example: 'https://storage.drinksonchain.com/certs/lab.pdf' })
   laboratoryReportPdfUrl!: string;

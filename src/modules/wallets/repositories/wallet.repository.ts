@@ -1,11 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import {
-  UserWallet,
-  WalletPurposeEnum,
-  WalletTypeEnum,
-  Prisma,
-} from '@prisma/client';
+import { UserWallet, WalletPurposeEnum, WalletTypeEnum } from '@prisma/client';
 
 @Injectable()
 export class WalletRepository {

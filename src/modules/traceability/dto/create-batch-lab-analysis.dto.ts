@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import {
   IsUUID,
   IsNotEmpty,
@@ -158,7 +159,7 @@ export class CreateBatchLabAnalysisDto {
   })
   @IsOptional()
   @IsObject()
-  additionalParams?: Record<string, any>;
+  additionalParams?: Prisma.InputJsonObject;
 
   @ApiProperty({
     example: 'https://storage.drinksonchain.com/certs/lab-report-2026-991.pdf',

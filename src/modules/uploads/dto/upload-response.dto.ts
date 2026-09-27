@@ -2,8 +2,10 @@ import { ApiProperty } from '@nestjs/swagger';
 
 export class UploadResponseDto {
   @ApiProperty({
-    description: 'URL pública completa accesible para consultar o descargar el archivo',
-    example: 'http://localhost:3000/uploads/inspections/1742880000000-a1b2c3d4.pdf',
+    description:
+      'URL pública completa accesible para consultar o descargar el archivo',
+    example:
+      'http://localhost:3000/uploads/inspections/1742880000000-a1b2c3d4.pdf',
   })
   url!: string;
 

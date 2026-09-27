@@ -5,7 +5,6 @@ import {
   IsOptional,
   IsString,
   MaxLength,
-  Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { WineryCategoryEnum } from '@prisma/client';

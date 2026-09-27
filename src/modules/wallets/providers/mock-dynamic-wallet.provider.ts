@@ -33,7 +33,7 @@ export class MockDynamicWalletProvider implements IWalletProvider {
 
   async signTransactionPlaceholder(
     vaultId: string,
-    transactionPayload: unknown,
+    _transactionPayload: unknown,
   ): Promise<{ signedPayload: string; txHashPlaceholder: string }> {
     this.logger.log(
       `[SIMULATED HOOK] Firma on-chain invocada para vault ${vaultId}`,

@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LabAnalysesService } from '../services/lab-analyses.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, ConflictException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 describe('LabAnalysesService', () => {

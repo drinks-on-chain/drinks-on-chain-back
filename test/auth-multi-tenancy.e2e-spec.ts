@@ -242,7 +242,9 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     expect(pendingRes.body.success).toBe(true);
     expect(
-      pendingRes.body.data.some((w: any) => w.id === createdWineryId),
+      pendingRes.body.data.some(
+        (w: { id: string }) => w.id === createdWineryId,
+      ),
     ).toBe(true);
 
     // 7.4 Aprobar bodega

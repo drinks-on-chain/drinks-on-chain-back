@@ -4,7 +4,6 @@ import {
   ConflictException,
   ForbiddenException,
   Logger,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -244,7 +243,7 @@ export class AuthService {
         },
         {
           secret: jwtSecret,
-          expiresIn: jwtExpiresIn as any,
+          expiresIn: jwtExpiresIn,
         },
       ),
       this.jwtService.signAsync(
@@ -257,7 +256,7 @@ export class AuthService {
         },
         {
           secret: refreshSecret,
-          expiresIn: refreshExpiresIn as any,
+          expiresIn: refreshExpiresIn,
         },
       ),
     ]);

@@ -61,6 +61,6 @@ export interface ITraceabilityStrategy {
    */
   computeOnchainMetrics(
     stage: OnchainStageEnum,
-    data: Record<string, any>,
+    data: Record<string, unknown>,
   ): number[];
 }

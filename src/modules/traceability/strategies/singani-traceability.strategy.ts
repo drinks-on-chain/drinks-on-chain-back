@@ -142,7 +142,7 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
 
   computeOnchainMetrics(
     stage: OnchainStageEnum,
-    data: Record<string, any>,
+    data: Record<string, unknown>,
   ): number[] {
     switch (stage) {
       case OnchainStageEnum.Plot:

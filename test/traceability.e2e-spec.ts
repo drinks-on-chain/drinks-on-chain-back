@@ -95,7 +95,6 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         fullName: 'Winery Admin Singani',
         userRole: UserRoleEnum.WINERY_ADMIN,
       });
-    const wineryAdminId = wAdminRes.body.data.user.id;
     const initialWineryAdminToken = wAdminRes.body.data.tokens.accessToken;
 
     // 3. Crear Bodega 1
@@ -664,7 +663,9 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.productType).toBe('WINE');
       expect(res.body.data.nodes).toHaveLength(5);
-      const stageNames = res.body.data.nodes.map((n: any) => n.stageName);
+      const stageNames = res.body.data.nodes.map(
+        (n: { stageName: string }) => n.stageName,
+      );
       expect(stageNames).toEqual([
         'Plot',
         'Harvest',

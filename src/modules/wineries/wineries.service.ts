@@ -27,8 +27,17 @@ import {
   WalletPurposeEnum,
   UserRoleEnum,
   Prisma,
+  Winery,
+  WineryMember,
+  User,
 } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
+
+type WineryWithMembers = Winery & {
+  members?: (WineryMember & {
+    user?: Pick<User, 'fullName' | 'email'> | null;
+  })[];
+};
 
 @Injectable()
 export class WineriesService {
@@ -299,7 +308,7 @@ export class WineriesService {
   async approveWinery(
     wineryId: string,
     adminUserId: string,
-    dto?: ApproveWineryDto,
+    _dto?: ApproveWineryDto,
   ): Promise<WineryResponseDto> {
     const winery = await this.wineryRepository.findById(wineryId);
     if (!winery) {
@@ -412,9 +421,9 @@ export class WineriesService {
     };
   }
 
-  private mapToWineryResponse(winery: any): WineryResponseDto {
+  private mapToWineryResponse(winery: WineryWithMembers): WineryResponseDto {
     const members: WineryMemberItemDto[] | undefined = winery.members?.map(
-      (m: any) => ({
+      (m) => ({
         id: m.id,
         userId: m.userId,
         fullName: m.user?.fullName ?? '',
