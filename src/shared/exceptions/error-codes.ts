@@ -80,6 +80,22 @@ export const ErrorCode = {
   /** 409 · La bodega ya no está en INVITED (aprobar o rechazar dos veces). */
   WINERY_NOT_PENDING: 'WINERY_NOT_PENDING',
 
+  // ── Configuración (contrato O1 §6) ────────────────────────
+  /** 404 · El parámetro no existe en el catálogo. */
+  SETTING_NOT_FOUND: 'SETTING_NOT_FOUND',
+  /** 422 · Ajuste por bodega en un parámetro solo general (o al revés). */
+  SETTING_LEVEL_NOT_ALLOWED: 'SETTING_LEVEL_NOT_ALLOWED',
+  /** 422 · Valor más laxo que el mínimo legal sin excepción autorizada (A-31). */
+  SETTING_BELOW_LEGAL_MINIMUM: 'SETTING_BELOW_LEGAL_MINIMUM',
+
+  // ── Archivos (SE-04) ──────────────────────────────────────
+  /** 422 · El contenido del archivo no corresponde a un tipo permitido. */
+  FILE_TYPE_NOT_ALLOWED: 'FILE_TYPE_NOT_ALLOWED',
+  /** 413 · El archivo supera el tamaño máximo de su tipo. */
+  FILE_TOO_LARGE: 'FILE_TOO_LARGE',
+  /** 404 · El archivo no existe o no es de tu organización. */
+  FILE_NOT_FOUND: 'FILE_NOT_FOUND',
+
   // ── Trazabilidad ──────────────────────────────────────────
   /** 409 · La cuba ya pasó a un lote de crianza. */
   FERMENTATION_TANK_ALREADY_TRANSFERRED:

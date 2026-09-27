@@ -94,6 +94,127 @@ model AuditEvent {
 }
 
 // -----------------------------------------------------------------------------
+// CONFIGURACIÓN EN DOS NIVELES (CFG-01, CFG-05; docs/arquitectura/configuracion.md)
+// Las definiciones viven en el código (src/modules/settings/settings.catalog.ts)
+// y se copian aquí al arrancar la API; los valores (estándar general y ajustes
+// por bodega) y su historial viven solo aquí.
+// -----------------------------------------------------------------------------
+enum SettingTypeEnum {
+  NUMBER
+  BOOLEAN
+  STRING
+  LIST
+  OBJECT
+  NUMBER_OR_UNLIMITED
+  ENUM
+
+  @@map("setting_type_enum")
+}
+
+enum SettingLevelsEnum {
+  GLOBAL
+  GLOBAL_AND_WINERY
+  WINERY
+
+  @@map("setting_levels_enum")
+}
+
+enum SettingAppliesAtEnum {
+  LOT
+  COLLECTION
+  IMMEDIATE
+
+  @@map("setting_applies_at_enum")
+}
+
+enum SettingScopeEnum {
+  GLOBAL
+  WINERY
+
+  @@map("setting_scope_enum")
+}
+
+model SettingDefinition {
+  key          String               @id @db.VarChar(150)
+  description  String               @db.Text
+  type         SettingTypeEnum
+  enumValues   String[]             @default([]) @map("enum_values")
+  unit         String?              @db.VarChar(30)
+  levels       SettingLevelsEnum
+  appliesAt    SettingAppliesAtEnum @map("applies_at")
+  defaultValue Json?                @map("default_value") @db.JsonB
+  min          Float?
+  max          Float?
+  integer      Boolean              @default(false)
+  nullable     Boolean              @default(false)
+  // A-31: número (un valor menor es más laxo) o lista (un elemento fuera de ella es más laxo)
+  legalMinimum Json?                @map("legal_minimum") @db.JsonB
+  // false = el código ya no la define (se conserva por sus valores e historial)
+  isActive     Boolean              @default(true) @map("is_active")
+  createdAt    DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  globalValue SettingGlobalValue?
+  overrides   SettingOverride[]
+
+  @@map("setting_definitions")
+}
+
+/// Estándar general de un parámetro. Sin fila = valor por defecto del catálogo.
+model SettingGlobalValue {
+  key       String   @id @db.VarChar(150)
+  value     Json?    @db.JsonB
+  version   Int      @default(1)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy String?  @map("updated_by") @db.Uuid
+
+  definition SettingDefinition @relation(fields: [key], references: [key], onDelete: Restrict)
+
+  @@map("setting_global_values")
+}
+
+/// Ajuste de una bodega ("volver al estándar" = borrar la fila).
+model SettingOverride {
+  id             String   @id @default(uuid()) @db.Uuid
+  key            String   @db.VarChar(150)
+  wineryId       String   @map("winery_id") @db.Uuid
+  value          Json?    @db.JsonB
+  // A-31: valor por debajo del mínimo legal autorizado por administración
+  legalException Boolean  @default(false) @map("legal_exception")
+  reason         String   @db.Text
+  version        Int      @default(1)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  updatedBy      String?  @map("updated_by") @db.Uuid
+
+  definition SettingDefinition @relation(fields: [key], references: [key], onDelete: Restrict)
+  winery     Winery            @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+
+  @@unique([key, wineryId])
+  @@index([wineryId])
+  @@map("setting_overrides")
+}
+
+/// Historial de cambios (CFG-07). `before`/`after` = { value } o null (sin valor propio).
+model SettingChange {
+  id             String           @id @default(uuid()) @db.Uuid
+  key            String           @db.VarChar(150)
+  scope          SettingScopeEnum
+  wineryId       String?          @map("winery_id") @db.Uuid
+  before         Json?            @db.JsonB
+  after          Json?            @db.JsonB
+  reason         String           @db.Text
+  legalException Boolean          @default(false) @map("legal_exception")
+  changedAt      DateTime         @default(now()) @map("changed_at") @db.Timestamptz(6)
+  changedBy      String?          @map("changed_by") @db.Uuid
+  correlationId  String?          @map("correlation_id") @db.VarChar(100)
+
+  @@index([key, changedAt])
+  @@index([wineryId, changedAt])
+  @@map("setting_changes")
+}
+
+// -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
 /// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
@@ -371,6 +492,7 @@ model Winery {
   wineAgingBatches  WineAgingBatch[]
   productionBatches ProductionBatch[]
   bottlingBatches   BottlingBatch[]
+  settingOverrides  SettingOverride[]
 
   @@map("wineries")
 }

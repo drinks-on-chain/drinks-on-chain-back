@@ -27,12 +27,15 @@ import { UploadsModule } from './modules/uploads/uploads.module';
 import { IdempotencyModule } from './shared/idempotency/idempotency.module';
 import { RequestContextModule } from './shared/context/request-context.module';
 import { AuditModule } from './shared/audit/audit.module';
+import { RedisModule } from './shared/redis/redis.module';
+import { SettingsModule } from './modules/settings/settings.module';
 
 @Module({
   imports: [
     AppConfigModule,
     PrismaModule,
     RequestContextModule,
+    RedisModule,
     AuditModule,
     StorageModule,
     IdempotencyModule,
@@ -51,6 +54,7 @@ import { AuditModule } from './shared/audit/audit.module';
     HarvestBatchesModule,
     TraceabilityModule,
     UploadsModule,
+    SettingsModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →
