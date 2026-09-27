@@ -5,6 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 import { CreateBatchLabAnalysisDto } from '../dto/create-batch-lab-analysis.dto';
 import { Prisma, BatchLabAnalysis } from '@prisma/client';
 
@@ -12,7 +14,10 @@ import { Prisma, BatchLabAnalysis } from '@prisma/client';
 export class LabAnalysesService {
   private readonly logger = new Logger(LabAnalysesService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(
     wineryId: string,
@@ -67,64 +72,75 @@ export class LabAnalysesService {
       `Registrando informe de laboratorio "${dto.accreditedLabCertificationCode}" por ${dto.certifiedLaboratoryName}`,
     );
 
-    return this.prisma.batchLabAnalysis.create({
-      data: {
-        bottlingBatchId: dto.bottlingBatchId,
-        certifiedLaboratoryName: dto.certifiedLaboratoryName,
-        accreditedLabCertificationCode: dto.accreditedLabCertificationCode,
-        analysisRequestDate: dto.analysisRequestDate
-          ? new Date(dto.analysisRequestDate)
-          : null,
-        testPerformedAt: new Date(dto.testPerformedAt),
-        actualAlcoholAbv: new Prisma.Decimal(dto.actualAlcoholAbv),
-        totalAlcoholAbv:
-          dto.totalAlcoholAbv !== undefined
-            ? new Prisma.Decimal(dto.totalAlcoholAbv)
-            : null,
-        totalAcidityTartaricGl: new Prisma.Decimal(dto.totalAcidityTartaricGl),
-        volatileAcidityAceticGl: new Prisma.Decimal(
-          dto.volatileAcidityAceticGl,
-        ),
-        freeSulfurDioxideMgL:
-          dto.freeSulfurDioxideMgL !== undefined
-            ? new Prisma.Decimal(dto.freeSulfurDioxideMgL)
-            : null,
-        totalSulfurDioxideMgL:
-          dto.totalSulfurDioxideMgL !== undefined
-            ? new Prisma.Decimal(dto.totalSulfurDioxideMgL)
-            : null,
-        reducingSugarsGl:
-          dto.reducingSugarsGl !== undefined
-            ? new Prisma.Decimal(dto.reducingSugarsGl)
-            : null,
-        totalDryExtractGl:
-          dto.totalDryExtractGl !== undefined
-            ? new Prisma.Decimal(dto.totalDryExtractGl)
-            : null,
-        sugarFreeDryExtractGl:
-          dto.sugarFreeDryExtractGl !== undefined
-            ? new Prisma.Decimal(dto.sugarFreeDryExtractGl)
-            : null,
-        overpressureBar:
-          dto.overpressureBar !== undefined
-            ? new Prisma.Decimal(dto.overpressureBar)
-            : null,
-        methanolContentMgL:
-          dto.methanolContentMgL !== undefined
-            ? new Prisma.Decimal(dto.methanolContentMgL)
-            : null,
-        copperContentMgL:
-          dto.copperContentMgL !== undefined
-            ? new Prisma.Decimal(dto.copperContentMgL)
-            : null,
-        additionalParams: dto.additionalParams ?? Prisma.DbNull,
-        laboratoryReportPdfUrl: dto.laboratoryReportPdfUrl,
-        conformsToSenasagStandards: conformsToSenasag,
-        conformsToEuStandards: dto.conformsToEuStandards ?? false,
-        conformsToUsaStandards: dto.conformsToUsaStandards ?? false,
-        reviewedByMemberId,
-      },
-    });
+    return this.audit.transaction(
+      (tx) =>
+        tx.batchLabAnalysis.create({
+          data: {
+            bottlingBatchId: dto.bottlingBatchId,
+            certifiedLaboratoryName: dto.certifiedLaboratoryName,
+            accreditedLabCertificationCode: dto.accreditedLabCertificationCode,
+            analysisRequestDate: dto.analysisRequestDate
+              ? new Date(dto.analysisRequestDate)
+              : null,
+            testPerformedAt: new Date(dto.testPerformedAt),
+            actualAlcoholAbv: new Prisma.Decimal(dto.actualAlcoholAbv),
+            totalAlcoholAbv:
+              dto.totalAlcoholAbv !== undefined
+                ? new Prisma.Decimal(dto.totalAlcoholAbv)
+                : null,
+            totalAcidityTartaricGl: new Prisma.Decimal(
+              dto.totalAcidityTartaricGl,
+            ),
+            volatileAcidityAceticGl: new Prisma.Decimal(
+              dto.volatileAcidityAceticGl,
+            ),
+            freeSulfurDioxideMgL:
+              dto.freeSulfurDioxideMgL !== undefined
+                ? new Prisma.Decimal(dto.freeSulfurDioxideMgL)
+                : null,
+            totalSulfurDioxideMgL:
+              dto.totalSulfurDioxideMgL !== undefined
+                ? new Prisma.Decimal(dto.totalSulfurDioxideMgL)
+                : null,
+            reducingSugarsGl:
+              dto.reducingSugarsGl !== undefined
+                ? new Prisma.Decimal(dto.reducingSugarsGl)
+                : null,
+            totalDryExtractGl:
+              dto.totalDryExtractGl !== undefined
+                ? new Prisma.Decimal(dto.totalDryExtractGl)
+                : null,
+            sugarFreeDryExtractGl:
+              dto.sugarFreeDryExtractGl !== undefined
+                ? new Prisma.Decimal(dto.sugarFreeDryExtractGl)
+                : null,
+            overpressureBar:
+              dto.overpressureBar !== undefined
+                ? new Prisma.Decimal(dto.overpressureBar)
+                : null,
+            methanolContentMgL:
+              dto.methanolContentMgL !== undefined
+                ? new Prisma.Decimal(dto.methanolContentMgL)
+                : null,
+            copperContentMgL:
+              dto.copperContentMgL !== undefined
+                ? new Prisma.Decimal(dto.copperContentMgL)
+                : null,
+            additionalParams: dto.additionalParams ?? Prisma.DbNull,
+            laboratoryReportPdfUrl: dto.laboratoryReportPdfUrl,
+            conformsToSenasagStandards: conformsToSenasag,
+            conformsToEuStandards: dto.conformsToEuStandards ?? false,
+            conformsToUsaStandards: dto.conformsToUsaStandards ?? false,
+            reviewedByMemberId,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.LAB_ANALYSIS_CREATED,
+        resource: { type: 'lab_analysis', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
   }
 
   async findByBatchId(

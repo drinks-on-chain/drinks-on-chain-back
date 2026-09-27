@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { FermentationService } from '../services/fermentation.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import {
   Prisma,
@@ -68,6 +70,10 @@ describe('FermentationService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
         },
       ],
     }).compile();

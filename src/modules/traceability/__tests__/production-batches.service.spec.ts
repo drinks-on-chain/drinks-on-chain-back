@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductionBatchesService } from '../services/production-batches.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { Prisma, ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
 
 describe('ProductionBatchesService', () => {
@@ -65,6 +67,10 @@ describe('ProductionBatchesService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
         },
         {
           provide: TraceabilityStrategyFactory,

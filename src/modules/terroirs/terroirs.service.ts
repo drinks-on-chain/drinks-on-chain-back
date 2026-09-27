@@ -6,41 +6,58 @@ import { QueryTerroirsDto } from './dto/query-terroirs.dto';
 import { Prisma, Terroir } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 
 @Injectable()
 export class TerroirsService {
   private readonly logger = new Logger(TerroirsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async create(wineryId: string, dto: CreateTerroirDto): Promise<Terroir> {
     this.logger.log(
       `Registrando parcela "${dto.parcelName}" para la bodega ${wineryId}`,
     );
 
-    const terroir = await this.prisma.terroir.create({
-      data: {
-        wineryId,
-        parcelName: dto.parcelName,
-        cadastreCode: dto.cadastreCode,
-        surfaceHectares: new Prisma.Decimal(dto.surfaceHectares),
-        altitudeMasl: new Prisma.Decimal(dto.altitudeMasl),
-        latitude:
-          dto.latitude !== undefined ? new Prisma.Decimal(dto.latitude) : null,
-        longitude:
-          dto.longitude !== undefined
-            ? new Prisma.Decimal(dto.longitude)
-            : null,
-        geographicPolygonGeojson: dto.geographicPolygonGeojson ?? Prisma.DbNull,
-        rawMaterialType: dto.rawMaterialType,
-        varietyName: dto.varietyName,
-        soilType: dto.soilType,
-        irrigationSystem: dto.irrigationSystem,
-        isDoEligible: dto.isDoEligible ?? false,
-        doType: dto.doType,
-        doCertificateUrl: dto.doCertificateUrl,
-      },
-    });
+    const terroir = await this.audit.transaction(
+      (tx) =>
+        tx.terroir.create({
+          data: {
+            wineryId,
+            parcelName: dto.parcelName,
+            cadastreCode: dto.cadastreCode,
+            surfaceHectares: new Prisma.Decimal(dto.surfaceHectares),
+            altitudeMasl: new Prisma.Decimal(dto.altitudeMasl),
+            latitude:
+              dto.latitude !== undefined
+                ? new Prisma.Decimal(dto.latitude)
+                : null,
+            longitude:
+              dto.longitude !== undefined
+                ? new Prisma.Decimal(dto.longitude)
+                : null,
+            geographicPolygonGeojson:
+              dto.geographicPolygonGeojson ?? Prisma.DbNull,
+            rawMaterialType: dto.rawMaterialType,
+            varietyName: dto.varietyName,
+            soilType: dto.soilType,
+            irrigationSystem: dto.irrigationSystem,
+            isDoEligible: dto.isDoEligible ?? false,
+            doType: dto.doType,
+            doCertificateUrl: dto.doCertificateUrl,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.TERROIR_CREATED,
+        resource: { type: 'terroir', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
 
     return terroir;
   }
@@ -102,7 +119,7 @@ export class TerroirsService {
     id: string,
     dto: UpdateTerroirDto,
   ): Promise<Terroir> {
-    await this.findById(wineryId, id);
+    const before = await this.findById(wineryId, id);
 
     const updateData: Prisma.TerroirUpdateInput = {
       ...(dto.parcelName && { parcelName: dto.parcelName }),
@@ -138,9 +155,15 @@ export class TerroirsService {
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     };
 
-    return this.prisma.terroir.update({
-      where: { id },
-      data: updateData,
-    });
+    return this.audit.transaction(
+      (tx) => tx.terroir.update({ where: { id }, data: updateData }),
+      (updated) => ({
+        action: AuditAction.TERROIR_UPDATED,
+        resource: { type: 'terroir', id },
+        organizationId: updated.wineryId,
+        before,
+        after: updated,
+      }),
+    );
   }
 }

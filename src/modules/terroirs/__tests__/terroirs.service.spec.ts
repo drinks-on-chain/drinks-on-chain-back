@@ -1,11 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { TerroirsService } from '../terroirs.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
 describe('TerroirsService', () => {
   let service: TerroirsService;
+  let moduleRef: TestingModule;
   let prisma: PrismaService;
 
   const mockWineryId = '11111111-1111-1111-1111-111111111111';
@@ -50,9 +53,14 @@ describe('TerroirsService', () => {
           provide: PrismaService,
           useValue: mockPrismaService,
         },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
       ],
     }).compile();
 
+    moduleRef = module;
     service = module.get<TerroirsService>(TerroirsService);
     prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
@@ -82,6 +90,28 @@ describe('TerroirsService', () => {
         }),
       });
       expect(result).toEqual(mockTerroir);
+    });
+
+    it('registra TERROIR_CREATED en la bitácora dentro de la misma transacción', async () => {
+      mockPrismaService.terroir.create.mockResolvedValue(mockTerroir);
+      const audit =
+        moduleRef.get<ReturnType<typeof createAuditServiceMock>>(AuditService);
+
+      await service.create(mockWineryId, {
+        parcelName: 'Cuartel 4 - La Finca El Potrero',
+        surfaceHectares: 4.5,
+        altitudeMasl: 1850.0,
+        rawMaterialType: 'uva',
+        varietyName: 'Moscatel de Alejandría',
+      });
+
+      expect(audit.transaction).toHaveBeenCalledTimes(1);
+      expect(audit.recorded.at(-1)).toMatchObject({
+        action: 'TERROIR_CREATED',
+        resource: { type: 'terroir', id: mockTerroirId },
+        organizationId: mockWineryId,
+        after: mockTerroir,
+      });
     });
   });
 

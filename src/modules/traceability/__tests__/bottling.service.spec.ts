@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { BottlingService } from '../services/bottling.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { UnprocessableEntityException } from '@nestjs/common';
 import { Prisma, BeverageTypeEnum } from '@prisma/client';
@@ -78,6 +80,10 @@ describe('BottlingService', () => {
       providers: [
         BottlingService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
         { provide: TraceabilityStrategyFactory, useValue: mockStrategyFactory },
       ],
     }).compile();

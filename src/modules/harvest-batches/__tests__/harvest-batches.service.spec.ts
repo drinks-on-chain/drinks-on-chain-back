@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { HarvestBatchesService } from '../harvest-batches.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma, PhytoStatusEnum } from '@prisma/client';
 import { ValidationException } from '@shared/exceptions/validation.exception';
@@ -67,6 +69,10 @@ describe('HarvestBatchesService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
         },
       ],
     }).compile();

@@ -39,6 +39,8 @@ import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { ConflictException as AppConflictException } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { OutboxService } from '@shared/outbox/outbox.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
 import { OrganizationsService } from '@modules/organizations/organizations.service';
 import { MembershipsService } from '@modules/organizations/memberships.service';
@@ -75,6 +77,7 @@ export class WineriesService {
     private readonly organizations: OrganizationsService,
     private readonly memberships: MembershipsService,
     private readonly sessions: SessionsService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -157,6 +160,14 @@ export class WineriesService {
             vaultId: wallet.dynamicVaultId,
             stellarPublicKey: wallet.stellarPublicAddress,
           },
+        });
+
+        // 6. Bitácora (último paso: toma el candado de la cadena)
+        await this.audit.record(tx, {
+          action: AuditAction.WINERY_CREATED,
+          resource: { type: 'winery', id: winery.id },
+          organizationId: winery.id,
+          after: updated,
         });
 
         return { updatedWinery: updated, wineryWallet: wallet };
@@ -412,7 +423,7 @@ export class WineriesService {
         stellarKey,
       );
 
-    // Actualización de estado en base de datos
+    // Estado, organización y bitácora en una transacción
     const approvedWinery = await this.prisma.$transaction(async (tx) => {
       const updated = await this.wineryRepository.update(
         wineryId,
@@ -426,6 +437,18 @@ export class WineriesService {
         tx,
       );
       await this.organizations.syncWinery(tx, updated);
+      await this.audit.record(tx, {
+        action: AuditAction.WINERY_APPROVED,
+        resource: { type: 'winery', id: wineryId },
+        organizationId: wineryId,
+        before: { certificationStatus: winery.certificationStatus },
+        after: {
+          certificationStatus: updated.certificationStatus,
+          approvedAt: updated.approvedAt,
+          onchainProducerId: updated.onchainProducerId,
+          onchainRegisterTxHash: updated.onchainRegisterTxHash,
+        },
+      });
       return updated;
     });
 
@@ -467,6 +490,14 @@ export class WineriesService {
         tx,
       );
       await this.organizations.syncWinery(tx, updated);
+      await this.audit.record(tx, {
+        action: AuditAction.WINERY_REJECTED,
+        resource: { type: 'winery', id: wineryId },
+        organizationId: wineryId,
+        before: { certificationStatus: winery.certificationStatus },
+        after: { certificationStatus: updated.certificationStatus },
+        reason: dto.rejectionReason,
+      });
       return updated;
     });
     // Organización revocada: fuera las sesiones que la tienen activa

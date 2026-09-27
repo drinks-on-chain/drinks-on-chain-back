@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LabAnalysesService } from '../services/lab-analyses.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { ConflictException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 
@@ -55,6 +57,10 @@ describe('LabAnalysesService', () => {
       providers: [
         LabAnalysesService,
         { provide: PrismaService, useValue: mockPrismaService },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
+        },
       ],
     }).compile();
 

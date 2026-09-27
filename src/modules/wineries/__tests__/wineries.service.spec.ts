@@ -5,6 +5,8 @@ import { WineryMemberRepository } from '../repositories/winery-member.repository
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { OutboxService } from '@shared/outbox/outbox.service';
 import { OrganizationsService } from '@modules/organizations/organizations.service';
 import { MembershipsService } from '@modules/organizations/memberships.service';
@@ -82,6 +84,8 @@ describe('WineriesService', () => {
     ),
   };
 
+  const mockAudit = createAuditServiceMock(mockTx);
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -98,6 +102,7 @@ describe('WineriesService', () => {
         { provide: OrganizationsService, useValue: mockOrganizations },
         { provide: MembershipsService, useValue: mockMemberships },
         { provide: SessionsService, useValue: mockSessions },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -212,6 +217,13 @@ describe('WineriesService', () => {
       expect(mockWineryRepository.create).toHaveBeenCalledWith(
         expect.objectContaining({ taxIdNit: '1028374029' }),
         mockTx,
+      );
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockTx,
+        expect.objectContaining({
+          action: 'WINERY_CREATED',
+          resource: { type: 'winery', id: 'winery-uuid-1' },
+        }),
       );
       expect(mockWineryRepository.update).toHaveBeenCalledWith(
         'winery-uuid-1',
@@ -457,6 +469,21 @@ describe('WineriesService', () => {
         pendingWinery,
         'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
       );
+      // Estado y bitácora en la misma transacción
+      expect(mockWineryRepository.update).toHaveBeenCalledWith(
+        'winery-uuid-1',
+        expect.objectContaining({
+          certificationStatus: WineryStatusEnum.ACTIVE,
+        }),
+        mockTx,
+      );
+      expect(mockAudit.recorded.at(-1)).toMatchObject({
+        action: 'WINERY_APPROVED',
+        resource: { type: 'winery', id: 'winery-uuid-1' },
+        organizationId: 'winery-uuid-1',
+        before: { certificationStatus: WineryStatusEnum.PENDING },
+        after: { certificationStatus: WineryStatusEnum.ACTIVE },
+      });
     });
 
     it('debe arrojar 409 WINERY_NOT_PENDING si la bodega ya no está en estado INVITED', async () => {

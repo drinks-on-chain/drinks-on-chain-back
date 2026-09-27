@@ -5,6 +5,8 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { CreateDistillationBatchDto } from '../dto/create-distillation-batch.dto';
 import { QueryProductionBatchesDto } from '../dto/query-production-batches.dto';
@@ -26,6 +28,7 @@ export class ProductionBatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly strategyFactory: TraceabilityStrategyFactory,
+    private readonly audit: AuditService,
   ) {}
 
   async createDistillationBatch(
@@ -91,37 +94,46 @@ export class ProductionBatchesService {
       `Registrando lote de destilación en ${dto.equipmentIdentifier} para bodega ${wineryId}`,
     );
 
-    return this.prisma.productionBatch.create({
-      data: {
-        wineryId,
-        fermentationTankId: dto.fermentationTankId,
-        processType: ProductionProcessEnum.SINGANI_DISTILLATION,
-        equipmentIdentifier: dto.equipmentIdentifier,
-        processStartDate: startDate,
-        processEndDate: endDate,
-        inputVolumeLiters:
-          dto.inputVolumeLiters !== undefined
-            ? new Prisma.Decimal(dto.inputVolumeLiters)
-            : null,
-        outputVolumeLiters:
-          dto.outputVolumeLiters !== undefined
-            ? new Prisma.Decimal(dto.outputVolumeLiters)
-            : null,
-        wasteVolumeLiters:
-          dto.wasteVolumeLiters !== undefined
-            ? new Prisma.Decimal(dto.wasteVolumeLiters)
-            : null,
-        initialAlcoholPercentage:
-          dto.initialAlcoholPercentage !== undefined
-            ? new Prisma.Decimal(dto.initialAlcoholPercentage)
-            : null,
-        isDoEligible: dto.isDoEligible ?? true,
-        mandatoryRestUntil,
-        restStatus,
-        additionalParams: dto.additionalParams ?? Prisma.DbNull,
-        notes: dto.notes,
-      },
-    });
+    return this.audit.transaction(
+      (tx) =>
+        tx.productionBatch.create({
+          data: {
+            wineryId,
+            fermentationTankId: dto.fermentationTankId,
+            processType: ProductionProcessEnum.SINGANI_DISTILLATION,
+            equipmentIdentifier: dto.equipmentIdentifier,
+            processStartDate: startDate,
+            processEndDate: endDate,
+            inputVolumeLiters:
+              dto.inputVolumeLiters !== undefined
+                ? new Prisma.Decimal(dto.inputVolumeLiters)
+                : null,
+            outputVolumeLiters:
+              dto.outputVolumeLiters !== undefined
+                ? new Prisma.Decimal(dto.outputVolumeLiters)
+                : null,
+            wasteVolumeLiters:
+              dto.wasteVolumeLiters !== undefined
+                ? new Prisma.Decimal(dto.wasteVolumeLiters)
+                : null,
+            initialAlcoholPercentage:
+              dto.initialAlcoholPercentage !== undefined
+                ? new Prisma.Decimal(dto.initialAlcoholPercentage)
+                : null,
+            isDoEligible: dto.isDoEligible ?? true,
+            mandatoryRestUntil,
+            restStatus,
+            additionalParams: dto.additionalParams ?? Prisma.DbNull,
+            notes: dto.notes,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.PRODUCTION_BATCH_CREATED,
+        resource: { type: 'production_batch', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
   }
 
   async getRestStatus(

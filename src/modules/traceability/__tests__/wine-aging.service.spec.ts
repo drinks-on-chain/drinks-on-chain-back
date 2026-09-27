@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WineAgingService } from '../services/wine-aging.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
 import { NotFoundException } from '@nestjs/common';
 import { Prisma, AgingStatusEnum } from '@prisma/client';
 
@@ -54,6 +56,10 @@ describe('WineAgingService', () => {
         {
           provide: PrismaService,
           useValue: mockPrismaService,
+        },
+        {
+          provide: AuditService,
+          useValue: createAuditServiceMock(mockPrismaService),
         },
       ],
     }).compile();

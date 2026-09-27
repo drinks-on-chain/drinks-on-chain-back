@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
+import { AuditAction } from '@shared/audit/audit.actions';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
@@ -26,6 +28,7 @@ export class BottlingService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly strategyFactory: TraceabilityStrategyFactory,
+    private readonly audit: AuditService,
   ) {}
 
   async create(
@@ -128,29 +131,38 @@ export class BottlingService {
       `Registrando lote de embotellado "${internationalLotCode}" (${dto.totalBottlesPackaged} botellas de ${dto.packagingFormatCl} cL a ${dto.finalAlcoholAbv}% ABV)`,
     );
 
-    return this.prisma.bottlingBatch.create({
-      data: {
-        wineryId,
-        wineAgingBatchId: dto.wineAgingBatchId,
-        productionBatchId: dto.productionBatchId,
-        productType: dto.productType,
-        internationalLotCode,
-        finalAlcoholAbv: new Prisma.Decimal(dto.finalAlcoholAbv),
-        waterDilutionLiters:
-          dto.waterDilutionLiters !== undefined
-            ? new Prisma.Decimal(dto.waterDilutionLiters)
-            : null,
-        totalBottlesPackaged: dto.totalBottlesPackaged,
-        packagingFormatCl: dto.packagingFormatCl,
-        bottleType: dto.bottleType,
-        labelDesignUrl: dto.labelDesignUrl,
-        bottlingDate: new Date(dto.bottlingDate),
-        releasedByMemberId,
-        blockchainDataHash,
-        isAnchoredOnChain: false,
-        qrBatchUrl,
-      },
-    });
+    return this.audit.transaction(
+      (tx) =>
+        tx.bottlingBatch.create({
+          data: {
+            wineryId,
+            wineAgingBatchId: dto.wineAgingBatchId,
+            productionBatchId: dto.productionBatchId,
+            productType: dto.productType,
+            internationalLotCode,
+            finalAlcoholAbv: new Prisma.Decimal(dto.finalAlcoholAbv),
+            waterDilutionLiters:
+              dto.waterDilutionLiters !== undefined
+                ? new Prisma.Decimal(dto.waterDilutionLiters)
+                : null,
+            totalBottlesPackaged: dto.totalBottlesPackaged,
+            packagingFormatCl: dto.packagingFormatCl,
+            bottleType: dto.bottleType,
+            labelDesignUrl: dto.labelDesignUrl,
+            bottlingDate: new Date(dto.bottlingDate),
+            releasedByMemberId,
+            blockchainDataHash,
+            isAnchoredOnChain: false,
+            qrBatchUrl,
+          },
+        }),
+      (created) => ({
+        action: AuditAction.BOTTLING_BATCH_CREATED,
+        resource: { type: 'bottling_batch', id: created.id },
+        organizationId: wineryId,
+        after: created,
+      }),
+    );
   }
 
   async findAll(
