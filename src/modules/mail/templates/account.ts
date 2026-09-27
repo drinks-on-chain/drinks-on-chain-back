@@ -10,11 +10,11 @@ import type { MailTemplate } from './index';
  * Nunca llevan contraseñas; los enlaces son de un solo uso y caducan.
  */
 
-const P = 'style="margin:0 0 16px 0;"';
-const BUTTON = `style="display:inline-block;padding:12px 20px;background:${BRAND.accentDeep};color:${BRAND.paper};text-decoration:none;border-radius:4px;"`;
-const SMALL = `style="margin:16px 0 0 0;font-size:14px;color:${BRAND.muted};"`;
+export const P = 'style="margin:0 0 16px 0;"';
+export const BUTTON = `style="display:inline-block;padding:12px 20px;background:${BRAND.accentDeep};color:${BRAND.paper};text-decoration:none;border-radius:4px;"`;
+export const SMALL = `style="margin:16px 0 0 0;font-size:14px;color:${BRAND.muted};"`;
 
-function linkBlock(cta: string): string {
+export function linkBlock(cta: string): string {
   return [
     `<p ${P}><a href="{{enlace}}" ${BUTTON}>${cta}</a></p>`,
     `<p ${SMALL}>Si el botón no funciona, copia este enlace en tu navegador:<br><a href="{{enlace}}" style="color:${BRAND.accentDeep};word-break:break-all;">{{enlace}}</a></p>`,

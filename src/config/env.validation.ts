@@ -89,6 +89,11 @@ export const envValidationSchema = Joi.object({
     }),
   // URL base de cada app en los enlaces de los correos (invitación,
   // recuperación, verificación). Por defecto, las de localhost.
+  // Sitio de bodegas: verificación de las solicitudes de alta (/unirse/verificar)
+  APP_URL_BODEGAS: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
   APP_URL_ERP: Joi.string()
     .uri({ scheme: ['http', 'https'] })
     .allow('')
@@ -137,6 +142,8 @@ export const envValidationSchema = Joi.object({
   RATE_LIMIT_LOGIN_PER_MINUTE: Joi.number().integer().min(1).optional(),
   RATE_LIMIT_SIGNUP_PER_MINUTE: Joi.number().integer().min(1).optional(),
   RATE_LIMIT_REFRESH_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  // Formulario público de solicitud de alta (por IP y minuto)
+  RATE_LIMIT_APPLICATION_PER_MINUTE: Joi.number().integer().min(1).optional(),
   // Bloqueo progresivo del login: fallos antes del primer bloqueo
   LOGIN_LOCK_EMAIL_THRESHOLD: Joi.number().integer().min(1).optional(),
   LOGIN_LOCK_IP_THRESHOLD: Joi.number().integer().min(1).optional(),
