@@ -19,6 +19,8 @@ export const DEFAULT_RATE_LIMITS = {
   loginPerMinute: 10,
   signupPerMinute: 5,
   refreshPerMinute: 30,
+  /** Formulario público de solicitud de alta (por IP). */
+  applicationPerMinute: 5,
 } as const;
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -36,13 +38,15 @@ export function authRouteLimit(
 
 /**
  * Controladores con el límite de `/auth/*` (por IP y ruta): sesión, cuenta,
- * segundo factor y las rutas públicas de invitaciones (tokens).
+ * segundo factor, las rutas públicas de invitaciones (tokens) y el formulario
+ * público de solicitud de alta.
  */
 export const AUTH_RATE_LIMITED_CONTROLLERS: ReadonlySet<string> = new Set([
   'AuthController',
   'AccountController',
   'MfaController',
   'PublicInvitationsController',
+  'PublicWineryApplicationsController',
 ]);
 
 const isAuthRoute = (context: ExecutionContext): boolean =>
