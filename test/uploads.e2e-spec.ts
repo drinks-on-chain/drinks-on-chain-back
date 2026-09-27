@@ -7,6 +7,7 @@ import * as fs from 'fs';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
+import { deleteIdentityData } from './helpers/identity';
 import { UserRoleEnum } from '@prisma/client';
 
 describe('Uploads & File Storage System (e2e)', () => {
@@ -53,6 +54,7 @@ describe('Uploads & File Storage System (e2e)', () => {
 
   afterAll(async () => {
     if (prisma) {
+      await deleteIdentityData(prisma, { emailContains: testEmail });
       await prisma.userWallet.deleteMany({
         where: { user: { email: testEmail } },
       });

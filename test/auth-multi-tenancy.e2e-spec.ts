@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
+import { createPlatformUser, deleteIdentityData } from './helpers/identity';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -47,6 +47,10 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
   afterAll(async () => {
     if (prisma) {
       // Limpieza de datos creados en el test
+      await deleteIdentityData(prisma, {
+        emailContains: `${timestamp}`,
+        wineryIds: [createdWineryId],
+      });
       await prisma.userWallet.deleteMany({
         where: { user: { email: { contains: `${timestamp}` } } },
       });
@@ -83,6 +87,11 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
     expect(response.body.success).toBe(true);
     expect(response.body.data.user.email).toBe(consumerEmail);
     expect(response.body.data.user.userRole).toBe(UserRoleEnum.CONSUMER);
+    // Contrato O0 §5: consumidor sin membresías ni organización activa
+    expect(response.body.data.user.audience).toBe('CONSUMER');
+    expect(response.body.data.memberships).toEqual([]);
+    expect(response.body.data.activeOrganizationId).toBeNull();
+    expect(response.body.data.tokens.expiresIn).toBe(900);
     expect(response.body.data.tokens).toHaveProperty('accessToken');
     expect(response.body.data.tokens).toHaveProperty('refreshToken');
 
@@ -112,9 +121,13 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(200);
 
     expect(response.body.success).toBe(true);
-    expect(response.body.data.email).toBe(consumerEmail);
-    expect(response.body.data.primaryWallet).toBeDefined();
-    expect(response.body.data.primaryWallet.stellarPublicAddress).toMatch(
+    // { user, memberships, activeOrganizationId } (contrato O0 §5)
+    expect(response.body.data.user.email).toBe(consumerEmail);
+    expect(response.body.data.user.audience).toBe('CONSUMER');
+    expect(response.body.data.memberships).toEqual([]);
+    expect(response.body.data.activeOrganizationId).toBeNull();
+    expect(response.body.data.user.primaryWallet).toBeDefined();
+    expect(response.body.data.user.primaryWallet.stellarPublicAddress).toMatch(
       /^G[A-Z0-9]{55}$/,
     );
   });
@@ -136,7 +149,7 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
   });
 
   // 5. REGISTRO DE WINERY_ADMIN Y ONBOARDING DE BODEGA
-  it('5. POST /v1/wineries - Debe permitir a un WINERY_ADMIN solicitar alta de bodega en estado PENDING', async () => {
+  it('5. POST /v1/wineries - Debe permitir a un WINERY_ADMIN solicitar alta de bodega en estado INVITED', async () => {
     // 5.1 Registro de WINERY_ADMIN
     const signupRes = await request(app.getHttpServer())
       .post('/v1/auth/signup')
@@ -167,7 +180,7 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     expect(wineryRes.body.success).toBe(true);
     expect(wineryRes.body.data.commercialName).toBe('Bodega Kohlberg');
-    expect(wineryRes.body.data.certificationStatus).toBe('PENDING');
+    expect(wineryRes.body.data.certificationStatus).toBe('INVITED');
     expect(wineryRes.body.data.stellarPublicKey).toMatch(/^G[A-Z0-9]{55}$/);
 
     createdWineryId = wineryRes.body.data.id;
@@ -194,16 +207,11 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       })
       .expect(403);
 
-    // 7.2 Crear PLATFORM_ADMIN legítimamente en DB (simulando Seeder oficial) y autenticarse
-    const passwordHash = await bcrypt.hash('Password123!', 12);
-    await prisma.user.create({
-      data: {
-        email: platformAdminEmail,
-        passwordHash,
-        fullName: 'Admin Plataforma DoC',
-        userRole: UserRoleEnum.PLATFORM_ADMIN,
-        isActive: true,
-      },
+    // 7.2 Personal de plataforma como lo deja el seeder (membresía SUPERADMIN)
+    await createPlatformUser(prisma, {
+      email: platformAdminEmail,
+      password: 'Password123!',
+      fullName: 'Admin Plataforma DoC',
     });
 
     const loginAdmin = await request(app.getHttpServer())
@@ -215,6 +223,12 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(200);
 
     platformAdminToken = loginAdmin.body.data.tokens.accessToken;
+    expect(loginAdmin.body.data.memberships).toEqual([
+      expect.objectContaining({
+        organizationType: 'PLATFORM',
+        role: 'SUPERADMIN',
+      }),
+    ]);
 
     // 7.3 Listar pendientes
     const pendingRes = await request(app.getHttpServer())
@@ -289,7 +303,7 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     wineryAdminToken = loginWineryAdmin.body.data.tokens.accessToken;
 
-    // 8.4 Incorporar Enólogo como miembro (sincroniza rol a ENOLOGIST)
+    // 8.4 Incorporar Enólogo como miembro (solo la membresía de la bodega)
     const addMemberRes = await request(app.getHttpServer())
       .post('/v1/wineries/my/members')
       .set('Authorization', `Bearer ${wineryAdminToken}`)
@@ -304,6 +318,11 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
     expect(addMemberRes.body.data.memberRole).toBe(
       WineryMemberRoleEnum.ENOLOGIST,
     );
+    // SE-01: el rol global de la persona no cambia
+    const enologist = await prisma.user.findUniqueOrThrow({
+      where: { id: enologistUserId },
+    });
+    expect(enologist.userRole).toBe(UserRoleEnum.CONSUMER);
   });
 
   // 9. ACCESO DE ENÓLOGO Y AISLAMIENTO DE TENANT
@@ -358,14 +377,19 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
   });
 
   // 10. RENOVACIÓN DE TOKEN
-  it('10. POST /v1/auth/refresh - Debe emitir nuevos tokens con refreshToken', async () => {
+  it('10. POST /v1/auth/refresh - Renueva con el refresco en el cuerpo (compatibilidad hasta H1)', async () => {
     const refreshRes = await request(app.getHttpServer())
       .post('/v1/auth/refresh')
       .send({ refreshToken: consumerRefreshToken })
       .expect(200);
 
     expect(refreshRes.body.success).toBe(true);
-    expect(refreshRes.body.data).toHaveProperty('accessToken');
-    expect(refreshRes.body.data).toHaveProperty('refreshToken');
+    // Misma forma que el login (contrato O0 §5) y refresco rotado
+    expect(refreshRes.body.data.user.email).toBe(consumerEmail);
+    expect(refreshRes.body.data.tokens).toHaveProperty('accessToken');
+    expect(refreshRes.body.data.tokens.refreshToken).not.toBe(
+      consumerRefreshToken,
+    );
+    expect(String(refreshRes.headers['set-cookie'])).toContain('doc_rt=');
   });
 });

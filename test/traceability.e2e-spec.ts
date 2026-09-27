@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
+import { createPlatformUser, deleteIdentityData } from './helpers/identity';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -49,15 +49,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
 
     // 1. Crear Platform Admin directamente en DB (simulando Seeder oficial)
     const adminEmail = `platform_admin_${timestamp}@doc.bo`;
-    const passwordHash = await bcrypt.hash('Password123!', 12);
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        passwordHash,
-        fullName: 'Platform Admin',
-        userRole: UserRoleEnum.PLATFORM_ADMIN,
-        isActive: true,
-      },
+    await createPlatformUser(prisma, {
+      email: adminEmail,
+      password: 'Password123!',
+      fullName: 'Platform Admin',
     });
 
     const adminLogin = await request(app.getHttpServer())
@@ -207,6 +202,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
   afterAll(async () => {
     if (prisma) {
       const activeWineryIds = [wineryId, winery2Id].filter(Boolean);
+      await deleteIdentityData(prisma, {
+        emailContains: `${timestamp}`,
+        wineryIds: activeWineryIds,
+      });
       if (activeWineryIds.length > 0) {
         await prisma.batchLabAnalysis.deleteMany({
           where: { bottlingBatch: { wineryId: { in: activeWineryIds } } },

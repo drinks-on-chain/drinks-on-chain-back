@@ -8,6 +8,7 @@ import { OutboxService } from '../src/shared/outbox/outbox.service';
 import { runWithCorrelationId } from '../src/shared/logging/correlation';
 import { WineriesService } from '../src/modules/wineries/wineries.service';
 import { MockDynamicWalletProvider } from '../src/modules/wallets/providers/mock-dynamic-wallet.provider';
+import { deleteIdentityData } from './helpers/identity';
 
 /** Proveedor simulado que puede fallar a propósito a mitad de la operación. */
 class FlakyWalletProvider extends MockDynamicWalletProvider {
@@ -80,6 +81,10 @@ describe('Outbox y transacciones (e2e)', () => {
       await prisma.outboxEvent.deleteMany({
         where: { correlationId: { startsWith: run } },
       });
+      await deleteIdentityData(prisma, {
+        emailContains: run,
+        wineryIds: createdWineryIds,
+      });
       await prisma.userWallet.deleteMany({
         where: {
           OR: [
@@ -111,6 +116,25 @@ describe('Outbox y transacciones (e2e)', () => {
       where: { userId_wineryId: { userId: ownerId, wineryId: winery.id } },
     });
     expect(membership?.memberRole).toBe('OWNER');
+    // Organización de la bodega (mismo id) y membresía OWNER (mismo id que winery_members)
+    const organization = await prisma.organization.findUnique({
+      where: { id: winery.id },
+    });
+    expect(organization).toMatchObject({
+      type: 'WINERY',
+      status: 'INVITED',
+      wineryId: winery.id,
+    });
+    const orgMembership = await prisma.membership.findUnique({
+      where: {
+        userId_organizationId: { userId: ownerId, organizationId: winery.id },
+      },
+    });
+    expect(orgMembership).toMatchObject({
+      id: membership?.id,
+      role: 'OWNER',
+      status: 'ACTIVE',
+    });
     const wallet = await prisma.userWallet.findFirst({
       where: { wineryId: winery.id },
     });

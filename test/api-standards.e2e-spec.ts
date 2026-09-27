@@ -1,17 +1,21 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
+import { createPlatformUser, deleteIdentityData } from './helpers/identity';
 import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 
 /**
  * Estándares de API de la Ola 0 (contrato plan/contratos/o0-… §1–§3):
  * listas paginadas, 422 con details por campo, Idempotency-Key y 429.
  */
+// Esta prueba mide el límite de peticiones, no el bloqueo por IP (IAM-07),
+// cuyo contador en Redis se acumula entre ejecuciones locales desde 127.0.0.1
+process.env.LOGIN_LOCK_IP_THRESHOLD = '100000';
+
 describe('Estándares de API · O0-BE-2 (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -36,14 +40,10 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
     prisma = app.get<PrismaService>(PrismaService);
 
     // Administrador de plataforma (como el seeder)
-    await prisma.user.create({
-      data: {
-        email: adminEmail,
-        passwordHash: await bcrypt.hash('Password123!', 12),
-        fullName: 'Admin Estándares',
-        userRole: UserRoleEnum.PLATFORM_ADMIN,
-        isActive: true,
-      },
+    await createPlatformUser(prisma, {
+      email: adminEmail,
+      password: 'Password123!',
+      fullName: 'Admin Estándares',
     });
     adminToken = (
       await http()
@@ -119,6 +119,10 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
     if (prisma) {
       await prisma.terroir.deleteMany({
         where: { wineryId: { in: wineryIds } },
+      });
+      await deleteIdentityData(prisma, {
+        emailContains: `${timestamp}`,
+        wineryIds,
       });
       await prisma.wineryMember.deleteMany({
         where: { wineryId: { in: wineryIds } },
@@ -468,11 +472,15 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
   describe('Límite de peticiones (§1)', () => {
     it('429 TOO_MANY_REQUESTS con Retry-After', async () => {
       let res: request.Response | undefined;
-      // login: 5 por minuto e IP (ya se usaron 2 en beforeAll)
-      for (let attempt = 0; attempt < 10; attempt++) {
+      // login: 10 por minuto e IP (ya se usaron 2 en beforeAll). Correos
+      // distintos para que no salte antes el bloqueo por correo (IAM-07).
+      for (let attempt = 0; attempt < 15; attempt++) {
         res = await http()
           .post('/v1/auth/login')
-          .send({ email: ownerEmail, password: 'Wrong-password-1' });
+          .send({
+            email: `nadie_${attempt}_${timestamp}@x.bo`,
+            password: 'Wrong-password-1',
+          });
         if (res.status === 429) {
           break;
         }
