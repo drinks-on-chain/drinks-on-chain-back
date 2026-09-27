@@ -356,6 +356,12 @@ create(@Body() dto: CreateTerroirDto) { … }
 - La bitácora (`before`/`after`) guarda los decimales como texto exacto: es lo que se usó para el hash.
 - Cada e2e puede validar sus respuestas con `loadOpenApiValidator()` (`test/helpers/openapi-validator.ts`).
 
+### `null` en los cuerpos (27-09-2026)
+- En un campo **opcional** (`@IsOptional()`), `null` equivale a **omitirlo**: lo quita el `ValidationPipe` global (`AppValidationPipe`, `src/shared/pipes/optional-nulls.ts`) antes de validar. Así un alta con `latitude: null` crea la parcela sin latitud y un PATCH con `surfaceHectares: null` no cambia la superficie (antes, 500).
+- Si en un PATCH `null` debe **borrar** el dato (columna anulable), el DTO lo declara: `@NullableFields('latitude', …)` en la clase (p. ej. `UpdateTerroirDto`); el servicio recibe `null`.
+- En un campo **obligatorio**, `null` es un 422 `VALIDATION_ERROR` con el campo en `details`.
+- Solo se mira el primer nivel del cuerpo (los objetos libres como el GeoJSON no se tocan). Toda operación con cuerpo declara su 422 en `openapi.json`.
+
 ### POST que crea un recurso → 201 Created
 ```typescript
 @Post()

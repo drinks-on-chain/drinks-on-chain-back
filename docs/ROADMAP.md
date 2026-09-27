@@ -111,3 +111,5 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `openapi.json` con tipos reales: anulables (`nullable`) con su tipo en lugar de `object`, relaciones anidadas de los detalles, esquemas del DAG, del pasaporte público, del reposo inerte y de lecturas y tratamientos de cuba · 2026-09-27
   - [x] Validador genérico de respuestas contra `openapi.json` (`test/helpers/openapi-validator.ts`, Ajv) y e2e de contrato con un recurso de cada módulo del ERP sobre la semilla de demo · 2026-09-27
   - [x] `/v1/health/ready` con `worker: up | down` (latido del worker en Redis con caducidad); sin worker, 200 y `degraded` · 2026-09-27
+  - [x] `null` en campos opcionales del cuerpo = omitido (antes 500 en altas y ediciones del ERP y en `PATCH /users/me`); `@NullableFields` para borrar en PATCH; 422 en obligatorios; 422 declarado en toda operación con cuerpo · 2026-09-27
+  - [x] Esquema de respuesta declarado en toda respuesta 2xx en JSON (DAG, pasaporte, reposo, 202 con `data: null`), comprobado en la prueba del contrato · 2026-09-27
