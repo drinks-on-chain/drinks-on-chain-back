@@ -22,7 +22,8 @@ export class CreateMemberDto {
 
   @ApiProperty({
     example: 'Password123!',
-    description: 'Contraseña temporal o definitiva (mínimo 8 caracteres, al menos una letra y un número)',
+    description:
+      'Contraseña temporal o definitiva (mínimo 8 caracteres, al menos una letra y un número)',
   })
   @IsString()
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })
@@ -42,7 +43,8 @@ export class CreateMemberDto {
   @ApiProperty({
     enum: WineryMemberRoleEnum,
     example: WineryMemberRoleEnum.ENOLOGIST,
-    description: 'Rol operativo dentro de la bodega (ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT, WINERY_ADMIN)',
+    description:
+      'Rol operativo dentro de la bodega (ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT, WINERY_ADMIN)',
   })
   @IsEnum(WineryMemberRoleEnum, { message: 'Rol de miembro no válido' })
   memberRole!: WineryMemberRoleEnum;
@@ -57,7 +59,8 @@ export class CreateMemberDto {
 
   @ApiPropertyOptional({
     example: 'COL-ENOL-TAR-402',
-    description: 'Número de matrícula profesional (obligatorio para enólogos/agrónomos)',
+    description:
+      'Número de matrícula profesional (obligatorio para enólogos/agrónomos)',
   })
   @IsOptional()
   @IsString()

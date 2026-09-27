@@ -3,7 +3,12 @@ import { UsersService } from '../users.service';
 import { UserRepository } from '../repositories/user.repository';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { NotFoundException } from '@nestjs/common';
-import { UserRoleEnum, WineryMemberRoleEnum, WalletTypeEnum, WalletPurposeEnum } from '@prisma/client';
+import {
+  UserRoleEnum,
+  WineryMemberRoleEnum,
+  WalletTypeEnum,
+  WalletPurposeEnum,
+} from '@prisma/client';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -65,7 +70,8 @@ describe('UsersService', () => {
             id: 'wallet-uuid-1',
             userId: 'user-uuid-1',
             wineryId: null,
-            stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+            stellarPublicAddress:
+              'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
             walletType: WalletTypeEnum.CUSTODIAL,
             walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
             isPrimary: true,

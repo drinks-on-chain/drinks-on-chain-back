@@ -16,6 +16,9 @@ export class HealthStatusDataDto {
   })
   redis!: string;
 
-  @ApiProperty({ example: 42.15, description: 'Segundos de actividad continua' })
+  @ApiProperty({
+    example: 42.15,
+    description: 'Segundos de actividad continua',
+  })
   uptime!: number;
 }

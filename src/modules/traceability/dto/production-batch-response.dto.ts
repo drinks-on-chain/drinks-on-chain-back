@@ -11,7 +11,10 @@ export class ProductionBatchResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   fermentationTankId!: string;
 
-  @ApiProperty({ enum: ProductionProcessEnum, example: ProductionProcessEnum.SINGANI_DISTILLATION })
+  @ApiProperty({
+    enum: ProductionProcessEnum,
+    example: ProductionProcessEnum.SINGANI_DISTILLATION,
+  })
   processType!: ProductionProcessEnum;
 
   @ApiProperty({ example: 'Alambique de Cobre Charentais AL-01' })

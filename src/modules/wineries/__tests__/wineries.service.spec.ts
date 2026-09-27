@@ -5,7 +5,11 @@ import { WineryMemberRepository } from '../repositories/winery-member.repository
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  ConflictException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import {
   WineryCategoryEnum,
   WineryStatusEnum,
@@ -60,7 +64,10 @@ describe('WineriesService', () => {
       providers: [
         WineriesService,
         { provide: WineryRepository, useValue: mockWineryRepository },
-        { provide: WineryMemberRepository, useValue: mockWineryMemberRepository },
+        {
+          provide: WineryMemberRepository,
+          useValue: mockWineryMemberRepository,
+        },
         { provide: WalletsService, useValue: mockWalletsService },
         { provide: OnchainProducerHook, useValue: mockOnchainProducerHook },
         { provide: PrismaService, useValue: mockPrisma },
@@ -69,7 +76,9 @@ describe('WineriesService', () => {
 
     service = module.get<WineriesService>(WineriesService);
     wineryRepository = module.get<WineryRepository>(WineryRepository);
-    wineryMemberRepository = module.get<WineryMemberRepository>(WineryMemberRepository);
+    wineryMemberRepository = module.get<WineryMemberRepository>(
+      WineryMemberRepository,
+    );
     walletsService = module.get<WalletsService>(WalletsService);
     onchainProducerHook = module.get<OnchainProducerHook>(OnchainProducerHook);
     prisma = module.get<PrismaService>(PrismaService);
@@ -99,7 +108,8 @@ describe('WineriesService', () => {
       mockWineryMemberRepository.create.mockResolvedValue({});
       mockWalletsService.provisionWineryWallet.mockResolvedValue({
         id: 'wallet-uuid-1',
-        stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+        stellarPublicAddress:
+          'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
         dynamicVaultId: 'vault-123',
       });
       mockWineryRepository.update.mockResolvedValue({
@@ -195,7 +205,9 @@ describe('WineriesService', () => {
 
     it('debe arrojar ConflictException si el usuario ya es miembro', async () => {
       mockPrisma.user.findUnique.mockResolvedValue({ id: 'enologist-user-id' });
-      mockWineryMemberRepository.findMembership.mockResolvedValue({ id: 'existing' });
+      mockWineryMemberRepository.findMembership.mockResolvedValue({
+        id: 'existing',
+      });
 
       await expect(
         service.addMember('winery-uuid-1', {
@@ -232,7 +244,10 @@ describe('WineriesService', () => {
         members: [],
       });
 
-      const result = await service.approveWinery('winery-uuid-1', 'admin-user-id');
+      const result = await service.approveWinery(
+        'winery-uuid-1',
+        'admin-user-id',
+      );
 
       expect(result.certificationStatus).toBe(WineryStatusEnum.ACTIVE);
       expect(result.onchainProducerId).toBe('PROD_BO_1028374029');

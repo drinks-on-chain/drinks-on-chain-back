@@ -3,7 +3,8 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ApproveWineryDto {
   @ApiPropertyOptional({
-    example: 'Verificación legal y sanitaria SENASAG completada satisfactoriamente.',
+    example:
+      'Verificación legal y sanitaria SENASAG completada satisfactoriamente.',
     description: 'Notas u observaciones del Platform Admin en la aprobación',
   })
   @IsOptional()

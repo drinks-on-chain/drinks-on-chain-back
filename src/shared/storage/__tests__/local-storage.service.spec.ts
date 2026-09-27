@@ -69,7 +69,11 @@ describe('LocalStorageService', () => {
       expect(result.url).toBe(`http://localhost:3000/uploads/${result.key}`);
 
       // Verificar que el archivo realmente se escribió en disco
-      const fullPath = path.resolve(process.cwd(), './test-uploads', result.key);
+      const fullPath = path.resolve(
+        process.cwd(),
+        './test-uploads',
+        result.key,
+      );
       const exists = await fs
         .access(fullPath)
         .then(() => true)
@@ -81,7 +85,9 @@ describe('LocalStorageService', () => {
     });
 
     it('debe lanzar BadRequestException si el archivo o su buffer son nulos', async () => {
-      await expect(service.uploadFile(null as any)).rejects.toThrow(BadRequestException);
+      await expect(service.uploadFile(null as any)).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('debe sanitizar carpetas con caracteres maliciosos para prevenir Directory Traversal', async () => {

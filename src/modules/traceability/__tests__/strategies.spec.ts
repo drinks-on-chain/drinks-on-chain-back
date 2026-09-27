@@ -22,10 +22,18 @@ describe('Traceability Strategies & Factory', () => {
       ],
     }).compile();
 
-    factory = module.get<TraceabilityStrategyFactory>(TraceabilityStrategyFactory);
-    wineStrategy = module.get<WineTraceabilityStrategy>(WineTraceabilityStrategy);
-    singaniStrategy = module.get<SinganiTraceabilityStrategy>(SinganiTraceabilityStrategy);
-    beerStrategy = module.get<BeerTraceabilityStrategy>(BeerTraceabilityStrategy);
+    factory = module.get<TraceabilityStrategyFactory>(
+      TraceabilityStrategyFactory,
+    );
+    wineStrategy = module.get<WineTraceabilityStrategy>(
+      WineTraceabilityStrategy,
+    );
+    singaniStrategy = module.get<SinganiTraceabilityStrategy>(
+      SinganiTraceabilityStrategy,
+    );
+    beerStrategy = module.get<BeerTraceabilityStrategy>(
+      BeerTraceabilityStrategy,
+    );
   });
 
   describe('TraceabilityStrategyFactory', () => {
@@ -89,7 +97,10 @@ describe('Traceability Strategies & Factory', () => {
     };
 
     it('debe aprobar parcela y vendimia que cumplan requisitos D.O. Singani (>1600m y Moscatel)', () => {
-      const result = singaniStrategy.validatePlotAndHarvest(mockTerroirSingani, mockHarvestSingani);
+      const result = singaniStrategy.validatePlotAndHarvest(
+        mockTerroirSingani,
+        mockHarvestSingani,
+      );
       expect(result.isValid).toBe(true);
       expect(result.errors).toHaveLength(0);
     });
@@ -99,7 +110,10 @@ describe('Traceability Strategies & Factory', () => {
         ...mockTerroirSingani,
         altitudeMasl: new Prisma.Decimal(1200.0),
       };
-      const result = singaniStrategy.validatePlotAndHarvest(lowAltitudeTerroir, mockHarvestSingani);
+      const result = singaniStrategy.validatePlotAndHarvest(
+        lowAltitudeTerroir,
+        mockHarvestSingani,
+      );
       expect(result.isValid).toBe(false);
       expect(result.errors[0]).toContain('1,600 m.s.n.m.');
     });
@@ -109,7 +123,10 @@ describe('Traceability Strategies & Factory', () => {
         ...mockTerroirSingani,
         varietyName: 'Cabernet Sauvignon',
       };
-      const result = singaniStrategy.validatePlotAndHarvest(wrongVarietyTerroir, mockHarvestSingani);
+      const result = singaniStrategy.validatePlotAndHarvest(
+        wrongVarietyTerroir,
+        mockHarvestSingani,
+      );
       expect(result.isValid).toBe(false);
       expect(result.errors[0]).toContain('Moscatel de Alejandría');
     });
@@ -129,14 +146,20 @@ describe('Traceability Strategies & Factory', () => {
     });
 
     it('debe calcular métricas Soroban escaladas x100 correctamente', () => {
-      const metricsPlot = singaniStrategy.computeOnchainMetrics(OnchainStageEnum.Plot, {
-        altitudeMasl: 1850.5,
-      });
+      const metricsPlot = singaniStrategy.computeOnchainMetrics(
+        OnchainStageEnum.Plot,
+        {
+          altitudeMasl: 1850.5,
+        },
+      );
       expect(metricsPlot).toEqual([185050]);
 
-      const metricsDist = singaniStrategy.computeOnchainMetrics(OnchainStageEnum.Distillation, {
-        initialAlcoholPercentage: 70.2,
-      });
+      const metricsDist = singaniStrategy.computeOnchainMetrics(
+        OnchainStageEnum.Distillation,
+        {
+          initialAlcoholPercentage: 70.2,
+        },
+      );
       expect(metricsDist).toEqual([7020]);
     });
   });

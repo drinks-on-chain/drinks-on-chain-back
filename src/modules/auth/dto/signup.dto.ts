@@ -21,7 +21,8 @@ export class SignupDto {
 
   @ApiProperty({
     example: 'Password123!',
-    description: 'Contraseña segura de mínimo 8 caracteres con al menos una letra y un número',
+    description:
+      'Contraseña segura de mínimo 8 caracteres con al menos una letra y un número',
   })
   @IsString()
   @MinLength(8, { message: 'La contraseña debe tener al menos 8 caracteres' })

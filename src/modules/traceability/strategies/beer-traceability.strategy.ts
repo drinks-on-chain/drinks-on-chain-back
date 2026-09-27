@@ -17,14 +17,21 @@ import {
 export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
   readonly beverageType = 'BEER';
 
-  validatePlotAndHarvest(terroir: Terroir, harvest: HarvestBatch): BatchValidationResult {
+  validatePlotAndHarvest(
+    terroir: Terroir,
+    harvest: HarvestBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    if (!terroir.rawMaterialType.toLowerCase().includes('cebada') &&
-        !terroir.rawMaterialType.toLowerCase().includes('lupulo') &&
-        !terroir.rawMaterialType.toLowerCase().includes('cereal')) {
-      warnings.push(`Materia prima inusual para cerveza: ${terroir.rawMaterialType}`);
+    if (
+      !terroir.rawMaterialType.toLowerCase().includes('cebada') &&
+      !terroir.rawMaterialType.toLowerCase().includes('lupulo') &&
+      !terroir.rawMaterialType.toLowerCase().includes('cereal')
+    ) {
+      warnings.push(
+        `Materia prima inusual para cerveza: ${terroir.rawMaterialType}`,
+      );
     }
 
     return {
@@ -34,7 +41,10 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateFermentation(tank: FermentationTank, logs: FermentationLog[]): BatchValidationResult {
+  validateFermentation(
+    tank: FermentationTank,
+    logs: FermentationLog[],
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -49,7 +59,9 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateAgingOrDistillation(processData: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateAgingOrDistillation(
+    processData: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -65,14 +77,19 @@ export class BeerTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateBottlingEligibility(sourceBatch: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateBottlingEligibility(
+    sourceBatch: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     return {
       isValid: true,
       errors: [],
     };
   }
 
-  computeOnchainMetrics(stage: OnchainStageEnum, data: Record<string, any>): number[] {
+  computeOnchainMetrics(
+    stage: OnchainStageEnum,
+    data: Record<string, any>,
+  ): number[] {
     switch (stage) {
       case OnchainStageEnum.Plot:
         return [Math.round(Number(data.altitudeMasl ?? 0) * 100)];

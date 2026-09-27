@@ -29,7 +29,10 @@ import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
 
@@ -45,7 +48,8 @@ export class FermentationController {
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Registrar nueva cuba de fermentación',
-    description: 'Asocia una cuba o tanque de acero inox a un lote de vendimia recibido.',
+    description:
+      'Asocia una cuba o tanque de acero inox a un lote de vendimia recibido.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -67,7 +71,8 @@ export class FermentationController {
   )
   @ApiOperation({
     summary: 'Listar cubas de fermentación',
-    description: 'Retorna las cubas de fermentación activas con filtros por estado y lote de vendimia.',
+    description:
+      'Retorna las cubas de fermentación activas con filtros por estado y lote de vendimia.',
   })
   async findTanks(
     @TenantId() wineryId: string | undefined,
@@ -84,7 +89,8 @@ export class FermentationController {
   )
   @ApiOperation({
     summary: 'Obtener detalle de una cuba de fermentación',
-    description: 'Retorna los datos de la cuba junto con su historial de lecturas térmicas y tratamientos enológicos.',
+    description:
+      'Retorna los datos de la cuba junto con su historial de lecturas térmicas y tratamientos enológicos.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -108,7 +114,8 @@ export class FermentationController {
   )
   @ApiOperation({
     summary: 'Registrar lectura de control de fermentación (append-only)',
-    description: 'Agrega un registro térmico, de densidad y observaciones cualitativas.',
+    description:
+      'Agrega un registro térmico, de densidad y observaciones cualitativas.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -128,7 +135,8 @@ export class FermentationController {
   @Roles(UserRoleEnum.ENOLOGIST, UserRoleEnum.WINERY_ADMIN)
   @ApiOperation({
     summary: 'Registrar tratamiento enológico autorizado',
-    description: 'Registra la aplicación de un aditivo o corrector enológico con autorización SENASAG.',
+    description:
+      'Registra la aplicación de un aditivo o corrector enológico con autorización SENASAG.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,

@@ -21,10 +21,16 @@ describe('WalletsService', () => {
         WalletsService,
         { provide: WalletRepository, useValue: mockWalletRepository },
         { provide: 'IWalletProvider', useClass: MockDynamicWalletProvider },
-        { provide: MockDynamicWalletProvider, useClass: MockDynamicWalletProvider },
+        {
+          provide: MockDynamicWalletProvider,
+          useClass: MockDynamicWalletProvider,
+        },
         {
           provide: WalletsService,
-          useFactory: (repo: WalletRepository, prov: MockDynamicWalletProvider) => {
+          useFactory: (
+            repo: WalletRepository,
+            prov: MockDynamicWalletProvider,
+          ) => {
             return new WalletsService(repo, prov);
           },
           inject: [WalletRepository, MockDynamicWalletProvider],
@@ -63,7 +69,8 @@ describe('WalletsService', () => {
       const existing = {
         id: 'wallet-uuid-1',
         userId: 'user-uuid-1',
-        stellarPublicAddress: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+        stellarPublicAddress:
+          'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
         walletType: WalletTypeEnum.CUSTODIAL,
         walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
         isPrimary: true,

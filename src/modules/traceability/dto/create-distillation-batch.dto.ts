@@ -102,7 +102,8 @@ export class CreateDistillationBatchDto {
   additionalParams?: Record<string, any>;
 
   @ApiPropertyOptional({
-    example: 'Destilación lenta a fuego directo con separación estricta de cabezas',
+    example:
+      'Destilación lenta a fuego directo con separación estricta de cabezas',
     description: 'Notas del maestro destilador',
   })
   @IsOptional()

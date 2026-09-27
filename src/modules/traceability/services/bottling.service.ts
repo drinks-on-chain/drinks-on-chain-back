@@ -67,7 +67,8 @@ export class BottlingService {
     const validation = strategy.validateBottlingEligibility(sourceBatch);
     if (!validation.isValid) {
       throw new UnprocessableEntityException(
-        validation.errors.join('; ') || 'El lote no cumple los requisitos para embotellado',
+        validation.errors.join('; ') ||
+          'El lote no cumple los requisitos para embotellado',
       );
     }
 

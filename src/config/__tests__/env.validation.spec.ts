@@ -5,7 +5,8 @@ describe('Environment Validation Schema (Joi)', () => {
     NODE_ENV: 'development',
     PORT: 3000,
     APP_NAME: 'Drinks on Chain Backend',
-    DATABASE_URL: 'postgresql://postgres:postgrespassword@localhost:5432/drinks_on_chain_db',
+    DATABASE_URL:
+      'postgresql://postgres:postgrespassword@localhost:5432/drinks_on_chain_db',
     REDIS_URL: 'redis://localhost:6379',
     JWT_SECRET: 'super-secret-key-drinks-on-chain-min-32-chars',
     JWT_EXPIRES_IN: '7d',
@@ -51,35 +52,47 @@ describe('Environment Validation Schema (Joi)', () => {
 
     const { error } = envValidationSchema.validate(invalid);
     expect(error).toBeDefined();
-    expect(error?.message).toContain('DATABASE_URL is a required environment variable');
+    expect(error?.message).toContain(
+      'DATABASE_URL is a required environment variable',
+    );
   });
 
   it('should fail if JWT_SECRET is less than 32 characters', () => {
     const invalid = { ...validEnv, JWT_SECRET: 'short-secret' };
     const { error } = envValidationSchema.validate(invalid);
     expect(error).toBeDefined();
-    expect(error?.message).toContain('JWT_SECRET must be at least 32 characters long');
+    expect(error?.message).toContain(
+      'JWT_SECRET must be at least 32 characters long',
+    );
   });
 
   it('should fail if STELLAR_RELAYER_SECRET_KEY is not a valid 56-char seed starting with S', () => {
     const invalid = { ...validEnv, STELLAR_RELAYER_SECRET_KEY: 'INVALID_KEY' };
     const { error } = envValidationSchema.validate(invalid);
     expect(error).toBeDefined();
-    expect(error?.message).toContain('STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed');
+    expect(error?.message).toContain(
+      'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed',
+    );
   });
 
   it('should fail if a Soroban contract address does not start with C or is not 56 chars', () => {
-    const invalid = { ...validEnv, CONTRACT_PRODUCER_REGISTRY: 'G_INVALID_ADDRESS' };
+    const invalid = {
+      ...validEnv,
+      CONTRACT_PRODUCER_REGISTRY: 'G_INVALID_ADDRESS',
+    };
     const { error } = envValidationSchema.validate(invalid);
     expect(error).toBeDefined();
-    expect(error?.message).toContain('CONTRACT_PRODUCER_REGISTRY must be a valid 56-character Soroban contract address');
+    expect(error?.message).toContain(
+      'CONTRACT_PRODUCER_REGISTRY must be a valid 56-character Soroban contract address',
+    );
   });
 
   it('should apply default values for optional settings', () => {
     const minimal = { ...validEnv };
     delete (minimal as Record<string, unknown>).PORT;
     delete (minimal as Record<string, unknown>).NODE_ENV;
-    delete (minimal as Record<string, unknown>).STELLAR_INDEXER_POLL_INTERVAL_MS;
+    delete (minimal as Record<string, unknown>)
+      .STELLAR_INDEXER_POLL_INTERVAL_MS;
 
     const { error, value } = envValidationSchema.validate(minimal);
     expect(error).toBeUndefined();

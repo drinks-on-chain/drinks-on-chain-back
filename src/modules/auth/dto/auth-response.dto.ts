@@ -43,7 +43,10 @@ export class AuthTokensDto {
   @ApiProperty({ example: 'Bearer' })
   tokenType!: string;
 
-  @ApiProperty({ example: 604800, description: 'Tiempo de vida en segundos (7 días)' })
+  @ApiProperty({
+    example: 604800,
+    description: 'Tiempo de vida en segundos (7 días)',
+  })
   expiresIn!: number;
 }
 

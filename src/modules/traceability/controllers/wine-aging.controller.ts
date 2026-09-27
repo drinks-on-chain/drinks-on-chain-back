@@ -69,7 +69,8 @@ export class WineAgingController {
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Obtener detalle de lote de crianza',
-    description: 'Retorna datos de barrica, meses planificados y fecha límite de bloqueo.',
+    description:
+      'Retorna datos de barrica, meses planificados y fecha límite de bloqueo.',
   })
   @ApiResponse({
     status: HttpStatus.OK,

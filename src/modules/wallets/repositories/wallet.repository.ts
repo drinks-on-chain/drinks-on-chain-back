@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { UserWallet, WalletPurposeEnum, WalletTypeEnum, Prisma } from '@prisma/client';
+import {
+  UserWallet,
+  WalletPurposeEnum,
+  WalletTypeEnum,
+  Prisma,
+} from '@prisma/client';
 
 @Injectable()
 export class WalletRepository {
@@ -40,7 +45,9 @@ export class WalletRepository {
     });
   }
 
-  async findByAddress(stellarPublicAddress: string): Promise<UserWallet | null> {
+  async findByAddress(
+    stellarPublicAddress: string,
+  ): Promise<UserWallet | null> {
     return this.prisma.userWallet.findUnique({
       where: { stellarPublicAddress },
     });

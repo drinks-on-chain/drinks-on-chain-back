@@ -22,7 +22,8 @@ export class CreateBatchLabAnalysisDto {
   bottlingBatchId!: string;
 
   @ApiProperty({
-    example: 'Laboratorio de Servicios Analíticos y Control de Calidad LAB-ISO 17025',
+    example:
+      'Laboratorio de Servicios Analíticos y Control de Calidad LAB-ISO 17025',
     description: 'Nombre del laboratorio acreditado',
   })
   @IsString()
@@ -136,7 +137,8 @@ export class CreateBatchLabAnalysisDto {
 
   @ApiPropertyOptional({
     example: 48.0,
-    description: 'Contenido de metanol en mg/100 ml de alcohol anhidro (límite legal < 200)',
+    description:
+      'Contenido de metanol en mg/100 ml de alcohol anhidro (límite legal < 200)',
   })
   @IsOptional()
   @IsNumber()
@@ -168,7 +170,8 @@ export class CreateBatchLabAnalysisDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Dictamen de conformidad con normas SENASAG / Norma Boliviana NB 324001',
+    description:
+      'Dictamen de conformidad con normas SENASAG / Norma Boliviana NB 324001',
   })
   @IsOptional()
   @IsBoolean()
@@ -184,7 +187,8 @@ export class CreateBatchLabAnalysisDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Dictamen de conformidad con regulaciones TTB (Estados Unidos)',
+    description:
+      'Dictamen de conformidad con regulaciones TTB (Estados Unidos)',
   })
   @IsOptional()
   @IsBoolean()

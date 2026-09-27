@@ -12,7 +12,10 @@ export class LocalStorageService implements IStorageService {
   private readonly storageBaseUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    const rawPath = this.configService.get<string>('STORAGE_LOCAL_PATH', './uploads');
+    const rawPath = this.configService.get<string>(
+      'STORAGE_LOCAL_PATH',
+      './uploads',
+    );
     this.uploadBasePath = path.isAbsolute(rawPath)
       ? rawPath
       : path.resolve(process.cwd(), rawPath);
@@ -43,7 +46,9 @@ export class LocalStorageService implements IStorageService {
     folder = 'general',
   ): Promise<StoredFileResult> {
     if (!file || !file.buffer) {
-      throw new BadRequestException('No se ha proporcionado un archivo válido para almacenar.');
+      throw new BadRequestException(
+        'No se ha proporcionado un archivo válido para almacenar.',
+      );
     }
 
     const safeFolder = this.sanitizeFolder(folder);
@@ -103,14 +108,19 @@ export class LocalStorageService implements IStorageService {
 
       // Prevenir escape de directorio raíz
       if (!filePath.startsWith(path.resolve(this.uploadBasePath))) {
-        this.logger.warn(`Intento de acceso a ruta fuera del directorio permitido: ${key}`);
+        this.logger.warn(
+          `Intento de acceso a ruta fuera del directorio permitido: ${key}`,
+        );
         return;
       }
 
       await fs.unlink(filePath);
       this.logger.log(`Archivo eliminado: ${safeKey}`);
     } catch (error) {
-      this.logger.warn(`No se pudo eliminar el archivo local: ${key}`, (error as Error).message);
+      this.logger.warn(
+        `No se pudo eliminar el archivo local: ${key}`,
+        (error as Error).message,
+      );
     }
   }
 

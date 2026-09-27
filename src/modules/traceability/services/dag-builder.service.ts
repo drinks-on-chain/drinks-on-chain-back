@@ -49,9 +49,7 @@ export class DagBuilderService {
       );
 
     const batch = await this.prisma.bottlingBatch.findFirst({
-      where: isUuid
-        ? { id: identifier }
-        : { internationalLotCode: identifier },
+      where: isUuid ? { id: identifier } : { internationalLotCode: identifier },
       include: {
         winery: true,
         labAnalysis: true,
@@ -239,7 +237,9 @@ export class DagBuilderService {
         parents: vinificationHash ? [vinificationHash] : [],
         timestamp: prod.processStartDate.toISOString(),
         volumeOrUnits: Number(prod.outputVolumeLiters ?? 0),
-        metrics: [Math.round(Number(prod.initialAlcoholPercentage ?? 70.2) * 100)],
+        metrics: [
+          Math.round(Number(prod.initialAlcoholPercentage ?? 70.2) * 100),
+        ],
         metadataHash: this.computeMetadataHash(distDetails),
         isCertified: prod.isDoEligible,
         operator: {
@@ -289,11 +289,16 @@ export class DagBuilderService {
         ...bottlingDetails,
         labAnalysis: batch.labAnalysis
           ? {
-              certifiedLaboratoryName: batch.labAnalysis.certifiedLaboratoryName,
-              accreditedLabCertificationCode: batch.labAnalysis.accreditedLabCertificationCode,
+              certifiedLaboratoryName:
+                batch.labAnalysis.certifiedLaboratoryName,
+              accreditedLabCertificationCode:
+                batch.labAnalysis.accreditedLabCertificationCode,
               actualAlcoholAbv: Number(batch.labAnalysis.actualAlcoholAbv),
-              methanolContentMgL: Number(batch.labAnalysis.methanolContentMgL ?? 0),
-              conformsToSenasagStandards: batch.labAnalysis.conformsToSenasagStandards,
+              methanolContentMgL: Number(
+                batch.labAnalysis.methanolContentMgL ?? 0,
+              ),
+              conformsToSenasagStandards:
+                batch.labAnalysis.conformsToSenasagStandards,
             }
           : null,
       },

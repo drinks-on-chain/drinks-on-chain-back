@@ -85,7 +85,8 @@ export class ProductionBatchesController {
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Obtener detalle de lote de producción/destilación',
-    description: 'Retorna volúmenes de corte, parámetros térmicos y cuba de vino base de origen.',
+    description:
+      'Retorna volúmenes de corte, parámetros térmicos y cuba de vino base de origen.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -104,7 +105,8 @@ export class ProductionBatchesController {
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Listar lotes de destilación y producción',
-    description: 'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
+    description:
+      'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,

@@ -1,4 +1,8 @@
-import { ExecutionContext, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ExecutionContext,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { RolesGuard } from '../guards/roles.guard';
 import { TenantGuard } from '../guards/tenant.guard';
@@ -38,7 +42,9 @@ describe('Auth Guards', () => {
       jest
         .spyOn(reflector, 'getAllAndOverride')
         .mockReturnValue([UserRoleEnum.WINERY_ADMIN]);
-      const context = createMockContext({ userRole: UserRoleEnum.PLATFORM_ADMIN });
+      const context = createMockContext({
+        userRole: UserRoleEnum.PLATFORM_ADMIN,
+      });
 
       expect(guard.canActivate(context)).toBe(true);
     });

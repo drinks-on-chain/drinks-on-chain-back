@@ -43,14 +43,17 @@ export class ProductionBatchesService {
 
     // Validación D.O. si corresponde
     if (dto.isDoEligible && tank.harvestBatch?.terroir) {
-      const strategy = this.strategyFactory.getStrategy(BeverageTypeEnum.SINGANI);
+      const strategy = this.strategyFactory.getStrategy(
+        BeverageTypeEnum.SINGANI,
+      );
       const validation = strategy.validatePlotAndHarvest(
         tank.harvestBatch.terroir,
         tank.harvestBatch,
       );
       if (!validation.isValid) {
         throw new UnprocessableEntityException(
-          validation.errors.join('; ') || 'El lote no cumple con los requisitos D.O. para destilación',
+          validation.errors.join('; ') ||
+            'El lote no cumple con los requisitos D.O. para destilación',
         );
       }
     }
@@ -149,10 +152,16 @@ export class ProductionBatchesService {
     const restTarget = new Date(batch.mandatoryRestUntil);
 
     const elapsedMs = now.getTime() - end.getTime();
-    const daysElapsed = Math.max(0, Math.floor(elapsedMs / (1000 * 60 * 60 * 24)));
+    const daysElapsed = Math.max(
+      0,
+      Math.floor(elapsedMs / (1000 * 60 * 60 * 24)),
+    );
 
     const remainingMs = restTarget.getTime() - now.getTime();
-    const daysRemaining = Math.max(0, Math.ceil(remainingMs / (1000 * 60 * 60 * 24)));
+    const daysRemaining = Math.max(
+      0,
+      Math.ceil(remainingMs / (1000 * 60 * 60 * 24)),
+    );
 
     const isRestCompleted = daysRemaining === 0;
 

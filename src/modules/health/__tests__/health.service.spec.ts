@@ -40,7 +40,15 @@ describe('HealthService', () => {
   });
 
   it('should return ok status when database is connected', async () => {
-    const redis = (service as unknown as { redisClient: { ping: () => Promise<string>; connect: () => Promise<void>; status: string } }).redisClient;
+    const redis = (
+      service as unknown as {
+        redisClient: {
+          ping: () => Promise<string>;
+          connect: () => Promise<void>;
+          status: string;
+        };
+      }
+    ).redisClient;
     jest.spyOn(redis, 'connect').mockResolvedValue();
     jest.spyOn(redis, 'ping').mockResolvedValue('PONG');
     Object.defineProperty(redis, 'status', { value: 'ready', writable: true });
@@ -55,7 +63,15 @@ describe('HealthService', () => {
 
   it('should return degraded status when database is disconnected', async () => {
     jest.spyOn(prismaService, 'ping').mockResolvedValueOnce(false);
-    const redis = (service as unknown as { redisClient: { ping: () => Promise<string>; connect: () => Promise<void>; status: string } }).redisClient;
+    const redis = (
+      service as unknown as {
+        redisClient: {
+          ping: () => Promise<string>;
+          connect: () => Promise<void>;
+          status: string;
+        };
+      }
+    ).redisClient;
     jest.spyOn(redis, 'connect').mockResolvedValue();
     jest.spyOn(redis, 'ping').mockResolvedValue('PONG');
     Object.defineProperty(redis, 'status', { value: 'ready', writable: true });

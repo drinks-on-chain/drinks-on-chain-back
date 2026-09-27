@@ -20,7 +20,10 @@ import { UpdateUserDto } from './dto/update-user.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
-import { CurrentUser, AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 
 @ApiTags('Usuarios')
 @ApiBearerAuth('JWT-auth')

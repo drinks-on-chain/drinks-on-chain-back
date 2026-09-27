@@ -16,7 +16,10 @@ describe('GlobalExceptionFilter', () => {
     const mockHost = {
       switchToHttp: () => ({
         getResponse: () => ({ status: mockStatus }),
-        getRequest: () => ({ url: '/v1/bottling-batches/123/release', method: 'POST' }),
+        getRequest: () => ({
+          url: '/v1/bottling-batches/123/release',
+          method: 'POST',
+        }),
       }),
     } as unknown as ArgumentsHost;
 

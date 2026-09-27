@@ -12,7 +12,10 @@ import {
   ApiBearerAuth,
   ApiNotFoundResponse,
 } from '@nestjs/swagger';
-import { DagBuilderService, DagGraphResult } from '../services/dag-builder.service';
+import {
+  DagBuilderService,
+  DagGraphResult,
+} from '../services/dag-builder.service';
 import { JwtAuthGuard } from '@modules/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@modules/auth/guards/roles.guard';
 import { TenantGuard } from '@modules/auth/guards/tenant.guard';

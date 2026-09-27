@@ -2,7 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { DagBuilderService } from '../services/dag-builder.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { NotFoundException } from '@nestjs/common';
-import { Prisma, BeverageTypeEnum, PhytoStatusEnum, TankStatusEnum } from '@prisma/client';
+import {
+  Prisma,
+  BeverageTypeEnum,
+  PhytoStatusEnum,
+  TankStatusEnum,
+} from '@prisma/client';
 
 describe('DagBuilderService', () => {
   let service: DagBuilderService;
@@ -95,7 +100,9 @@ describe('DagBuilderService', () => {
 
   describe('buildDagForBottlingBatch', () => {
     it('debe reconstruir el grafo DAG completo de 5 etapas para Singani D.O.', async () => {
-      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(mockFullBatch);
+      mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(
+        mockFullBatch,
+      );
 
       const result = await service.buildDagForBottlingBatch(mockBottlingId);
 
@@ -132,9 +139,9 @@ describe('DagBuilderService', () => {
     it('debe lanzar NotFoundException si el lote no existe', async () => {
       mockPrismaService.bottlingBatch.findFirst.mockResolvedValue(null);
 
-      await expect(service.buildDagForBottlingBatch('random-id')).rejects.toThrow(
-        NotFoundException,
-      );
+      await expect(
+        service.buildDagForBottlingBatch('random-id'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

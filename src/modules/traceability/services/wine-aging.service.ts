@@ -66,7 +66,9 @@ export class WineAgingService {
   async findAgingBatchById(
     wineryId: string | undefined,
     id: string,
-  ): Promise<WineAgingBatch & { fermentationTank?: any; bottlingBatches?: any[] }> {
+  ): Promise<
+    WineAgingBatch & { fermentationTank?: any; bottlingBatches?: any[] }
+  > {
     const batch = await this.prisma.wineAgingBatch.findFirst({
       where: {
         id,

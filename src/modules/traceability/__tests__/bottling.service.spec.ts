@@ -88,18 +88,29 @@ describe('BottlingService', () => {
 
     service = module.get<BottlingService>(BottlingService);
     prisma = module.get<PrismaService>(PrismaService);
-    strategyFactory = module.get<TraceabilityStrategyFactory>(TraceabilityStrategyFactory);
+    strategyFactory = module.get<TraceabilityStrategyFactory>(
+      TraceabilityStrategyFactory,
+    );
     jest.clearAllMocks();
   });
 
   describe('create', () => {
     it('debe registrar un lote de embotellado generando código internacional y hash criptográfico', async () => {
       mockPrismaService.winery.findUnique.mockResolvedValue(mockWinery);
-      mockPrismaService.productionBatch.findFirst.mockResolvedValue(mockProdBatch);
-      mockStrategy.validateBottlingEligibility.mockReturnValue({ isValid: true, errors: [] });
+      mockPrismaService.productionBatch.findFirst.mockResolvedValue(
+        mockProdBatch,
+      );
+      mockStrategy.validateBottlingEligibility.mockReturnValue({
+        isValid: true,
+        errors: [],
+      });
       mockPrismaService.bottlingBatch.count.mockResolvedValue(0);
-      mockPrismaService.wineryMember.findFirst.mockResolvedValue({ id: mockMemberId });
-      mockPrismaService.bottlingBatch.create.mockResolvedValue(mockBottlingBatch);
+      mockPrismaService.wineryMember.findFirst.mockResolvedValue({
+        id: mockMemberId,
+      });
+      mockPrismaService.bottlingBatch.create.mockResolvedValue(
+        mockBottlingBatch,
+      );
 
       const dto = {
         productionBatchId: mockProdId,
@@ -113,8 +124,12 @@ describe('BottlingService', () => {
 
       const result = await service.create(mockWineryId, mockUserId, dto);
 
-      expect(prisma.winery.findUnique).toHaveBeenCalledWith({ where: { id: mockWineryId } });
-      expect(mockStrategy.validateBottlingEligibility).toHaveBeenCalledWith(mockProdBatch);
+      expect(prisma.winery.findUnique).toHaveBeenCalledWith({
+        where: { id: mockWineryId },
+      });
+      expect(mockStrategy.validateBottlingEligibility).toHaveBeenCalledWith(
+        mockProdBatch,
+      );
       expect(prisma.bottlingBatch.create).toHaveBeenCalledWith({
         data: expect.objectContaining({
           wineryId: mockWineryId,
@@ -135,14 +150,16 @@ describe('BottlingService', () => {
         bottlingDate: '2026-10-01',
       };
 
-      await expect(service.create(mockWineryId, mockUserId, dto as any)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.create(mockWineryId, mockUserId, dto as any),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('debe lanzar UnprocessableEntityException si la estrategia rechaza el embotellado (ej: reposo < 180 días)', async () => {
       mockPrismaService.winery.findUnique.mockResolvedValue(mockWinery);
-      mockPrismaService.productionBatch.findFirst.mockResolvedValue(mockProdBatch);
+      mockPrismaService.productionBatch.findFirst.mockResolvedValue(
+        mockProdBatch,
+      );
       mockStrategy.validateBottlingEligibility.mockReturnValue({
         isValid: false,
         errors: ['D.O. Singani exige reposo mínimo de 180 días'],
@@ -157,9 +174,9 @@ describe('BottlingService', () => {
         bottlingDate: '2026-10-01',
       };
 
-      await expect(service.create(mockWineryId, mockUserId, dto)).rejects.toThrow(
-        UnprocessableEntityException,
-      );
+      await expect(
+        service.create(mockWineryId, mockUserId, dto),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
   });
 });

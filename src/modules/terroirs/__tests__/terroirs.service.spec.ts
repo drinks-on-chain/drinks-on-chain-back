@@ -90,7 +90,10 @@ describe('TerroirsService', () => {
       mockPrismaService.terroir.findMany.mockResolvedValue([mockTerroir]);
       mockPrismaService.terroir.count.mockResolvedValue(1);
 
-      const result = await service.findAll(mockWineryId, { limit: 10, offset: 0 });
+      const result = await service.findAll(mockWineryId, {
+        limit: 10,
+        offset: 0,
+      });
 
       expect(result.items).toHaveLength(1);
       expect(result.total).toBe(1);

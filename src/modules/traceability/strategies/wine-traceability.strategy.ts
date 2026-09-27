@@ -17,13 +17,18 @@ import {
 export class WineTraceabilityStrategy implements ITraceabilityStrategy {
   readonly beverageType = 'WINE';
 
-  validatePlotAndHarvest(terroir: Terroir, harvest: HarvestBatch): BatchValidationResult {
+  validatePlotAndHarvest(
+    terroir: Terroir,
+    harvest: HarvestBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     const brix = Number(harvest.brixDegrees);
     if (brix < 18.0) {
-      warnings.push(`Grados Brix bajos para vinificación (${brix} °Bx), grado potencial inferior a 11% ABV.`);
+      warnings.push(
+        `Grados Brix bajos para vinificación (${brix} °Bx), grado potencial inferior a 11% ABV.`,
+      );
     }
 
     return {
@@ -33,12 +38,17 @@ export class WineTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateFermentation(tank: FermentationTank, logs: FermentationLog[]): BatchValidationResult {
+  validateFermentation(
+    tank: FermentationTank,
+    logs: FermentationLog[],
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     if (logs.length === 0) {
-      warnings.push('Sin registros diarios de control de densidad y temperatura.');
+      warnings.push(
+        'Sin registros diarios de control de densidad y temperatura.',
+      );
     }
 
     return {
@@ -48,7 +58,9 @@ export class WineTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateAgingOrDistillation(processData: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateAgingOrDistillation(
+    processData: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -64,7 +76,9 @@ export class WineTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateBottlingEligibility(sourceBatch: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateBottlingEligibility(
+    sourceBatch: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -86,7 +100,10 @@ export class WineTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  computeOnchainMetrics(stage: OnchainStageEnum, data: Record<string, any>): number[] {
+  computeOnchainMetrics(
+    stage: OnchainStageEnum,
+    data: Record<string, any>,
+  ): number[] {
     switch (stage) {
       case OnchainStageEnum.Plot:
         return [Math.round(Number(data.altitudeMasl ?? 0) * 100)];

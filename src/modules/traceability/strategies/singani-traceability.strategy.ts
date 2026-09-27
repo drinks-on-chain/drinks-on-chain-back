@@ -17,7 +17,10 @@ import {
 export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
   readonly beverageType = 'SINGANI';
 
-  validatePlotAndHarvest(terroir: Terroir, harvest: HarvestBatch): BatchValidationResult {
+  validatePlotAndHarvest(
+    terroir: Terroir,
+    harvest: HarvestBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -37,7 +40,9 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
 
     const brix = Number(harvest.brixDegrees);
     if (brix < 19.0) {
-      warnings.push(`Madurez de uva baja (${brix} °Bx), potencial aromático reducido.`);
+      warnings.push(
+        `Madurez de uva baja (${brix} °Bx), potencial aromático reducido.`,
+      );
     }
 
     return {
@@ -47,17 +52,28 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateFermentation(tank: FermentationTank, logs: FermentationLog[]): BatchValidationResult {
+  validateFermentation(
+    tank: FermentationTank,
+    logs: FermentationLog[],
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     if (logs.length === 0) {
-      warnings.push('No se han registrado lecturas térmicas diarias durante la vinificación.');
+      warnings.push(
+        'No se han registrado lecturas térmicas diarias durante la vinificación.',
+      );
     }
 
     // Singani tradicional se vinifica como vino blanco aromático en tanques neutros
-    if (tank.material && !tank.material.toUpperCase().includes('INOX') && !tank.material.toUpperCase().includes('ACERO')) {
-      warnings.push('Se recomienda fermentación en acero inoxidable para preservar terpenos florales.');
+    if (
+      tank.material &&
+      !tank.material.toUpperCase().includes('INOX') &&
+      !tank.material.toUpperCase().includes('ACERO')
+    ) {
+      warnings.push(
+        'Se recomienda fermentación en acero inoxidable para preservar terpenos florales.',
+      );
     }
 
     return {
@@ -67,7 +83,9 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateAgingOrDistillation(processData: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateAgingOrDistillation(
+    processData: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -90,13 +108,17 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  validateBottlingEligibility(sourceBatch: WineAgingBatch | ProductionBatch): BatchValidationResult {
+  validateBottlingEligibility(
+    sourceBatch: WineAgingBatch | ProductionBatch,
+  ): BatchValidationResult {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     const prod = sourceBatch as ProductionBatch;
     if (!prod.processEndDate) {
-      errors.push('La destilación aún no ha sido marcada como concluida con fecha de fin.');
+      errors.push(
+        'La destilación aún no ha sido marcada como concluida con fecha de fin.',
+      );
       return { isValid: false, errors };
     }
 
@@ -118,7 +140,10 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
     };
   }
 
-  computeOnchainMetrics(stage: OnchainStageEnum, data: Record<string, any>): number[] {
+  computeOnchainMetrics(
+    stage: OnchainStageEnum,
+    data: Record<string, any>,
+  ): number[] {
     switch (stage) {
       case OnchainStageEnum.Plot:
         return [Math.round(Number(data.altitudeMasl ?? 0) * 100)];
@@ -134,7 +159,9 @@ export class SinganiTraceabilityStrategy implements ITraceabilityStrategy {
           Math.round(Number(data.volatileAcidity ?? 0.28) * 100),
         ];
       case OnchainStageEnum.Distillation:
-        return [Math.round(Number(data.initialAlcoholPercentage ?? 70.2) * 100)];
+        return [
+          Math.round(Number(data.initialAlcoholPercentage ?? 70.2) * 100),
+        ];
       case OnchainStageEnum.Bottling:
         return [
           Math.round(Number(data.finalAlcoholAbv ?? 40.0) * 100),

@@ -29,13 +29,7 @@ import { WalletsModule } from '@modules/wallets/wallets.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [
-    AuthService,
-    JwtStrategy,
-    JwtAuthGuard,
-    RolesGuard,
-    TenantGuard,
-  ],
+  providers: [AuthService, JwtStrategy, JwtAuthGuard, RolesGuard, TenantGuard],
   exports: [
     AuthService,
     JwtModule,

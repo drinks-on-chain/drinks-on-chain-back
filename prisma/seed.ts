@@ -1,4 +1,9 @@
-import { PrismaClient, UserRoleEnum, WalletPurposeEnum, WalletTypeEnum } from '@prisma/client';
+import {
+  PrismaClient,
+  UserRoleEnum,
+  WalletPurposeEnum,
+  WalletTypeEnum,
+} from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { Keypair } from '@stellar/stellar-sdk';
 import { v4 as uuidv4 } from 'uuid';
@@ -9,9 +14,14 @@ dotenv.config();
 const prisma = new PrismaClient();
 
 async function main() {
-  const superadminEmail = (process.env.SUPERADMIN_EMAIL || 'admin.master@drinksonchain.bo').toLowerCase().trim();
+  const superadminEmail = (
+    process.env.SUPERADMIN_EMAIL || 'admin.master@drinksonchain.bo'
+  )
+    .toLowerCase()
+    .trim();
   const superadminPassword = process.env.SUPERADMIN_PASSWORD || 'Password123!';
-  const superadminName = process.env.SUPERADMIN_NAME || 'Platform Super Administrator';
+  const superadminName =
+    process.env.SUPERADMIN_NAME || 'Platform Super Administrator';
 
   console.log(`🌱 Iniciando Seeder de Drinks on Chain...`);
   console.log(`👤 Configurando Superadministrador (${superadminEmail})...`);
@@ -59,9 +69,13 @@ async function main() {
       },
     });
 
-    console.log(`💳 Billetera custodial aprovisionada para Superadmin: ${randomKeypair.publicKey()}`);
+    console.log(
+      `💳 Billetera custodial aprovisionada para Superadmin: ${randomKeypair.publicKey()}`,
+    );
   } else {
-    console.log(`💳 Billetera custodial ya existente: ${existingWallet.stellarPublicAddress}`);
+    console.log(
+      `💳 Billetera custodial ya existente: ${existingWallet.stellarPublicAddress}`,
+    );
   }
 
   console.log(`🎉 Seeding completado exitosamente.`);

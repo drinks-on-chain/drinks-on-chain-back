@@ -27,21 +27,15 @@ export const envValidationSchema = Joi.object({
     }),
 
   // JWT
-  JWT_SECRET: Joi.string()
-    .min(32)
-    .required()
-    .messages({
-      'any.required': 'JWT_SECRET is a required environment variable',
-      'string.min': 'JWT_SECRET must be at least 32 characters long',
-    }),
+  JWT_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_SECRET is a required environment variable',
+    'string.min': 'JWT_SECRET must be at least 32 characters long',
+  }),
   JWT_EXPIRES_IN: Joi.string().default('7d'),
-  JWT_REFRESH_SECRET: Joi.string()
-    .min(32)
-    .required()
-    .messages({
-      'any.required': 'JWT_REFRESH_SECRET is a required environment variable',
-      'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters long',
-    }),
+  JWT_REFRESH_SECRET: Joi.string().min(32).required().messages({
+    'any.required': 'JWT_REFRESH_SECRET is a required environment variable',
+    'string.min': 'JWT_REFRESH_SECRET must be at least 32 characters long',
+  }),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('30d'),
 
   // Stellar / Soroban Blockchain
@@ -58,13 +52,15 @@ export const envValidationSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .required()
     .messages({
-      'any.required': 'STELLAR_SOROBAN_RPC_URL is a required environment variable',
+      'any.required':
+        'STELLAR_SOROBAN_RPC_URL is a required environment variable',
     }),
   STELLAR_RELAYER_SECRET_KEY: Joi.string()
     .regex(/^S[A-Z0-9]{55}$/)
     .required()
     .messages({
-      'any.required': 'STELLAR_RELAYER_SECRET_KEY is a required environment variable',
+      'any.required':
+        'STELLAR_RELAYER_SECRET_KEY is a required environment variable',
       'string.pattern.base':
         'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed starting with S',
     }),
@@ -140,7 +136,8 @@ export const envValidationSchema = Joi.object({
       'any.required': 'PAYMENT_BANK_BASE_URL is required',
     }),
   PAYMENT_BANK_WEBHOOK_SECRET: Joi.string().required().messages({
-    'any.required': 'PAYMENT_BANK_WEBHOOK_SECRET is required for HMAC validation',
+    'any.required':
+      'PAYMENT_BANK_WEBHOOK_SECRET is required for HMAC validation',
   }),
 
   // Indexer

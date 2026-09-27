@@ -148,8 +148,10 @@ export class WineriesService {
     }
 
     // Validar si ya es miembro
-    const existingMembership =
-      await this.wineryMemberRepository.findMembership(dto.userId, wineryId);
+    const existingMembership = await this.wineryMemberRepository.findMembership(
+      dto.userId,
+      wineryId,
+    );
     if (existingMembership) {
       throw new ConflictException(
         'El usuario ya se encuentra registrado como miembro de esta bodega',
@@ -268,7 +270,8 @@ export class WineriesService {
    * Lista todos los miembros operativos de la bodega
    */
   async getMyMembers(wineryId: string): Promise<WineryMemberItemDto[]> {
-    const members = await this.wineryMemberRepository.findMembersByWineryId(wineryId);
+    const members =
+      await this.wineryMemberRepository.findMembersByWineryId(wineryId);
 
     return members.map((m) => ({
       id: m.id,
@@ -375,7 +378,9 @@ export class WineriesService {
   ): Promise<{ items: WineryResponseDto[]; total: number }> {
     const where: Prisma.WineryWhereInput = {
       ...(query.status && { certificationStatus: query.status }),
-      ...(query.beverageCategory && { beverageCategory: query.beverageCategory }),
+      ...(query.beverageCategory && {
+        beverageCategory: query.beverageCategory,
+      }),
       ...(query.search && {
         OR: [
           { legalName: { contains: query.search, mode: 'insensitive' } },

@@ -16,7 +16,10 @@ export class HarvestBatchesService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(wineryId: string, dto: CreateHarvestBatchDto): Promise<HarvestBatch> {
+  async create(
+    wineryId: string,
+    dto: CreateHarvestBatchDto,
+  ): Promise<HarvestBatch> {
     // 1. Validar que la parcela pertenezca a la bodega
     const terroir = await this.prisma.terroir.findFirst({
       where: { id: dto.terroirId, wineryId },

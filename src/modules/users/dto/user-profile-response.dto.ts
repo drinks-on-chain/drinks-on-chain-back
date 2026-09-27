@@ -9,7 +9,10 @@ export class WineryMembershipDto {
   @ApiProperty({ example: 'Bodega Kohlberg' })
   wineryName!: string;
 
-  @ApiProperty({ enum: WineryMemberRoleEnum, example: WineryMemberRoleEnum.ENOLOGIST })
+  @ApiProperty({
+    enum: WineryMemberRoleEnum,
+    example: WineryMemberRoleEnum.ENOLOGIST,
+  })
   memberRole!: WineryMemberRoleEnum;
 
   @ApiPropertyOptional({ example: 'MP-BOL-2024-9981' })

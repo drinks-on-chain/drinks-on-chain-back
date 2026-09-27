@@ -3,7 +3,9 @@ import { Request, Response, NextFunction } from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import { AsyncLocalStorage } from 'async_hooks';
 
-export const correlationLocalStorage = new AsyncLocalStorage<Map<string, string>>();
+export const correlationLocalStorage = new AsyncLocalStorage<
+  Map<string, string>
+>();
 
 export const CORRELATION_ID_HEADER = 'x-correlation-id';
 

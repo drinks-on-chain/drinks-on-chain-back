@@ -98,7 +98,8 @@ export class CreateHarvestBatchDto {
   phytosanitaryStatus?: PhytoStatusEnum;
 
   @ApiPropertyOptional({
-    example: 'Uva fresca en excelente estado sanitario, cosecha manual matutina.',
+    example:
+      'Uva fresca en excelente estado sanitario, cosecha manual matutina.',
     description: 'Observaciones agronómicas y de recepción',
   })
   @IsOptional()

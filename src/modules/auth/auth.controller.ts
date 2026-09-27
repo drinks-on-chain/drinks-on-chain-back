@@ -81,7 +81,9 @@ export class AuthController {
     description: 'Tokens renovados exitosamente',
     type: AuthTokensDto,
   })
-  @ApiUnauthorizedResponse({ description: 'Token de actualización inválido o expirado' })
+  @ApiUnauthorizedResponse({
+    description: 'Token de actualización inválido o expirado',
+  })
   async refreshTokens(@Body() dto: RefreshTokenDto): Promise<AuthTokensDto> {
     return this.authService.refreshTokens(dto.refreshToken);
   }
