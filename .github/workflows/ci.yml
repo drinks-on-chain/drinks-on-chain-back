@@ -100,7 +100,12 @@ jobs:
       - name: MinIO (almacenamiento S3 compatible)
         run: |
           docker run -d --name minio -p 9000:9000             -e MINIO_ROOT_USER=ci-minio -e MINIO_ROOT_PASSWORD=ci-only-minio-password             cgr.dev/chainguard/minio:latest@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1             server /tmp/data
-          curl -sf --retry 30 --retry-connrefused --retry-delay 1 http://localhost:9000/minio/health/live
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          docker logs minio
+          exit 1
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
       - name: Migraciones aplicables desde cero
