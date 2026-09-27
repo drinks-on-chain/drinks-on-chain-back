@@ -14,6 +14,7 @@ import { Observable, catchError, from, mergeMap, of } from 'rxjs';
 import { AppException } from '../exceptions/app.exception';
 import { ErrorCode } from '../exceptions/error-codes';
 import { ValidationException } from '../exceptions/validation.exception';
+import { decimalsToNumbers } from '../utils/decimal-json.util';
 import {
   IDEMPOTENCY_LOCK_TTL_SECONDS,
   IDEMPOTENCY_STORE,
@@ -170,9 +171,12 @@ export class IdempotencyInterceptor implements NestInterceptor {
     response: Response,
     data: unknown,
   ): Promise<unknown> {
-    // Se guarda lo mismo que se serializa (fechas y decimales como texto)
+    // Se guarda lo mismo que se serializa (fechas como texto ISO, decimales
+    // como número, igual que ResponseTransformInterceptor)
     const body: unknown =
-      data === undefined ? null : JSON.parse(JSON.stringify(data));
+      data === undefined
+        ? null
+        : JSON.parse(JSON.stringify(decimalsToNumbers(data)));
     try {
       await this.store.complete(
         storageKey,

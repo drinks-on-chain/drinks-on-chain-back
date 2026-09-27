@@ -281,7 +281,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.parcelName).toBe('Cuartel 4 - La Finca El Potrero');
-      expect(Number(res.body.data.altitudeMasl)).toBe(1850.0);
+      expect(res.body.data.altitudeMasl).toBe(1850);
       terroirId = res.body.data.id;
     });
 
@@ -305,7 +305,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(res.status).toBe(201);
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.harvestBatchCode).toContain('HARV-2026');
-      expect(Number(res.body.data.netWeightKg)).toBe(14850.0);
+      expect(res.body.data.netWeightKg).toBe(14850);
       harvestBatchId = res.body.data.id;
     });
 
@@ -471,7 +471,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
 
       expect(res.status).toBe(201);
       expect(res.body.data.conformsToSenasagStandards).toBe(true);
-      expect(Number(res.body.data.methanolContentMgL)).toBe(48.0);
+      expect(res.body.data.methanolContentMgL).toBe(48);
     });
 
     it('Paso 11: [GET /v1/traceability/dag/:id] Reconstruye el grafo DAG completo de 5 etapas', async () => {

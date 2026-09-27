@@ -8,7 +8,13 @@ import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { Request, Response } from 'express';
 import { ApiSuccessResponse } from '../interfaces/api-response.interface';
+import { decimalsToNumbers } from '../utils/decimal-json.util';
 
+/**
+ * Envoltorio `{ success, statusCode, timestamp, path, data }` de toda respuesta
+ * correcta. `data` sale con los `Decimal` de Prisma como números JSON (el
+ * OpenAPI los declara `number`; `toJSON()` los daría como texto).
+ */
 @Injectable()
 export class ResponseTransformInterceptor<T> implements NestInterceptor<
   T,
@@ -28,7 +34,7 @@ export class ResponseTransformInterceptor<T> implements NestInterceptor<
         statusCode: response?.statusCode ?? 200,
         timestamp: new Date().toISOString(),
         path: request?.url ?? '',
-        data,
+        data: decimalsToNumbers(data),
       })),
     );
   }

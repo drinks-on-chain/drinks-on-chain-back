@@ -1,5 +1,6 @@
 import { ExecutionContext, CallHandler } from '@nestjs/common';
 import { of } from 'rxjs';
+import { Prisma } from '@prisma/client';
 import { ResponseTransformInterceptor } from '../response-transform.interceptor';
 
 describe('ResponseTransformInterceptor', () => {
@@ -32,6 +33,34 @@ describe('ResponseTransformInterceptor', () => {
         expect(result.path).toBe('/v1/test-endpoint');
         expect(result.data).toEqual({ message: 'Hello Drinks on Chain' });
         expect(result.timestamp).toBeDefined();
+        done();
+      });
+  });
+});
+
+describe('ResponseTransformInterceptor: decimales', () => {
+  it('devuelve los Prisma.Decimal de data como números JSON', (done) => {
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({ url: '/v1/terroirs' }),
+        getResponse: () => ({ statusCode: 200 }),
+      }),
+    } as unknown as ExecutionContext;
+    const handler: CallHandler = {
+      handle: () =>
+        of({
+          items: [{ surfaceHectares: new Prisma.Decimal('5'), latitude: null }],
+          total: 1,
+        }),
+    };
+    new ResponseTransformInterceptor()
+      .intercept(context, handler)
+      .subscribe((result) => {
+        const json = JSON.parse(JSON.stringify(result));
+        expect(json.data.items[0]).toEqual({
+          surfaceHectares: 5,
+          latitude: null,
+        });
         done();
       });
   });
