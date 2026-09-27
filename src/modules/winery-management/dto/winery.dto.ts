@@ -19,6 +19,7 @@ import {
   ReasonProperty,
 } from '@shared/audit/requires-reason';
 import { InvitationDto } from '@modules/invitations/dto/invitation.dto';
+import { NullableFields } from '@shared/pipes/optional-nulls';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -208,8 +209,17 @@ export class WineriesQueryDto extends PaginationQueryDto {
 
 /**
  * Perfil que edita el dueño (`PATCH /v1/organizations/current`): sin NIT ni
- * razón social. `null` (o `""`) vacía un campo opcional.
+ * razón social. `null` (o `""`) vacía un campo opcional (`@NullableFields`:
+ * en estos, `null` no se descarta como en el resto de cuerpos).
  */
+@NullableFields(
+  'address',
+  'senasagRegistration',
+  'contactPhone',
+  'logoUrl',
+  'publicStory',
+  'website',
+)
 export class UpdateCurrentOrganizationDto {
   @ApiPropertyOptional({ example: 'Bodega Altos de Calamuchita' })
   @present('tradeName')

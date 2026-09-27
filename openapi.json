@@ -570,7 +570,7 @@
     },
     "/v1/auth/signup": {
       "post": {
-        "description": "Crea la cuenta (contraseña con bcrypt), su billetera custodial y abre una sesión. Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`.",
+        "description": "Crea la cuenta (contraseña con bcrypt), su billetera custodial y abre una sesión. Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`. **Obsoleto para personal (H1)**: `userRole: WINERY_ADMIN` se retira al cerrar la Ola 1 (cada uso deja un aviso en los logs); después la ruta queda solo para consumidores (Ola 4).",
         "operationId": "AuthController_signup_v1",
         "parameters": [],
         "requestBody": {
@@ -2128,6 +2128,110 @@
         ]
       }
     },
+    "/v1/organizations/current": {
+      "get": {
+        "description": "Ficha de la bodega activa (`WineryDetail`). Se lee también con la bodega suspendida.",
+        "operationId": "CurrentOrganizationController_get_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE (INVITED o REVOKED)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Perfil de mi bodega",
+        "tags": [
+          "Bodegas y Productores"
+        ]
+      },
+      "patch": {
+        "description": "Nombre comercial, dirección, registro SENASAG, contacto, logo, historia pública y web. El NIT y la razón social solo los cambia el back office.",
+        "operationId": "CurrentOrganizationController_update_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCurrentOrganizationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (no es el dueño) u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT (registro SENASAG de otra bodega)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Editar el perfil de mi bodega (dueño)",
+        "tags": [
+          "Bodegas y Productores"
+        ]
+      }
+    },
     "/v1/organizations/current/audit": {
       "get": {
         "description": "Mismos filtros que la del back office salvo la organización, de la más reciente a la más antigua (seq descendente).",
@@ -2488,6 +2592,376 @@
         "summary": "Invitar a alguien a mi organización",
         "tags": [
           "Invitaciones"
+        ]
+      }
+    },
+    "/v1/organizations/current/members": {
+      "get": {
+        "description": "El dueño: todos los miembros con su estado. Los demás roles: solo los activos, con nombre y rol (`lastLoginAt: null`).",
+        "operationId": "CurrentTeamController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MemberStatus"
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MembershipRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemberDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Equipo de mi bodega",
+        "tags": [
+          "Equipo"
+        ]
+      }
+    },
+    "/v1/organizations/current/members/{membershipId}": {
+      "patch": {
+        "description": "Rol de bodega (no `OWNER`); no a sí mismo. Cierra las sesiones de la persona con la bodega (el rol viaja en el acceso).",
+        "operationId": "CurrentTeamController_changeRole_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateMemberRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (no es el dueño), ORG_NOT_ACTIVE, ORG_CANNOT_MODIFY_SELF, ORG_OWNER_ROLE_RESERVED u ORG_BLOCKED_BY_PLATFORM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: la membresía no es de esta bodega",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar el rol de un miembro (dueño)",
+        "tags": [
+          "Equipo"
+        ]
+      }
+    },
+    "/v1/organizations/current/members/{membershipId}/block": {
+      "post": {
+        "description": "No a sí mismo. Sus sesiones con la bodega se cierran al instante.",
+        "operationId": "CurrentTeamController_block_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberBlockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (no es el dueño), ORG_NOT_ACTIVE, ORG_CANNOT_MODIFY_SELF, ORG_OWNER_ROLE_RESERVED u ORG_BLOCKED_BY_PLATFORM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: la membresía no es de esta bodega",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: ya bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bloquear a un miembro (dueño)",
+        "tags": [
+          "Equipo"
+        ]
+      }
+    },
+    "/v1/organizations/current/members/{membershipId}/unblock": {
+      "post": {
+        "description": "Solo lo que bloqueó el dueño (lo de la plataforma → 403 `ORG_BLOCKED_BY_PLATFORM`). Respeta el límite de colaboradores.",
+        "operationId": "CurrentTeamController_unblock_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MemberBlockDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (no es el dueño), ORG_NOT_ACTIVE, ORG_CANNOT_MODIFY_SELF, ORG_OWNER_ROLE_RESERVED u ORG_BLOCKED_BY_PLATFORM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: la membresía no es de esta bodega",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: no está bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ORG_MEMBER_LIMIT_REACHED",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Desbloquear a un miembro (dueño)",
+        "tags": [
+          "Equipo"
         ]
       }
     },
@@ -3382,6 +3856,390 @@
         "tags": [
           "Back office · usuarios internos"
         ]
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/members": {
+      "get": {
+        "operationId": "PlatformTeamController_list_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MemberStatus"
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/MembershipRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/MemberDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND (no es una bodega)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Equipo de una bodega",
+        "tags": [
+          "Back office · equipos"
+        ]
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/members/{membershipId}": {
+      "patch": {
+        "description": "Con motivo. `OWNER` no se asigna ni se quita (transferencia de titularidad). Avisa al dueño y cierra las sesiones de la persona con la bodega.",
+        "operationId": "PlatformTeamController_changeRole_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformUpdateMemberRoleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS, ORG_OWNER_ROLE_RESERVED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND o NOT_FOUND (membresía de otra organización)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar el rol de un miembro",
+        "tags": [
+          "Back office · equipos"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/members/{membershipId}/block": {
+      "post": {
+        "description": "Con motivo; queda bloqueado por la plataforma (el dueño no puede desbloquearlo). Sus sesiones con la bodega se cierran al instante. Avisa al dueño.",
+        "operationId": "PlatformTeamController_block_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformMemberActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND o NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: ya bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bloquear a un miembro",
+        "tags": [
+          "Back office · equipos"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/members/{membershipId}/unblock": {
+      "post": {
+        "description": "Con motivo (lo bloqueara el dueño o la plataforma). Respeta el límite de colaboradores. Avisa al dueño.",
+        "operationId": "PlatformTeamController_unblock_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformMemberActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MemberDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND o NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: no está bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ORG_MEMBER_LIMIT_REACHED o VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Desbloquear a un miembro",
+        "tags": [
+          "Back office · equipos"
+        ],
+        "x-requires-reason": "always"
       }
     },
     "/v1/platform/permissions": {
@@ -4550,6 +5408,1392 @@
         ]
       }
     },
+    "/v1/platform/wineries": {
+      "get": {
+        "description": "Ordenado por nombre comercial. `region` y `q` (razón social, nombre, NIT, slug) son coincidencias parciales.",
+        "operationId": "PlatformWineriesController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/WineryStatus"
+            }
+          },
+          {
+            "name": "region",
+            "required": false,
+            "in": "query",
+            "description": "Coincidencia parcial",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "category",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/WineryCategory"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Busca en razón social, nombre comercial, NIT y slug",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WinerySummaryDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Directorio de bodegas",
+        "tags": [
+          "Back office · bodegas"
+        ]
+      },
+      "post": {
+        "description": "Crea la bodega `INVITED` e invita a su dueño (`OWNER`, correo al ERP) en la misma transacción. Al aceptar, la bodega pasa a `ACTIVE` con su prefijo de lote.",
+        "operationId": "PlatformWineriesController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlatformWineryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryWithInvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_TAX_ID_TAKEN (NIT de otra bodega o de una solicitud abierta), CONFLICT (registro SENASAG), ORG_ALREADY_MEMBER o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Alta directa de una bodega (camino B)",
+        "tags": [
+          "Back office · bodegas"
+        ]
+      }
+    },
+    "/v1/platform/wineries/{id}": {
+      "get": {
+        "operationId": "PlatformWineriesController_detail_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Ficha de una bodega (con su historial de estados)",
+        "tags": [
+          "Back office · bodegas"
+        ]
+      },
+      "patch": {
+        "description": "Todo el perfil, datos legales incluidos (razón social, NIT, categoría, región). `null` vacía un campo opcional. El `slug` no cambia.",
+        "operationId": "PlatformWineriesController_update_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlatformWineryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_TAX_ID_TAKEN o CONFLICT (registro SENASAG)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`, 3–500 caracteres)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Editar una bodega",
+        "tags": [
+          "Back office · bodegas"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/wineries/{id}/reactivate": {
+      "post": {
+        "description": "Desde `SUSPENDED`. Aviso por correo al dueño.",
+        "operationId": "PlatformWineriesController_reactivate_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WineryStatusActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`, 3–500 caracteres)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reactivar una bodega suspendida",
+        "tags": [
+          "Back office · bodegas"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/wineries/{id}/revoke": {
+      "post": {
+        "description": "Solo administración. Desde `INVITED`, `ACTIVE` o `SUSPENDED`. Cierra las sesiones con la bodega activa y anula sus invitaciones pendientes. Aviso por correo al dueño.",
+        "operationId": "PlatformWineriesController_revoke_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WineryStatusActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`, 3–500 caracteres)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Revocar una bodega (baja definitiva)",
+        "tags": [
+          "Back office · bodegas"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/wineries/{id}/suspend": {
+      "post": {
+        "description": "Desde `ACTIVE`. Cierra al instante las sesiones con la bodega activa; el ERP responde 403 `ORG_NOT_ACTIVE` salvo el perfil y la bitácora propia. Aviso por correo al dueño.",
+        "operationId": "PlatformWineriesController_suspend_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WineryStatusActionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`, 3–500 caracteres)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Suspender una bodega",
+        "tags": [
+          "Back office · bodegas"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/wineries/{id}/transfer-ownership": {
+      "post": {
+        "description": "Solo administración; bodega `ACTIVE` o `SUSPENDED` con dueño activo. Invita a la nueva persona titular (`OWNER`); al aceptar, la anterior queda como `ENOLOGIST` activa o bloqueada por la plataforma según `keepPreviousOwnerAs` (`BLOCKED` por defecto) y sus sesiones con la bodega se cierran. Anula una transferencia pendiente anterior.",
+        "operationId": "PlatformWineriesController_transferOwnership_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryWithInvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_INVALID_TRANSITION, CONFLICT (sin dueño activo), ORG_ALREADY_MEMBER (ya es la dueña) o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`, 3–500 caracteres)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Transferir la titularidad",
+        "tags": [
+          "Back office · bodegas"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/winery-applications": {
+      "get": {
+        "description": "Más recientes primero, sin `notes`. Por defecto excluye las UNVERIFIED (se ven con `status=UNVERIFIED`).",
+        "operationId": "PlatformWineryApplicationsController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "Sin él, todas menos las `UNVERIFIED`",
+            "schema": {
+              "$ref": "#/components/schemas/ApplicationStatus"
+            }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Busca en razón social, nombre comercial, NIT, contacto (nombre y correo) y región",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "assigneeId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/WineryApplicationSummaryDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bandeja de solicitudes",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}": {
+      "get": {
+        "operationId": "PlatformWineryApplicationsController_detail_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Detalle de una solicitud (con notas)",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}/approve": {
+      "post": {
+        "description": "IN_REVIEW → APPROVED. En una transacción crea la bodega INVITED e invita a su dueño (por defecto, el contacto de la solicitud); avisa al contacto por correo.",
+        "operationId": "PlatformWineryApplicationsController_approve_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveApplicationResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION, ORG_TAX_ID_TAKEN, ORG_ALREADY_MEMBER o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Aprobar una solicitud",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}/meeting-done": {
+      "post": {
+        "description": "MEETING_SCHEDULED → IN_REVIEW; las notas quedan en la reunión y como nota interna.",
+        "operationId": "PlatformWineryApplicationsController_meetingDone_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeetingDoneDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Registrar la reunión hecha",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}/notes": {
+      "post": {
+        "description": "En cualquier estado salvo UNVERIFIED (409).",
+        "operationId": "PlatformWineryApplicationsController_addNote_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddApplicationNoteDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Añadir una nota interna",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}/reject": {
+      "post": {
+        "description": "IN_REVIEW → REJECTED con motivo, que se envía al contacto por correo.",
+        "operationId": "PlatformWineryApplicationsController_reject_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Rechazar una solicitud",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ],
+        "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/winery-applications/{id}/schedule-meeting": {
+      "post": {
+        "description": "IN_REVIEW → MEETING_SCHEDULED.",
+        "operationId": "PlatformWineryApplicationsController_scheduleMeeting_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScheduleMeetingDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Agendar una reunión",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
+    "/v1/platform/winery-applications/{id}/take": {
+      "post": {
+        "description": "RECEIVED → IN_REVIEW, asignada a quien la toma.",
+        "operationId": "PlatformWineryApplicationsController_take_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WineryApplicationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "APPLICATION_INVALID_TRANSITION",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Tomar una solicitud",
+        "tags": [
+          "Back office · solicitudes de alta"
+        ]
+      }
+    },
     "/v1/production-batches": {
       "get": {
         "description": "Retorna los lotes de transformación con filtros por proceso y estado de reposo.",
@@ -4827,9 +7071,153 @@
         ]
       }
     },
+    "/v1/public/wineries/{slug}": {
+      "get": {
+        "description": "Solo bodegas `ACTIVE`; cualquier otra (o un slug desconocido) → 404.",
+        "operationId": "PublicWineriesController_get_v1",
+        "parameters": [
+          {
+            "name": "slug",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicWineryProfileDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Perfil público de una bodega",
+        "tags": [
+          "Público"
+        ],
+        "security": []
+      }
+    },
+    "/v1/public/winery-applications": {
+      "post": {
+        "description": "Con captcha (Turnstile) y campo trampa `website`. Siempre 202 `{ id, status: UNVERIFIED }` y un correo al contacto con el enlace de verificación (`/unirse/verificar?token=`, 72 h). Campo trampa relleno, NIT ya registrado (se avisa a operaciones) o más de 3 envíos por correo / 10 por IP en una hora → 202 sin crear nada. Reenviar la misma solicitud sin verificar la actualiza y manda un enlace nuevo.",
+        "operationId": "PublicWineryApplicationsController_submit_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWineryApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateWineryApplicationResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "TOO_MANY_REQUESTS (por IP y minuto), con Retry-After",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CAPTCHA_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Enviar una solicitud de alta de bodega",
+        "tags": [
+          "Público"
+        ],
+        "security": []
+      }
+    },
+    "/v1/public/winery-applications/verify": {
+      "post": {
+        "description": "La solicitud pasa de UNVERIFIED a RECEIVED: le llega a operaciones (aviso por correo) y el contacto recibe la confirmación.",
+        "operationId": "PublicWineryApplicationsController_verify_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyWineryApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Solicitud verificada"
+          },
+          "422": {
+            "description": "APPLICATION_TOKEN_INVALID (en `token`): desconocido, usado o caducado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Verificar el correo de contacto de una solicitud",
+        "tags": [
+          "Público"
+        ],
+        "security": []
+      }
+    },
     "/v1/terroirs": {
       "get": {
-        "description": "Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.",
+        "description": "Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad. El operario de planta (`OPERATOR`) las lee para elegir la parcela del pesaje, sin editarlas.",
         "operationId": "TerroirsController_findAll_v1",
         "parameters": [
           {
@@ -5829,7 +8217,8 @@
         ]
       },
       "post": {
-        "description": "Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1). Sustituida por el formulario público `POST /v1/public/winery-applications` y el alta directa `POST /v1/platform/wineries`. Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.",
         "operationId": "WineriesController_createWinery_v1",
         "parameters": [],
         "requestBody": {
@@ -5872,10 +8261,11 @@
             "bearer": []
           }
         ],
-        "summary": "Solicitar alta y registro de una nueva bodega",
+        "summary": "Solicitar alta y registro de una nueva bodega (obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/public/winery-applications"
       }
     },
     "/v1/wineries/my": {
@@ -5960,7 +8350,8 @@
     },
     "/v1/wineries/my/members": {
       "get": {
-        "description": "Retorna la lista de miembros activos en la bodega actual.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por `GET /v1/organizations/current/members`. Retorna la lista de miembros activos en la bodega actual.",
         "operationId": "WineriesController_getMyMembers_v1",
         "parameters": [
           {
@@ -6055,13 +8446,15 @@
             "bearer": []
           }
         ],
-        "summary": "Listar miembros operativos de la bodega",
+        "summary": "Listar miembros operativos de la bodega (obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/organizations/current/members"
       },
       "post": {
-        "description": "Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); el equipo se forma por invitación (`POST /v1/organizations/current/invitations`). Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).",
         "operationId": "WineriesController_addMember_v1",
         "parameters": [],
         "requestBody": {
@@ -6110,15 +8503,17 @@
             "bearer": []
           }
         ],
-        "summary": "Incorporar un nuevo miembro operativo a la bodega",
+        "summary": "Incorporar un nuevo miembro operativo a la bodega (obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/organizations/current/invitations"
       }
     },
     "/v1/wineries/my/members/create": {
       "post": {
-        "description": "Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); el equipo se forma por invitación (`POST /v1/organizations/current/invitations`, la persona elige su contraseña). Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.",
         "operationId": "WineriesController_createAndAddMember_v1",
         "parameters": [],
         "requestBody": {
@@ -6161,15 +8556,17 @@
             "bearer": []
           }
         ],
-        "summary": "Registrar y dar de alta a un nuevo miembro operativo en la bodega",
+        "summary": "Registrar y dar de alta a un nuevo miembro operativo en la bodega (obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/organizations/current/invitations"
       }
     },
     "/v1/wineries/pending": {
       "get": {
-        "description": "Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por la bandeja de solicitudes (`GET /v1/platform/winery-applications`) y el directorio (`GET /v1/platform/wineries?status=INVITED`). Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.",
         "operationId": "WineriesController_getPendingWineries_v1",
         "parameters": [
           {
@@ -6257,15 +8654,17 @@
             "bearer": []
           }
         ],
-        "summary": "Listar bodegas pendientes de aprobación (solo plataforma)",
+        "summary": "Listar bodegas pendientes de aprobación (solo plataforma; obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/platform/winery-applications"
       }
     },
     "/v1/wineries/{id}/approve": {
       "post": {
-        "description": "Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por la aprobación de solicitudes y la activación al aceptar el dueño su invitación. Asigna el prefijo de lote. Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.",
         "operationId": "WineriesController_approveWinery_v1",
         "parameters": [
           {
@@ -6320,15 +8719,17 @@
             "bearer": []
           }
         ],
-        "summary": "Aprobar y certificar una bodega (solo plataforma)",
+        "summary": "Aprobar y certificar una bodega (solo plataforma; obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/platform/winery-applications/{id}/approve"
       }
     },
     "/v1/wineries/{id}/reject": {
       "post": {
-        "description": "Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.",
+        "deprecated": true,
+        "description": "Obsoleta: se retira al cerrar la Ola 1 (H1); sustituida por `POST /v1/platform/winery-applications/{id}/reject` y `POST /v1/platform/wineries/{id}/revoke`. Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.",
         "operationId": "WineriesController_rejectWinery_v1",
         "parameters": [
           {
@@ -6383,10 +8784,11 @@
             "bearer": []
           }
         ],
-        "summary": "Rechazar una solicitud de bodega (solo plataforma)",
+        "summary": "Rechazar una solicitud de bodega (solo plataforma; obsoleta, H1)",
         "tags": [
           "Bodegas y Productores"
-        ]
+        ],
+        "x-replaced-by": "/v1/platform/winery-applications/{id}/reject"
       }
     }
   },
@@ -6515,6 +8917,18 @@
           "blockedReason"
         ]
       },
+      "AddApplicationNoteDto": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "text"
+        ]
+      },
       "AddMemberDto": {
         "type": "object",
         "properties": {
@@ -6583,6 +8997,131 @@
           "timestamp",
           "path",
           "error"
+        ]
+      },
+      "ApplicationDecisionDto": {
+        "type": "object",
+        "properties": {
+          "by": {
+            "type": "string",
+            "example": "Valeria Méndez",
+            "description": "Nombre de quien aprobó o rechazó"
+          },
+          "at": {
+            "type": "string",
+            "example": "2026-09-27T12:00:00.000Z"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "by",
+          "at",
+          "reason"
+        ]
+      },
+      "ApplicationMeetingDto": {
+        "type": "object",
+        "properties": {
+          "scheduledAt": {
+            "type": "string",
+            "example": "2026-09-30T15:00:00.000Z"
+          },
+          "channel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MeetingChannel"
+              }
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "scheduledAt",
+          "channel",
+          "notes"
+        ]
+      },
+      "ApplicationNoteDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "text": {
+            "type": "string"
+          },
+          "by": {
+            "type": "string",
+            "example": "Valeria Méndez",
+            "description": "Nombre de quien la escribió"
+          },
+          "at": {
+            "type": "string",
+            "example": "2026-09-27T12:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "text",
+          "by",
+          "at"
+        ]
+      },
+      "ApplicationStatus": {
+        "type": "string",
+        "enum": [
+          "UNVERIFIED",
+          "RECEIVED",
+          "IN_REVIEW",
+          "MEETING_SCHEDULED",
+          "APPROVED",
+          "REJECTED"
+        ]
+      },
+      "ApproveApplicationDto": {
+        "type": "object",
+        "properties": {
+          "ownerEmail": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerFullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "reason": {
+            "type": "object",
+            "description": "Motivo (opcional; queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "nullable": true
+          }
+        }
+      },
+      "ApproveApplicationResponseDto": {
+        "type": "object",
+        "properties": {
+          "application": {
+            "$ref": "#/components/schemas/WineryApplicationDto"
+          },
+          "winery": {
+            "$ref": "#/components/schemas/WineryDetailDto"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InvitationDto"
+          }
+        },
+        "required": [
+          "application",
+          "winery",
+          "invitation"
         ]
       },
       "ApproveWineryDto": {
@@ -7879,6 +10418,92 @@
           "role"
         ]
       },
+      "CreatePlatformWineryDto": {
+        "type": "object",
+        "properties": {
+          "legalName": {
+            "type": "string",
+            "example": "Viñedos La Angostura S.R.L."
+          },
+          "tradeName": {
+            "type": "string",
+            "example": "Viñedos La Angostura"
+          },
+          "taxId": {
+            "type": "string",
+            "example": "7055446677"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle Central de Tarija · Uriondo"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "senasagRegistration": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "contactEmail": {
+            "type": "string",
+            "example": "contacto@angostura.test"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "publicStory": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "website": {
+            "type": "string",
+            "nullable": true
+          },
+          "ownerEmail": {
+            "type": "string",
+            "example": "titular@angostura.test"
+          },
+          "ownerFullName": {
+            "type": "string",
+            "example": "Lucía Vargas"
+          },
+          "reason": {
+            "type": "object",
+            "description": "Motivo (opcional; queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "nullable": true
+          }
+        },
+        "required": [
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "contactEmail",
+          "ownerEmail",
+          "ownerFullName"
+        ]
+      },
       "CreateTerroirDto": {
         "type": "object",
         "properties": {
@@ -8040,6 +10665,95 @@
           "fermentationTankId",
           "containerType",
           "plannedMonths"
+        ]
+      },
+      "CreateWineryApplicationDto": {
+        "type": "object",
+        "properties": {
+          "legalName": {
+            "type": "string",
+            "example": "Viñas del Alto Camargo S.R.L."
+          },
+          "tradeName": {
+            "type": "string",
+            "example": "Viñas del Alto Camargo"
+          },
+          "taxId": {
+            "type": "string",
+            "example": "7011002233",
+            "description": "NIT (5–15 dígitos)"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle de Cinti · Camargo"
+          },
+          "contactName": {
+            "type": "string",
+            "example": "Rodrigo Aguilar"
+          },
+          "contactEmail": {
+            "type": "string",
+            "example": "rodrigo@altocamargo.test"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20,
+            "example": "+59172110022"
+          },
+          "message": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "captchaToken": {
+            "type": "string",
+            "description": "Token de Cloudflare Turnstile. En desarrollo, cualquier texto con la clave de prueba",
+            "example": "XXXX.DUMMY.TOKEN.XXXX"
+          },
+          "website": {
+            "type": "string",
+            "nullable": true,
+            "description": "Campo trampa: debe llegar vacío (si no, 202 sin crear nada). No se muestra al usuario",
+            "example": ""
+          }
+        },
+        "required": [
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "contactName",
+          "contactEmail",
+          "captchaToken"
+        ]
+      },
+      "CreateWineryApplicationResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "UNVERIFIED"
+            ],
+            "example": "UNVERIFIED"
+          }
+        },
+        "required": [
+          "id",
+          "status"
         ]
       },
       "CreateWineryDto": {
@@ -9272,6 +11986,126 @@
           "audience"
         ]
       },
+      "MeetingChannel": {
+        "type": "string",
+        "enum": [
+          "CALL",
+          "VIDEO",
+          "IN_PERSON"
+        ]
+      },
+      "MeetingDoneDto": {
+        "type": "object",
+        "properties": {
+          "notes": {
+            "type": "string",
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "notes"
+        ]
+      },
+      "MemberBlockDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "object",
+            "description": "Motivo (opcional)",
+            "minLength": 3,
+            "maxLength": 500,
+            "nullable": true
+          }
+        }
+      },
+      "MemberDto": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Ana Gutiérrez"
+          },
+          "email": {
+            "type": "string",
+            "example": "enologa@altos.test"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipRole"
+              }
+            ]
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MemberStatus"
+              }
+            ]
+          },
+          "blockedBy": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "PLATFORM"
+            ],
+            "nullable": true,
+            "description": "Quién bloqueó: el dueño no puede desbloquear lo que bloqueó la plataforma"
+          },
+          "blockedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "joinedAt": {
+            "type": "string",
+            "example": "2026-03-02T10:00:00.000Z"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true,
+            "description": "null para los roles que solo ven nombres y roles"
+          },
+          "accountStatus": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BLOCKED"
+            ],
+            "description": "Solo en las rutas del back office (ampliación O1 §11 bis): estado de la cuenta completa"
+          },
+          "accountBlockedReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "membershipId",
+          "userId",
+          "fullName",
+          "email",
+          "role",
+          "status",
+          "blockedBy",
+          "blockedReason",
+          "joinedAt",
+          "lastLoginAt"
+        ]
+      },
+      "MemberStatus": {
+        "type": "string",
+        "enum": [
+          "ACTIVE",
+          "BLOCKED"
+        ]
+      },
       "MembershipDto": {
         "type": "object",
         "properties": {
@@ -9561,6 +12395,23 @@
           "capabilities"
         ]
       },
+      "PersonRefDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Valeria Méndez"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName"
+        ]
+      },
       "PlatformCreateInvitationDto": {
         "type": "object",
         "properties": {
@@ -9588,6 +12439,21 @@
           "role"
         ]
       },
+      "PlatformMemberActionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "PlatformRole": {
         "type": "string",
         "enum": [
@@ -9595,6 +12461,34 @@
           "ADMIN",
           "OPERATIONS",
           "SUPPORT"
+        ]
+      },
+      "PlatformUpdateMemberRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ENOLOGIST",
+              "AGRONOMIST",
+              "OPERATOR",
+              "ACCOUNTANT"
+            ],
+            "description": "`OWNER` → 403 `ORG_OWNER_ROLE_RESERVED` (solo por transferencia)",
+            "example": "ENOLOGIST"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "role",
+          "reason"
         ]
       },
       "PlatformUserDto": {
@@ -9821,6 +12715,51 @@
           "createdAt"
         ]
       },
+      "PublicWineryProfileDto": {
+        "type": "object",
+        "properties": {
+          "slug": {
+            "type": "string",
+            "example": "altos-de-calamuchita"
+          },
+          "tradeName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita"
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle Central de Tarija"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "publicStory": {
+            "type": "string",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "slug",
+          "tradeName",
+          "region",
+          "category",
+          "logoUrl",
+          "publicStory",
+          "website"
+        ]
+      },
       "RefreshTokenDto": {
         "type": "object",
         "properties": {
@@ -9831,6 +12770,21 @@
             "deprecated": true
           }
         }
+      },
+      "RejectApplicationDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Motivo del rechazo (se envía al contacto y queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "reason"
+        ]
       },
       "RejectWineryDto": {
         "type": "object",
@@ -9988,6 +12942,32 @@
           "daysElapsed",
           "daysRemaining",
           "isRestCompleted"
+        ]
+      },
+      "ScheduleMeetingDto": {
+        "type": "object",
+        "properties": {
+          "scheduledAt": {
+            "type": "string",
+            "example": "2026-09-30T15:00:00-04:00",
+            "description": "ISO 8601 con zona"
+          },
+          "channel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MeetingChannel"
+              }
+            ]
+          },
+          "notes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "scheduledAt",
+          "channel"
         ]
       },
       "SetSettingOverridesDto": {
@@ -10432,7 +13412,8 @@
               "WINERY_ADMIN"
             ],
             "default": "CONSUMER",
-            "description": "Rol del usuario para registro público (CONSUMER o WINERY_ADMIN). Roles administrativos y operativos no están permitidos en registro público."
+            "deprecated": true,
+            "description": "Obsoleto (H1): el registro de personal (`WINERY_ADMIN`) se retira al cerrar la Ola 1; las bodegas entran por solicitud de alta o alta directa y su equipo por invitación. Tras H1 la ruta queda solo para consumidores (`CONSUMER`, Ola 4). Roles administrativos y operativos no están permitidos en registro público."
           },
           "phoneNumber": {
             "type": "string",
@@ -10574,6 +13555,98 @@
           "createdAt"
         ]
       },
+      "TransferOwnershipDto": {
+        "type": "object",
+        "properties": {
+          "newOwnerEmail": {
+            "type": "string",
+            "example": "nueva.titular@altos.test"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          },
+          "keepPreviousOwnerAs": {
+            "type": "string",
+            "enum": [
+              "ENOLOGIST",
+              "BLOCKED"
+            ],
+            "default": "BLOCKED",
+            "description": "Qué pasa con el dueño anterior cuando el nuevo acepta: enólogo activo o enólogo bloqueado por la plataforma"
+          }
+        },
+        "required": [
+          "newOwnerEmail",
+          "reason"
+        ]
+      },
+      "UpdateCurrentOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "tradeName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "senasagRegistration": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "contactEmail": {
+            "type": "string",
+            "example": "contacto@altos.test"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "publicStory": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "website": {
+            "type": "string",
+            "nullable": true,
+            "example": "https://altos.test"
+          }
+        }
+      },
+      "UpdateMemberRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "ENOLOGIST",
+              "AGRONOMIST",
+              "OPERATOR",
+              "ACCOUNTANT"
+            ],
+            "description": "`OWNER` → 403 `ORG_OWNER_ROLE_RESERVED` (solo por transferencia)",
+            "example": "ENOLOGIST"
+          }
+        },
+        "required": [
+          "role"
+        ]
+      },
       "UpdatePhytoStatusDto": {
         "type": "object",
         "properties": {
@@ -10617,6 +13690,78 @@
           "reason": {
             "type": "string",
             "description": "Motivo (3–500 caracteres)"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "UpdatePlatformWineryDto": {
+        "type": "object",
+        "properties": {
+          "tradeName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita"
+          },
+          "address": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "senasagRegistration": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 50
+          },
+          "contactEmail": {
+            "type": "string",
+            "example": "contacto@altos.test"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "publicStory": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 4000
+          },
+          "website": {
+            "type": "string",
+            "nullable": true,
+            "example": "https://altos.test"
+          },
+          "legalName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita S.R.L."
+          },
+          "taxId": {
+            "type": "string",
+            "example": "1023456019"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle Central de Tarija"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
           }
         },
         "required": [
@@ -10921,6 +14066,18 @@
           "token"
         ]
       },
+      "VerifyWineryApplicationDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Token del enlace del correo"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
       "WalletResponseDto": {
         "type": "object",
         "properties": {
@@ -11073,6 +14230,365 @@
           "createdAt"
         ]
       },
+      "WineryApplicationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "legalName": {
+            "type": "string"
+          },
+          "tradeName": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string",
+            "description": "NIT"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string"
+          },
+          "contactName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignee": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonRefDto"
+              }
+            ]
+          },
+          "meeting": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationMeetingDto"
+              }
+            ]
+          },
+          "decision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationDecisionDto"
+              }
+            ]
+          },
+          "wineryId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bodega creada al aprobarla"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplicationNoteDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "contactName",
+          "contactEmail",
+          "contactPhone",
+          "message",
+          "assignee",
+          "meeting",
+          "decision",
+          "wineryId",
+          "notes"
+        ]
+      },
+      "WineryApplicationSummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationStatus"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "legalName": {
+            "type": "string"
+          },
+          "tradeName": {
+            "type": "string"
+          },
+          "taxId": {
+            "type": "string",
+            "description": "NIT"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string"
+          },
+          "contactName": {
+            "type": "string"
+          },
+          "contactEmail": {
+            "type": "string"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "message": {
+            "type": "string",
+            "nullable": true
+          },
+          "assignee": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PersonRefDto"
+              }
+            ]
+          },
+          "meeting": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationMeetingDto"
+              }
+            ]
+          },
+          "decision": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationDecisionDto"
+              }
+            ]
+          },
+          "wineryId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Bodega creada al aprobarla"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "createdAt",
+          "updatedAt",
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "contactName",
+          "contactEmail",
+          "contactPhone",
+          "message",
+          "assignee",
+          "meeting",
+          "decision",
+          "wineryId"
+        ]
+      },
+      "WineryCategory": {
+        "type": "string",
+        "enum": [
+          "WINERY",
+          "BREWERY",
+          "DISTILLERY",
+          "OTHER"
+        ]
+      },
+      "WineryDetailDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "example": "altos-de-calamuchita"
+          },
+          "legalName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita S.R.L."
+          },
+          "tradeName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita"
+          },
+          "taxId": {
+            "type": "string",
+            "example": "1023456019",
+            "description": "NIT"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle Central de Tarija"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryStatus"
+              }
+            ]
+          },
+          "lotPrefix": {
+            "type": "string",
+            "nullable": true,
+            "example": "ALT",
+            "description": "Prefijo del código de lote (3–5 letras, único y definitivo); se asigna al activarse"
+          },
+          "owner": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryOwnerDto"
+              }
+            ]
+          },
+          "membersCount": {
+            "type": "number",
+            "example": 4,
+            "description": "Membresías activas"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-03-01T10:00:00.000Z"
+          },
+          "activatedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "address": {
+            "type": "string",
+            "nullable": true
+          },
+          "senasagRegistration": {
+            "type": "string",
+            "nullable": true
+          },
+          "contactEmail": {
+            "type": "string",
+            "example": "contacto@altos.test"
+          },
+          "contactPhone": {
+            "type": "string",
+            "nullable": true
+          },
+          "logoUrl": {
+            "type": "string",
+            "nullable": true
+          },
+          "publicStory": {
+            "type": "string",
+            "nullable": true
+          },
+          "website": {
+            "type": "string",
+            "nullable": true
+          },
+          "statusHistory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WineryStatusChangeDto"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "status",
+          "lotPrefix",
+          "owner",
+          "membersCount",
+          "createdAt",
+          "activatedAt",
+          "address",
+          "senasagRegistration",
+          "contactEmail",
+          "contactPhone",
+          "logoUrl",
+          "publicStory",
+          "website",
+          "statusHistory"
+        ]
+      },
       "WineryMemberItemDto": {
         "type": "object",
         "properties": {
@@ -11171,6 +14687,29 @@
           "memberRole",
           "isActive",
           "joinedAt"
+        ]
+      },
+      "WineryOwnerDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "nullable": true,
+            "description": "`null` si el dueño aún no aceptó su invitación"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Rodrigo Aguilar"
+          },
+          "email": {
+            "type": "string",
+            "example": "rodrigo@altocamargo.test"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName",
+          "email"
         ]
       },
       "WineryResponseDto": {
@@ -11293,6 +14832,163 @@
           "isExportCertified",
           "certificationStatus",
           "createdAt"
+        ]
+      },
+      "WineryStatus": {
+        "type": "string",
+        "enum": [
+          "INVITED",
+          "ACTIVE",
+          "SUSPENDED",
+          "REVOKED"
+        ]
+      },
+      "WineryStatusActionDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Motivo (queda en la bitácora)",
+            "minLength": 3,
+            "maxLength": 500,
+            "example": "Corrección solicitada por la bodega"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "WineryStatusChangeDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryStatus"
+              }
+            ]
+          },
+          "at": {
+            "type": "string",
+            "example": "2026-03-02T10:00:00.000Z"
+          },
+          "by": {
+            "type": "string",
+            "example": "Valeria Méndez",
+            "description": "Nombre de quien hizo el cambio (el dueño al activarse)"
+          },
+          "reason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "status",
+          "at",
+          "by",
+          "reason"
+        ]
+      },
+      "WinerySummaryDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "example": "altos-de-calamuchita"
+          },
+          "legalName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita S.R.L."
+          },
+          "tradeName": {
+            "type": "string",
+            "example": "Bodega Altos de Calamuchita"
+          },
+          "taxId": {
+            "type": "string",
+            "example": "1023456019",
+            "description": "NIT"
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryCategory"
+              }
+            ]
+          },
+          "region": {
+            "type": "string",
+            "example": "Valle Central de Tarija"
+          },
+          "status": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryStatus"
+              }
+            ]
+          },
+          "lotPrefix": {
+            "type": "string",
+            "nullable": true,
+            "example": "ALT",
+            "description": "Prefijo del código de lote (3–5 letras, único y definitivo); se asigna al activarse"
+          },
+          "owner": {
+            "nullable": true,
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WineryOwnerDto"
+              }
+            ]
+          },
+          "membersCount": {
+            "type": "number",
+            "example": 4,
+            "description": "Membresías activas"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-03-01T10:00:00.000Z"
+          },
+          "activatedAt": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "legalName",
+          "tradeName",
+          "taxId",
+          "category",
+          "region",
+          "status",
+          "lotPrefix",
+          "owner",
+          "membersCount",
+          "createdAt",
+          "activatedAt"
+        ]
+      },
+      "WineryWithInvitationDto": {
+        "type": "object",
+        "properties": {
+          "winery": {
+            "$ref": "#/components/schemas/WineryDetailDto"
+          },
+          "invitation": {
+            "$ref": "#/components/schemas/InvitationDto"
+          }
+        },
+        "required": [
+          "winery",
+          "invitation"
         ]
       }
     },

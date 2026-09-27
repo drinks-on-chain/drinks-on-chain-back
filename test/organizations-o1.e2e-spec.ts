@@ -577,6 +577,13 @@ describe('Solicitudes, bodegas y equipo · O1-BE-1 B (e2e)', () => {
         })
         .expect(200);
       expect(edited.body.data.publicStory).toBe('Cuatro familias en Camargo');
+      // null borra un opcional del perfil (@NullableFields); aquí no se omite
+      const cleared = await http()
+        .patch('/v1/organizations/current')
+        .set(auth(ownerToken))
+        .send({ contactPhone: null })
+        .expect(200);
+      expect(cleared.body.data.contactPhone).toBeNull();
       await http()
         .patch('/v1/organizations/current')
         .set(auth(ownerToken))
