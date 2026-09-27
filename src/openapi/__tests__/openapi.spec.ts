@@ -82,9 +82,12 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/fermentation-tanks',
       'GET /v1/harvest-batches',
       'GET /v1/organizations/current/audit',
+      'GET /v1/organizations/current/invitations',
       'GET /v1/platform/audit',
+      'GET /v1/platform/organizations/{organizationId}/invitations',
       'GET /v1/platform/settings/{key}/history',
       'GET /v1/platform/settings/{key}/overrides',
+      'GET /v1/platform/users',
       'GET /v1/production-batches',
       'GET /v1/terroirs',
       'GET /v1/wine-aging',
@@ -152,12 +155,22 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/health',
       'GET /v1/health/live',
       'GET /v1/health/ready',
+      'GET /v1/invitations/{token}',
       'GET /v1/traceability/public/{lotCode}',
+      'POST /v1/auth/forgot-password',
       'POST /v1/auth/login',
       'POST /v1/auth/logout',
+      'POST /v1/auth/mfa/enroll',
+      'POST /v1/auth/mfa/enroll/confirm',
+      'POST /v1/auth/mfa/verify',
       'POST /v1/auth/refresh',
+      'POST /v1/auth/resend-verification',
+      'POST /v1/auth/reset-password',
       'POST /v1/auth/signup',
+      'POST /v1/auth/verify-email',
     ];
+    // Públicas que además aceptan una sesión (@OptionalAuth)
+    const OPTIONAL_AUTH = ['POST /v1/invitations/{token}/accept'];
 
     it('define el esquema bearer y ninguna operación usa otro', () => {
       expect(document.components?.securitySchemes).toEqual({
@@ -184,8 +197,14 @@ describe('Contrato OpenAPI (OPS-12)', () => {
         expect(op.security).toEqual([]);
         expect(op).not.toHaveProperty('x-public');
       }
-      for (const op of ops.filter((o) => !PUBLIC.includes(key(o)))) {
+      for (const op of ops.filter(
+        (o) => !PUBLIC.includes(key(o)) && !OPTIONAL_AUTH.includes(key(o)),
+      )) {
         expect(op.security).toEqual([{ [BEARER_AUTH]: [] }]);
+      }
+      for (const op of ops.filter((o) => OPTIONAL_AUTH.includes(key(o)))) {
+        expect(op.security).toEqual([{}, { [BEARER_AUTH]: [] }]);
+        expect(op).not.toHaveProperty('x-optional-auth');
       }
     });
   });

@@ -8,7 +8,11 @@ import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
 import { MembershipsService } from '../src/modules/organizations/memberships.service';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
-import { createPlatformUser, deleteIdentityData } from './helpers/identity';
+import {
+  createPlatformUser,
+  deleteIdentityData,
+  loginWithMfa,
+} from './helpers/identity';
 
 /**
  * Sesiones seguras y organizaciones con membresías (O0-BE-4; contrato O0
@@ -82,6 +86,18 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       .send({ email: who, password });
   }
 
+  /** Personal de plataforma: login + segundo factor (PLT-05). */
+  async function staffLogin(who: string, ip: string) {
+    const res = await loginWithMfa(
+      http,
+      prisma,
+      { email: who, password: PASSWORD },
+      { ip },
+    );
+    expect(res.status).toBe(200);
+    return res;
+  }
+
   async function signupOwnerWithWinery(name: string, ip: string) {
     const signup = await http()
       .post('/v1/auth/signup')
@@ -153,8 +169,8 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       password: PASSWORD,
     });
     superadminId = superadmin.id;
-    adminToken = (await login(email('admin'), adminIp).expect(200)).body.data
-      .tokens.accessToken;
+    adminToken = (await staffLogin(email('admin'), adminIp)).body.data.tokens
+      .accessToken;
 
     aliceIp = nextIp();
     const alice = await signupOwnerWithWinery('alice', aliceIp);
@@ -602,7 +618,7 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       expect(platform).toMatchObject({ role: 'SUPERADMIN', status: 'ACTIVE' });
 
       // Sigue entrando como plataforma (plataforma antes que bodega)
-      const again = await login(email('admin'), adminIp).expect(200);
+      const again = await staffLogin(email('admin'), adminIp);
       expect(again.body.data.activeOrganizationId).toBe(
         PLATFORM_ORGANIZATION_ID,
       );
@@ -695,8 +711,8 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         password: PASSWORD,
         role: 'SUPPORT',
       });
-      const token = (await login(email('support'), ip).expect(200)).body.data
-        .tokens.accessToken;
+      const token = (await staffLogin(email('support'), ip)).body.data.tokens
+        .accessToken;
       await http()
         .get(`/v1/terroirs?wineryId=${wineryA}`)
         .set('Authorization', `Bearer ${token}`)

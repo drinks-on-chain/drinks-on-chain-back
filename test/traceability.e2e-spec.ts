@@ -4,7 +4,11 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
-import { createPlatformUser, deleteIdentityData } from './helpers/identity';
+import {
+  createPlatformUser,
+  deleteIdentityData,
+  loginWithMfa,
+} from './helpers/identity';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -55,12 +59,11 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       fullName: 'Platform Admin',
     });
 
-    const adminLogin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: adminEmail,
-        password: 'Password123!',
-      });
+    const adminLogin = await loginWithMfa(
+      () => request(app.getHttpServer()),
+      prisma,
+      { email: adminEmail, password: 'Password123!' },
+    );
     platformAdminToken = adminLogin.body.data.tokens.accessToken;
 
     // 2. Crear Winery Admin para Bodega 1

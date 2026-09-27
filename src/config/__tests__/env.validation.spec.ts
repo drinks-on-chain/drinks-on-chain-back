@@ -12,6 +12,7 @@ describe('Environment Validation Schema (Joi)', () => {
     JWT_EXPIRES_IN: '900s',
     JWT_REFRESH_SECRET: 'super-secret-refresh-key-min-32-chars',
     CORS_ALLOWED_ORIGINS: 'http://localhost:3002',
+    TURNSTILE_SECRET_KEY: '1x0000000000000000000000000000000AA',
   };
 
   const without = (key: string): Record<string, unknown> => {
@@ -192,6 +193,46 @@ describe('Environment Validation Schema (Joi)', () => {
         CORS_ALLOWED_ORIGINS: 'https://erp.example.com,https://app.example.com',
       });
       expect(error).toBeUndefined();
+    });
+  });
+
+  describe('cuenta, segundo factor e invitaciones (contrato O1)', () => {
+    it('TURNSTILE_SECRET_KEY es obligatoria en producción', () => {
+      const { error } = envValidationSchema.validate({
+        ...without('TURNSTILE_SECRET_KEY'),
+        NODE_ENV: 'production',
+      });
+      expect(error?.message).toContain(
+        'TURNSTILE_SECRET_KEY is required in production',
+      );
+    });
+
+    it('fuera de producción todo es opcional', () => {
+      const { error } = envValidationSchema.validate(
+        without('TURNSTILE_SECRET_KEY'),
+      );
+      expect(error).toBeUndefined();
+    });
+
+    it('MFA_ENCRYPTION_KEY exige 32 caracteres', () => {
+      const { error } = envValidationSchema.validate({
+        ...validEnv,
+        MFA_ENCRYPTION_KEY: 'corta',
+      });
+      expect(error?.message).toContain('MFA_ENCRYPTION_KEY');
+    });
+
+    it('APP_URL_* deben ser URL http(s)', () => {
+      expect(
+        envValidationSchema.validate({
+          ...validEnv,
+          APP_URL_ERP: 'https://drinks-on-chain-erp.vercel.app',
+        }).error,
+      ).toBeUndefined();
+      expect(
+        envValidationSchema.validate({ ...validEnv, APP_URL_ERP: 'ftp://x' })
+          .error,
+      ).toBeDefined();
     });
   });
 });

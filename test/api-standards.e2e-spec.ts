@@ -5,7 +5,11 @@ import { randomUUID } from 'crypto';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
-import { createPlatformUser, deleteIdentityData } from './helpers/identity';
+import {
+  createPlatformUser,
+  deleteIdentityData,
+  loginWithMfa,
+} from './helpers/identity';
 import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 
 /**
@@ -46,10 +50,10 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
       fullName: 'Admin Estándares',
     });
     adminToken = (
-      await http()
-        .post('/v1/auth/login')
-        .send({ email: adminEmail, password: 'Password123!' })
-        .expect(200)
+      await loginWithMfa(http, prisma, {
+        email: adminEmail,
+        password: 'Password123!',
+      })
     ).body.data.tokens.accessToken;
 
     // Bodega activa con su dueño

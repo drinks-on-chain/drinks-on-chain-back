@@ -11,6 +11,9 @@ import { loadMockFixtures } from '../src/seed/fixtures';
 import { mockId } from '../src/seed/ids';
 import { runSeed } from '../src/seed/run-seed';
 import { SeedOptions } from '../src/seed/seed.options';
+import { demoInvitationToken } from '../src/seed/identity.seed';
+import { hashOpaqueToken } from '../src/shared/security/opaque-token';
+import { TEST_TOTP_SECRET, testMfaCrypto } from './helpers/identity';
 
 /**
  * Semilla de demostración (0.10, OPS-09) sobre una base vacía: un esquema
@@ -36,8 +39,12 @@ const options: SeedOptions = {
     password: `super-${randomBytes(8).toString('hex')}`,
     fullName: 'Superusuario de la prueba',
   },
-  demo: { password: DEMO_PASSWORD },
+  demo: { password: DEMO_PASSWORD, totpSecret: TEST_TOTP_SECRET },
   bcryptRounds: 4,
+  mfaKeys: {
+    jwtSecret: process.env.JWT_SECRET ?? null,
+    mfaEncryptionKey: process.env.MFA_ENCRYPTION_KEY ?? null,
+  },
 };
 
 const fx = loadMockFixtures();
@@ -239,6 +246,40 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
     expect(lot.bottlingDate.toISOString()).toBe('2026-03-01T00:00:00.000Z');
     expect(lot.labAnalysis?.id).toBe(mockId('lab:l01'));
     expect(lot.productionBatch?.restStatus).toBe('BOTTLED');
+  });
+
+  it('invitaciones de demostración con token secreto y TOTP del personal interno', async () => {
+    const invitations = await prisma.invitation.findMany();
+    expect(invitations).toHaveLength(fx.invitations.length);
+    const padcaya = fx.invitations.find(
+      (i) => i._mock.token === 'demo-invitacion-padcaya',
+    )!;
+    const row = invitations.find((i) => i.id === padcaya.id)!;
+    expect(row.tokenHash).toBe(
+      hashOpaqueToken(
+        demoInvitationToken(DEMO_PASSWORD, 'demo-invitacion-padcaya'),
+      ),
+    );
+    // El token legible de los mocks no sirve
+    expect(row.tokenHash).not.toBe(hashOpaqueToken('demo-invitacion-padcaya'));
+    expect(row.status).toBe('PENDING');
+    expect(row.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    const soporte = invitations.find(
+      (i) => i.email === 'soporte2@drinksonchain.test',
+    )!;
+    expect(soporte.organizationId).toBe(PLATFORM_ORGANIZATION_ID);
+
+    const mfa = await prisma.userMfa.findMany({
+      include: { user: { select: { email: true } } },
+    });
+    expect(mfa.map((m) => m.user.email).sort()).toEqual([
+      'administracion@drinksonchain.test',
+      'operaciones@drinksonchain.test',
+      'soporte@drinksonchain.test',
+    ]);
+    expect(testMfaCrypto().decrypt(mfa[0].secretEncrypted!)).toBe(
+      TEST_TOTP_SECRET,
+    );
   });
 
   it('una dueña de demostración inicia sesión y ve sus parcelas', async () => {

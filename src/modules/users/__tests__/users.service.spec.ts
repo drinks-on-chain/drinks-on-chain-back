@@ -6,6 +6,8 @@ import { MembershipsService } from '@modules/organizations/memberships.service';
 import { SessionsService } from '@modules/auth/sessions/sessions.service';
 import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { NotFoundException } from '@nestjs/common';
+import { PrismaService } from '@shared/prisma/prisma.service';
+import { AuditService } from '@shared/audit/audit.service';
 import {
   UserRoleEnum,
   WineryMemberRoleEnum,
@@ -34,6 +36,17 @@ describe('UsersService', () => {
     revokeAllForUser: jest.fn().mockResolvedValue(2),
   };
 
+  const txClient = { user: { update: jest.fn() } };
+  const mockPrisma = {
+    user: { findUnique: jest.fn() },
+    tx: txClient,
+    $transaction: jest.fn((fn: (tx: typeof txClient) => unknown) =>
+      fn(txClient),
+    ),
+  };
+
+  const mockAudit = { record: jest.fn() };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -42,6 +55,8 @@ describe('UsersService', () => {
         { provide: WalletsService, useValue: mockWalletsService },
         { provide: MembershipsService, useValue: mockMemberships },
         { provide: SessionsService, useValue: mockSessions },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
 
@@ -108,75 +123,91 @@ describe('UsersService', () => {
     });
   });
 
-  describe('updateProfile', () => {
-    it('debe actualizar los datos de perfil y retornar el perfil renovado', async () => {
-      mockUserRepository.update.mockResolvedValue({});
-      jest.spyOn(service, 'getProfile').mockResolvedValue({
-        id: 'user-uuid-1',
-        email: 'valeria@kohlberg.bo',
-        fullName: 'Valeria Soliz Updated',
-        userRole: UserRoleEnum.ENOLOGIST,
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
-        isActive: true,
-        lastLoginAt: null,
-        createdAt: new Date(),
-        wineryMemberships: [],
-        primaryWallet: null,
-      });
+  describe('getMe y updateMe (contrato O0 §5, O1 §1)', () => {
+    const repoUser = {
+      id: 'user-uuid-1',
+      email: 'valeria@kohlberg.bo',
+      fullName: 'Valeria',
+      userRole: UserRoleEnum.ENOLOGIST,
+      phoneNumber: null,
+      preferredLocale: 'es',
+      isActive: true,
+      lastLoginAt: null,
+      createdAt: new Date('2026-09-01T00:00:00Z'),
+      notificationPrefs: { lotProgress: true },
+      promotionsConsentAt: null as Date | null,
+      wineryMemberships: [],
+      wallets: [],
+    };
+    const membership = {
+      id: 'm1',
+      organizationId: 'winery-1',
+      organizationType: 'WINERY' as const,
+      organizationName: 'Bodega',
+      organizationStatus: 'ACTIVE' as const,
+      role: 'ENOLOGIST' as const,
+      status: 'ACTIVE' as const,
+    };
+    const principal = {
+      id: 'user-uuid-1',
+      organizationId: 'winery-1',
+    } as AuthenticatedUser;
 
-      const result = await service.updateProfile('user-uuid-1', {
-        fullName: 'Valeria Soliz Updated',
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
-      });
-
-      expect(mockUserRepository.update).toHaveBeenCalledWith('user-uuid-1', {
-        fullName: 'Valeria Soliz Updated',
-        phoneNumber: '+59170099999',
-        preferredLocale: 'en',
-      });
-      expect(result.fullName).toBe('Valeria Soliz Updated');
-    });
-  });
-
-  describe('getMe (contrato O0 §5)', () => {
-    it('devuelve { user (con audience), memberships, activeOrganizationId }', async () => {
-      const profile = {
-        id: 'user-uuid-1',
-        email: 'valeria@kohlberg.bo',
-        fullName: 'Valeria',
-        userRole: UserRoleEnum.ENOLOGIST,
-        phoneNumber: null,
-        preferredLocale: 'es',
-        isActive: true,
-        lastLoginAt: null,
-        createdAt: new Date(),
-        wineryMemberships: [],
-        primaryWallet: null,
-      };
-      jest.spyOn(service, 'getProfile').mockResolvedValue(profile);
-      const membership = {
-        id: 'm1',
-        organizationId: 'winery-1',
-        organizationType: 'WINERY' as const,
-        organizationName: 'Bodega',
-        organizationStatus: 'ACTIVE' as const,
-        role: 'ENOLOGIST' as const,
-        status: 'ACTIVE' as const,
-      };
+    it('getMe: { user (audience y preferencias), memberships, activeOrganizationId }', async () => {
+      mockUserRepository.findById.mockResolvedValue(repoUser);
       mockMemberships.listForUser.mockResolvedValue([membership]);
 
-      const me = await service.getMe({
-        id: 'user-uuid-1',
-        organizationId: 'winery-1',
-      } as AuthenticatedUser);
+      const me = await service.getMe(principal);
 
-      expect(me).toEqual({
-        user: { ...profile, audience: 'STAFF' },
-        memberships: [membership],
-        activeOrganizationId: 'winery-1',
+      expect(me.user).toMatchObject({
+        id: 'user-uuid-1',
+        audience: 'STAFF',
+        notificationPrefs: { lotProgress: true, redemptionReminders: true },
+        promotionsConsent: false,
       });
+      expect(me.memberships).toEqual([membership]);
+      expect(me.activeOrganizationId).toBe('winery-1');
+    });
+
+    it('updateMe: preferencias parciales, consentimiento con fecha y bitácora', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(repoUser);
+      mockPrisma.tx.user.update.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) => ({
+          ...repoUser,
+          ...data,
+        }),
+      );
+      mockUserRepository.findById.mockResolvedValue(repoUser);
+      mockMemberships.listForUser.mockResolvedValue([membership]);
+
+      const me = await service.updateMe(principal, {
+        fullName: '  Valeria Soliz ',
+        notificationPrefs: { redemptionReminders: false },
+        promotionsConsent: true,
+      });
+
+      const data = mockPrisma.tx.user.update.mock.calls[0][0].data;
+      expect(data.fullName).toBe('Valeria Soliz');
+      expect(data.notificationPrefs).toEqual({
+        lotProgress: true,
+        redemptionReminders: false,
+      });
+      expect(data.promotionsConsentAt).toBeInstanceOf(Date);
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        mockPrisma.tx,
+        expect.objectContaining({ action: 'USER_PROFILE_UPDATED' }),
+      );
+      expect(me).toHaveProperty('memberships');
+    });
+
+    it('updateMe sin cambios no escribe', async () => {
+      mockPrisma.user.findUnique.mockResolvedValue(repoUser);
+      mockUserRepository.findById.mockResolvedValue(repoUser);
+      mockMemberships.listForUser.mockResolvedValue([]);
+
+      await service.updateMe(principal, { promotionsConsent: false });
+
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
     });
   });
 

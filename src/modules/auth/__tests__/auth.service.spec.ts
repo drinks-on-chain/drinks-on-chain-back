@@ -13,10 +13,12 @@ import { SessionsService } from '../sessions/sessions.service';
 import { SessionRevocationStore } from '../sessions/session-revocation.store';
 import { AccessTokenService } from '../sessions/access-token.service';
 import { LoginAttemptsService } from '../rate-limit/login-attempts.service';
+import { MfaService } from '../mfa/mfa.service';
 
 const SID = '6f1c2b7e-0d4e-4c1a-9f3b-8a7d6e5c4b3a';
 const WINERY_A = '11111111-1111-4111-8111-00000000000a';
 const WINERY_B = '11111111-1111-4111-8111-00000000000b';
+const PLATFORM = '00000000-0000-4000-8000-000000000001';
 
 const membership = (
   organizationId: string,
@@ -56,6 +58,7 @@ describe('AuthService', () => {
     revokeAllForUser: jest.fn(),
     identifyByRefresh: jest.fn(),
     setActiveOrganization: jest.fn(),
+    findById: jest.fn(),
     ttlSecondsFor: jest.fn((audience: AudienceEnum) =>
       audience === AudienceEnum.CONSUMER ? 30 * 86400 : 7 * 86400,
     ),
@@ -76,9 +79,22 @@ describe('AuthService', () => {
     recordSuccess: jest.fn(),
   };
   const wallets = { provisionUserWallet: jest.fn() };
+  const mfa = { startChallenge: jest.fn() };
   const client = { ip: '203.0.113.7', userAgent: 'jest' };
 
   let service: AuthService;
+
+  /** Login que debe abrir sesión (no reto de segundo factor). */
+  async function loginSession(
+    dto: { email: string; password: string },
+    info: typeof client,
+  ) {
+    const outcome = await service.login(dto, info);
+    if (outcome.kind !== 'session') {
+      throw new Error('Se esperaba una sesión');
+    }
+    return outcome.issued;
+  }
 
   beforeAll(async () => {
     baseUser.passwordHash = await bcrypt.hash('Password123!', 4);
@@ -94,6 +110,7 @@ describe('AuthService', () => {
       memberships as unknown as MembershipsService,
       loginAttempts as unknown as LoginAttemptsService,
       wallets as unknown as WalletsService,
+      mfa as unknown as MfaService,
     );
     loginAttempts.lockedFor.mockResolvedValue(0);
     loginAttempts.recordFailure.mockResolvedValue(0);
@@ -111,7 +128,7 @@ describe('AuthService', () => {
         membership(WINERY_B, { role: 'ENOLOGIST' }),
       ]);
 
-      const issued = await service.login(
+      const issued = await loginSession(
         { email: ' Duena@Bodega.bo ', password: 'Password123!' },
         client,
       );
@@ -165,7 +182,7 @@ describe('AuthService', () => {
         membership(WINERY_B, { role: 'ENOLOGIST' }),
       ]);
 
-      const issued = await service.login(
+      const issued = await loginSession(
         { email: baseUser.email, password: 'Password123!' },
         client,
       );
@@ -182,7 +199,7 @@ describe('AuthService', () => {
       });
       memberships.listForUser.mockResolvedValue([]);
 
-      const issued = await service.login(
+      const issued = await loginSession(
         { email: baseUser.email, password: 'Password123!' },
         client,
       );
@@ -343,6 +360,132 @@ describe('AuthService', () => {
       const issued = await service.refresh('raw');
 
       expect(issued.body.activeOrganizationId).toBe(WINERY_A);
+    });
+
+    it('sesión de plataforma sin segundo factor: se revoca (MFA_REQUIRED)', async () => {
+      memberships.listForUser.mockResolvedValue([
+        membership(PLATFORM, {
+          organizationType: 'PLATFORM',
+          role: 'ADMIN',
+        }),
+      ]);
+      sessions.validateRefresh.mockResolvedValue(
+        validated({ activeOrganizationId: PLATFORM, mfaVerifiedAt: null }),
+      );
+      await expect(service.refresh('raw')).rejects.toMatchObject({
+        statusCode: 401,
+        errorCode: 'AUTH_SESSION_REVOKED',
+      });
+      expect(sessions.revoke).toHaveBeenCalledWith(SID, 'MFA_REQUIRED');
+    });
+
+    it('sin organización activa y sin segundo factor no elige la de plataforma', async () => {
+      memberships.listForUser.mockResolvedValue([
+        membership(PLATFORM, {
+          organizationType: 'PLATFORM',
+          role: 'ADMIN',
+          status: 'BLOCKED',
+        }),
+        membership(WINERY_A),
+      ]);
+      sessions.validateRefresh.mockResolvedValue(
+        validated({ activeOrganizationId: null, mfaVerifiedAt: null }),
+      );
+      const issued = await service.refresh('raw');
+      expect(issued.body.activeOrganizationId).toBe(WINERY_A);
+    });
+  });
+
+  describe('segundo factor (PLT-05)', () => {
+    const platformMembership = membership(PLATFORM, {
+      organizationType: 'PLATFORM',
+      organizationName: 'Drinks on Chain',
+      role: 'ADMIN',
+    });
+
+    it('login de personal de plataforma: reto sin sesión', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser);
+      memberships.listForUser.mockResolvedValue([
+        platformMembership,
+        membership(WINERY_A),
+      ]);
+      const body = {
+        mfa: { required: true, enrolled: true, mfaToken: 'reto' },
+      };
+      mfa.startChallenge.mockResolvedValue(body);
+
+      const outcome = await service.login(
+        { email: baseUser.email, password: 'Password123!' },
+        client,
+      );
+
+      expect(outcome).toEqual({ kind: 'mfa', body });
+      expect(sessions.create).not.toHaveBeenCalled();
+      expect(loginAttempts.recordSuccess).toHaveBeenCalled();
+    });
+
+    it('membresía de plataforma bloqueada: login normal a su bodega', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser);
+      memberships.listForUser.mockResolvedValue([
+        { ...platformMembership, status: 'BLOCKED' },
+        membership(WINERY_A),
+      ]);
+      const issued = await loginSession(
+        { email: baseUser.email, password: 'Password123!' },
+        client,
+      );
+      expect(issued.body.activeOrganizationId).toBe(WINERY_A);
+      expect(mfa.startChallenge).not.toHaveBeenCalled();
+    });
+
+    it('completeMfa abre la sesión marcada con el segundo factor y la organización del reto', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser);
+      memberships.listForUser.mockResolvedValue([
+        platformMembership,
+        membership(WINERY_A),
+      ]);
+      const issued = await service.completeMfa(
+        { userId: 'user-1', organizationId: WINERY_A },
+        client,
+      );
+      expect(sessions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mfaVerified: true,
+          activeOrganizationId: WINERY_A,
+        }),
+      );
+      expect(issued.body.activeOrganizationId).toBe(WINERY_A);
+    });
+
+    it('completeMfa sin organización del reto: plataforma primero', async () => {
+      prisma.user.findUnique.mockResolvedValue(baseUser);
+      memberships.listForUser.mockResolvedValue([
+        platformMembership,
+        membership(WINERY_A),
+      ]);
+      const issued = await service.completeMfa(
+        { userId: 'user-1', organizationId: null },
+        client,
+      );
+      expect(issued.body.activeOrganizationId).toBe(PLATFORM);
+    });
+
+    it('switch-organization a plataforma sin TOTP en la sesión → 403 AUTH_MFA_REQUIRED', async () => {
+      memberships.findForUser.mockResolvedValue(platformMembership);
+      sessions.findById.mockResolvedValue({ id: SID, mfaVerifiedAt: null });
+      await expect(
+        service.switchOrganization(
+          {
+            id: 'user-1',
+            sessionId: SID,
+          } as AuthenticatedUser,
+          PLATFORM,
+          `${SID}.3.${'s'.repeat(43)}`,
+        ),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+        errorCode: 'AUTH_MFA_REQUIRED',
+      });
     });
   });
 

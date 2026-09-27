@@ -4,7 +4,11 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
-import { createPlatformUser, deleteIdentityData } from './helpers/identity';
+import {
+  createPlatformUser,
+  deleteIdentityData,
+  loginWithMfa,
+} from './helpers/identity';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -214,13 +218,12 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       fullName: 'Admin Plataforma DoC',
     });
 
-    const loginAdmin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: platformAdminEmail,
-        password: 'Password123!',
-      })
-      .expect(200);
+    const loginAdmin = await loginWithMfa(
+      () => request(app.getHttpServer()),
+      prisma,
+      { email: platformAdminEmail, password: 'Password123!' },
+    );
+    expect(loginAdmin.status).toBe(200);
 
     platformAdminToken = loginAdmin.body.data.tokens.accessToken;
     expect(loginAdmin.body.data.memberships).toEqual([

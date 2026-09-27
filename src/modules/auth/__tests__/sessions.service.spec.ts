@@ -38,6 +38,7 @@ function sessionRow(overrides: Partial<Session> = {}): Session {
     createdAt: new Date(),
     lastUsedAt: new Date(),
     expiresAt: new Date(Date.now() + 86400_000),
+    mfaVerifiedAt: null,
     revokedAt: null,
     revokedReason: null,
     ip: null,
