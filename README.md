@@ -148,6 +148,8 @@ drinks-on-chain-backend/
    ```
    Estándares completos (A-33: listas, errores, `Idempotency-Key`, 429 con `Retry-After`) en [`docs/rules/03-formato-respuestas.md`](docs/rules/03-formato-respuestas.md).
 
+   Los `Decimal` de Prisma salen como **números JSON** (`"surfaceHectares": 5`, no `"5"`), como declara `openapi.json`: los convierte `ResponseTransformInterceptor` (`src/shared/utils/decimal-json.util.ts`). La bitácora (`before`/`after`) guarda los decimales como texto exacto, igual que antes. Para comprobar una respuesta contra el contrato en un e2e: `loadOpenApiValidator().expectResponse('get', path, res)` (`test/helpers/openapi-validator.ts`).
+
 ---
 
 ## ⚙️ 5. Pasos para Levantar el Proyecto
@@ -209,6 +211,7 @@ pnpm lint            # ESLint 9 (flat config) + Prettier, sin --fix (pnpm lint:f
 pnpm typecheck       # tsc --noEmit en modo estricto
 pnpm test            # unitarias (incluye la prueba del contrato OpenAPI)
 pnpm test:e2e        # e2e contra Postgres, Redis y Mailpit reales (docker compose up -d y el .env; S3_E2E=true añade MinIO)
+                     # incluye el contrato: las respuestas del ERP validan contra openapi.json (tipos incluidos)
 pnpm build
 pnpm openapi:generate   # si cambió la API: regenera openapi.json y se versiona en el mismo commit
 docker build .       # imagen de producción
@@ -231,7 +234,7 @@ Una sola imagen, dos procesos (docs-back/03 §2 y §4):
 | Proceso | Comando | Qué hace |
 |---|---|---|
 | `api` | `node dist/main.js` (`pnpm start:prod`) | HTTP `/v1`: valida, autoriza, escribe en PostgreSQL y en el **outbox** en la misma transacción y responde. Nunca espera a la red ni al correo |
-| `worker` | `node dist/worker.js` (`pnpm start:worker`) | Sin HTTP. Publica el outbox en BullMQ, procesa las colas `chain`, `email`, `scheduled` y `default`, ejecuta las tareas programadas y escribe un latido para su healthcheck (`node dist/worker-healthcheck.js`) |
+| `worker` | `node dist/worker.js` (`pnpm start:worker`) | Sin HTTP. Publica el outbox en BullMQ, procesa las colas `chain`, `email`, `scheduled` y `default`, ejecuta las tareas programadas y escribe un latido para su healthcheck (`node dist/worker-healthcheck.js`) y en Redis (`<QUEUE_PREFIX>:worker:heartbeat`, lo lee `/v1/health/ready` → `worker: up \| down`) |
 
 ```mermaid
 flowchart LR

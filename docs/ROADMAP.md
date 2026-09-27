@@ -106,3 +106,8 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `GET /v1/platform/dashboard` con bodegas, miembros bloqueados, alertas y últimos eventos · 2026-09-27
   - [ ] Contadores de solicitudes e invitaciones con los modelos de las partes A y B (hoy SQL detrás de `to_regclass`; cero si no existen)
   - [ ] Correos de la etapa (CMP-02) y registro en la bitácora de las acciones de las partes A y B
+- [x] **Corrección H0 · decimales y contrato** (error real detectado por el e2e `h0` del ERP) · 2026-09-27
+  - [x] Los `Decimal` de Prisma (y de decimal.js) salen como **número JSON** en todas las respuestas (`ResponseTransformInterceptor`) y en las repeticiones idempotentes; la bitácora (`before/after`) y el CSV no cambian (decimales como texto exacto) · 2026-09-27
+  - [x] `openapi.json` con tipos reales: anulables (`nullable`) con su tipo en lugar de `object`, relaciones anidadas de los detalles, esquemas del DAG, del pasaporte público, del reposo inerte y de lecturas y tratamientos de cuba · 2026-09-27
+  - [x] Validador genérico de respuestas contra `openapi.json` (`test/helpers/openapi-validator.ts`, Ajv) y e2e de contrato con un recurso de cada módulo del ERP sobre la semilla de demo · 2026-09-27
+  - [x] `/v1/health/ready` con `worker: up | down` (latido del worker en Redis con caducidad); sin worker, 200 y `degraded` · 2026-09-27

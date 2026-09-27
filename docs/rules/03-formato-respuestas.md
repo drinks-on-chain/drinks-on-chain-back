@@ -348,6 +348,14 @@ create(@Body() dto: CreateTerroirDto) { … }
 
 ## Convenciones Adicionales
 
+### Números, decimales y fechas (27-09-2026)
+- Toda columna `Decimal` sale como **número JSON** (`"surfaceHectares": 5`), nunca como texto: `ResponseTransformInterceptor` convierte los `Prisma.Decimal` de `data` (`decimalsToNumbers`, `src/shared/utils/decimal-json.util.ts`). No hace falta `Number(...)` en los servicios.
+- En OpenAPI, un campo anulable declara su tipo y `nullable: true` (`@ApiPropertyOptional({ type: Number, nullable: true })`); sin `type`, `@nestjs/swagger` lo publica como `object`.
+- Las columnas `Decimal` no pasan de 15 dígitos (caben en un `double`). El dinero va en **enteros de centavos**, no en decimales.
+- Fechas en ISO 8601 UTC (`2026-09-27T12:00:00.000Z`).
+- La bitácora (`before`/`after`) guarda los decimales como texto exacto: es lo que se usó para el hash.
+- Cada e2e puede validar sus respuestas con `loadOpenApiValidator()` (`test/helpers/openapi-validator.ts`).
+
 ### POST que crea un recurso → 201 Created
 ```typescript
 @Post()

@@ -60,11 +60,11 @@ Pendiente: antivirus y cuotas por rol (SE-04, fuera de esta tarea); en el servid
 
 | Ruta | Qué mira | Uso |
 |---|---|---|
-| `GET /v1/health` | Base de datos y Redis (`status`), más `storage` informativo | Healthcheck de la imagen (`Dockerfile`) y de `deploy.sh` |
+| `GET /v1/health` | Base de datos y Redis (`status`), más `storage` y `worker` informativos | Healthcheck de la imagen (`Dockerfile`) y de `deploy.sh` |
 | `GET /v1/health/live` | Nada (el proceso responde), con `release` | Liveness |
-| `GET /v1/health/ready` | Base de datos, Redis y almacenamiento; 503 si falta alguno | Readiness |
+| `GET /v1/health/ready` | Base de datos, Redis y almacenamiento (503 si falta alguno) y `worker: up \| down` | Readiness |
 
-El worker tiene su propio latido (`dist/worker-healthcheck.js`, ver [outbox](outbox.md)).
+El worker tiene su propio latido: el archivo `WORKER_HEARTBEAT_FILE` para el healthcheck de su contenedor (`dist/worker-healthcheck.js`, ver [outbox](outbox.md)) y la clave `<QUEUE_PREFIX>:worker:heartbeat` en Redis, que caduca a los `WORKER_HEARTBEAT_MAX_AGE_MS` (60 s). Ambos se reescriben solo con Postgres, Redis, el relay y las colas sanos. La API lee la clave: `worker: 'up'` si existe. **El worker no hace fallar la readiness** (la API atiende sin él); sin latido, `/ready` responde 200 con `status: 'degraded'` (no se procesan colas ni correos). `/health` no depende del worker: el worker arranca cuando la API está sana. API y worker deben compartir `QUEUE_PREFIX` (por defecto `doc`).
 
 ## Logs (OPS-03)
 
