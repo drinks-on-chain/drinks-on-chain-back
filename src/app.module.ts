@@ -31,6 +31,7 @@ import { RedisModule } from './shared/redis/redis.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { MailModule } from './modules/mail/mail.module';
 import { AuditQueryModule } from './modules/audit/audit-query.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { AuditQueryModule } from './modules/audit/audit-query.module';
     SettingsModule,
     MailModule,
     AuditQueryModule,
+    DashboardModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →
