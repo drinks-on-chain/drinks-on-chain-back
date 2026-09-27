@@ -19,6 +19,43 @@ model SystemHealth {
 }
 
 // -----------------------------------------------------------------------------
+// OUTBOX TRANSACCIONAL (OPS-04, ADR-005)
+// Se escribe en la misma transacción que la operación de negocio; el worker lo
+// publica en BullMQ (src/worker/outbox-relay.service.ts).
+// -----------------------------------------------------------------------------
+enum OutboxStatusEnum {
+  PENDING
+  PROCESSING
+  DONE
+  FAILED
+
+  @@map("outbox_status_enum")
+}
+
+model OutboxEvent {
+  id            String           @id @default(uuid()) @db.Uuid
+  eventType     String           @map("event_type") @db.VarChar(100)
+  aggregateType String           @map("aggregate_type") @db.VarChar(100)
+  aggregateId   String           @map("aggregate_id") @db.VarChar(100)
+  queue         String           @default("default") @db.VarChar(50)
+  payload       Json             @db.JsonB
+  correlationId String?          @map("correlation_id") @db.VarChar(100)
+  status        OutboxStatusEnum @default(PENDING)
+  attempts      Int              @default(0)
+  nextAttemptAt DateTime         @default(now()) @map("next_attempt_at") @db.Timestamptz(6)
+  lockedAt      DateTime?        @map("locked_at") @db.Timestamptz(6)
+  lastError     String?          @map("last_error") @db.Text
+  processedAt   DateTime?        @map("processed_at") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([status, nextAttemptAt])
+  @@index([status, processedAt])
+  @@index([aggregateType, aggregateId])
+  @@map("outbox_events")
+}
+
+// -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
 enum UserRoleEnum {
