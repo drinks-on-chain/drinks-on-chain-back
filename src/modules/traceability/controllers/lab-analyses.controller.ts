@@ -30,6 +30,7 @@ import {
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Laboratorio Físico-Químico')
 @ApiBearerAuth('JWT-auth')
@@ -40,6 +41,7 @@ export class LabAnalysesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(
     UserRoleEnum.WINERY_ADMIN,
     UserRoleEnum.ENOLOGIST,

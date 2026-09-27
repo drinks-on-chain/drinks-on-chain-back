@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { WineryMember, WineryMemberRoleEnum } from '@prisma/client';
+import { Prisma, WineryMember, WineryMemberRoleEnum } from '@prisma/client';
 
 @Injectable()
 export class WineryMemberRepository {
@@ -39,19 +39,28 @@ export class WineryMemberRepository {
     });
   }
 
-  async findMembersByWineryId(wineryId: string) {
-    return this.prisma.wineryMember.findMany({
-      where: { wineryId, isActive: true },
-      include: {
-        user: {
-          select: {
-            id: true,
-            fullName: true,
-            email: true,
+  /** Miembros activos de la bodega (una página) y su total. */
+  async findMembersByWineryId(
+    wineryId: string,
+    page: { take: number; skip: number },
+  ) {
+    const where: Prisma.WineryMemberWhereInput = { wineryId, isActive: true };
+    return Promise.all([
+      this.prisma.wineryMember.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              fullName: true,
+              email: true,
+            },
           },
         },
-      },
-      orderBy: { joinedAt: 'asc' },
-    });
+        orderBy: [{ joinedAt: 'asc' }, { id: 'asc' }],
+        ...page,
+      }),
+      this.prisma.wineryMember.count({ where }),
+    ]);
   }
 }

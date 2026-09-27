@@ -43,6 +43,9 @@ import {
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
 
 @ApiTags('Bodegas y Productores')
 @ApiBearerAuth('JWT-auth')
@@ -81,14 +84,13 @@ export class WineriesController {
     description:
       'Retorna el directorio completo de bodegas con soporte de filtros por estado, categoría y paginación.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Directorio de bodegas obtenido exitosamente',
-  })
   @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
+  @ApiPaginatedResponse(WineryResponseDto, {
+    description: 'Directorio de bodegas (página)',
+  })
   async findAllWineries(
     @Query() query: QueryWineriesDto,
-  ): Promise<{ items: WineryResponseDto[]; total: number }> {
+  ): Promise<Paginated<WineryResponseDto>> {
     return this.wineriesService.findAllWineries(query);
   }
 
@@ -184,15 +186,14 @@ export class WineriesController {
     summary: 'Listar miembros operativos de la bodega',
     description: 'Retorna la lista de miembros activos en la bodega actual.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Lista de miembros obtenida exitosamente',
-    type: [WineryMemberItemDto],
+  @ApiPaginatedResponse(WineryMemberItemDto, {
+    description: 'Página de miembros activos de la bodega',
   })
   async getMyMembers(
     @TenantId() tenantId: string,
-  ): Promise<WineryMemberItemDto[]> {
-    return this.wineriesService.getMyMembers(tenantId);
+    @Query() query: PaginationQueryDto,
+  ): Promise<Paginated<WineryMemberItemDto>> {
+    return this.wineriesService.getMyMembers(tenantId, query);
   }
 
   @Get('pending')
@@ -204,14 +205,14 @@ export class WineriesController {
     description:
       'Obtiene todas las solicitudes de bodegas en estado PENDING para revisión y certificación legal.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Lista de bodegas pendientes',
-    type: [WineryResponseDto],
-  })
   @ApiForbiddenResponse({ description: 'Requiere rol PLATFORM_ADMIN' })
-  async getPendingWineries(): Promise<WineryResponseDto[]> {
-    return this.wineriesService.getPendingWineries();
+  @ApiPaginatedResponse(WineryResponseDto, {
+    description: 'Página de bodegas pendientes',
+  })
+  async getPendingWineries(
+    @Query() query: PaginationQueryDto,
+  ): Promise<Paginated<WineryResponseDto>> {
+    return this.wineriesService.getPendingWineries(query);
   }
 
   @Post(':id/approve')

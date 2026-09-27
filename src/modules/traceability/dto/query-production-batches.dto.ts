@@ -1,9 +1,9 @@
-import { IsOptional, IsEnum, IsUUID, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsEnum, IsUUID } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
 
-export class QueryProductionBatchesDto {
+export class QueryProductionBatchesDto extends PaginationQueryDto {
   @ApiPropertyOptional({ enum: ProductionProcessEnum })
   @IsOptional()
   @IsEnum(ProductionProcessEnum)
@@ -18,18 +18,4 @@ export class QueryProductionBatchesDto {
   @IsOptional()
   @IsUUID()
   fermentationTankId?: string;
-
-  @ApiPropertyOptional({ default: 50 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
-
-  @ApiPropertyOptional({ default: 0 })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number = 0;
 }

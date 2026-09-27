@@ -1,6 +1,5 @@
 import { Readable } from 'stream';
 import { Test, TestingModule } from '@nestjs/testing';
-import { BadRequestException } from '@nestjs/common';
 import { UploadsController } from '../uploads.controller';
 import {
   STORAGE_SERVICE,
@@ -73,10 +72,14 @@ describe('UploadsController', () => {
       });
     });
 
-    it('debe lanzar BadRequestException si no se envía ningún archivo', async () => {
+    it('debe lanzar 422 VALIDATION_ERROR en file si no se envía ningún archivo', async () => {
       await expect(
         controller.uploadFile(null as unknown as Express.Multer.File),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'file', message: expect.any(String) }],
+      });
     });
   });
 });

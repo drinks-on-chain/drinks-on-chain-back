@@ -33,6 +33,8 @@ import {
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Vinificación y Fermentación')
 @ApiBearerAuth('JWT-auth')
@@ -43,6 +45,7 @@ export class FermentationController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Registrar nueva cuba de fermentación',
@@ -71,6 +74,9 @@ export class FermentationController {
     summary: 'Listar cubas de fermentación',
     description:
       'Retorna las cubas de fermentación activas con filtros por estado y lote de vendimia.',
+  })
+  @ApiPaginatedResponse(FermentationTankResponseDto, {
+    description: 'Página de cubas de fermentación',
   })
   async findTanks(
     @TenantId() wineryId: string | undefined,
@@ -105,6 +111,7 @@ export class FermentationController {
 
   @Post(':id/logs')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(
     UserRoleEnum.WINERY_ADMIN,
     UserRoleEnum.ENOLOGIST,
@@ -130,6 +137,7 @@ export class FermentationController {
 
   @Post(':id/treatments')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.ENOLOGIST, UserRoleEnum.WINERY_ADMIN)
   @ApiOperation({
     summary: 'Registrar tratamiento enológico autorizado',

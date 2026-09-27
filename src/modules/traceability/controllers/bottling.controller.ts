@@ -32,6 +32,8 @@ import {
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Fraccionamiento y Embotellado')
 @ApiBearerAuth('JWT-auth')
@@ -42,6 +44,7 @@ export class BottlingController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Registrar lote de embotellado y fraccionamiento',
@@ -74,6 +77,9 @@ export class BottlingController {
     summary: 'Listar lotes embotellados',
     description:
       'Retorna los lotes de embotellado de la bodega con filtros por tipo de bebida.',
+  })
+  @ApiPaginatedResponse(BottlingBatchResponseDto, {
+    description: 'Página de lotes embotellados',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,

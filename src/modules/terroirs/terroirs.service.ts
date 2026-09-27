@@ -4,6 +4,8 @@ import { CreateTerroirDto } from './dto/create-terroir.dto';
 import { UpdateTerroirDto } from './dto/update-terroir.dto';
 import { QueryTerroirsDto } from './dto/query-terroirs.dto';
 import { Prisma, Terroir } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
 
 @Injectable()
 export class TerroirsService {
@@ -46,7 +48,7 @@ export class TerroirsService {
   async findAll(
     wineryId: string | undefined,
     query: QueryTerroirsDto,
-  ): Promise<{ items: Terroir[]; total: number }> {
+  ): Promise<Paginated<Terroir>> {
     const where: Prisma.TerroirWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.isDoEligible !== undefined && {
@@ -64,14 +66,13 @@ export class TerroirsService {
     const [items, total] = await Promise.all([
       this.prisma.terroir.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { createdAt: 'desc' },
       }),
       this.prisma.terroir.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
   async findById(wineryId: string | undefined, id: string) {

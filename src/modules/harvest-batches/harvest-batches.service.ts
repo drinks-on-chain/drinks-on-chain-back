@@ -1,14 +1,12 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
 import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
 import { QueryHarvestBatchesDto } from './dto/query-harvest-batches.dto';
 import { Prisma, HarvestBatch, PhytoStatusEnum } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 
 @Injectable()
 export class HarvestBatchesService {
@@ -33,7 +31,8 @@ export class HarvestBatchesService {
 
     // 2. Validar balance de pesaje
     if (dto.grossWeightKg <= dto.tareWeightKg) {
-      throw new BadRequestException(
+      throw ValidationException.forField(
+        'grossWeightKg',
         'El peso bruto debe ser estrictamente mayor al peso tara',
       );
     }
@@ -93,7 +92,7 @@ export class HarvestBatchesService {
   async findAll(
     wineryId: string | undefined,
     query: QueryHarvestBatchesDto,
-  ): Promise<{ items: HarvestBatch[]; total: number }> {
+  ): Promise<Paginated<HarvestBatch>> {
     const where: Prisma.HarvestBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.harvestYear && { harvestYear: query.harvestYear }),
@@ -106,8 +105,7 @@ export class HarvestBatchesService {
     const [items, total] = await Promise.all([
       this.prisma.harvestBatch.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { intakeDate: 'desc' },
         include: {
           terroir: true,
@@ -116,7 +114,7 @@ export class HarvestBatchesService {
       this.prisma.harvestBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
   async findById(wineryId: string | undefined, id: string) {

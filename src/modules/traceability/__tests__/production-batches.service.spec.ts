@@ -2,7 +2,6 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductionBatchesService } from '../services/production-batches.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { BadRequestException } from '@nestjs/common';
 import { Prisma, ProductionProcessEnum, RestStatusEnum } from '@prisma/client';
 
 describe('ProductionBatchesService', () => {
@@ -105,7 +104,7 @@ describe('ProductionBatchesService', () => {
       expect(result).toEqual(mockProdBatch);
     });
 
-    it('debe lanzar BadRequestException si el balance de masa excede el volumen cargado', async () => {
+    it('debe lanzar 422 VALIDATION_ERROR si el balance de masa excede el volumen cargado', async () => {
       mockPrismaService.fermentationTank.findFirst.mockResolvedValue(mockTank);
 
       const dto = {
@@ -119,7 +118,11 @@ describe('ProductionBatchesService', () => {
 
       await expect(
         service.createDistillationBatch(mockWineryId, dto),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        errorCode: 'VALIDATION_ERROR',
+        details: [{ field: 'outputVolumeLiters', message: expect.any(String) }],
+      });
     });
   });
 

@@ -2,10 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BottlingService } from '../services/bottling.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
-import {
-  BadRequestException,
-  UnprocessableEntityException,
-} from '@nestjs/common';
+import { UnprocessableEntityException } from '@nestjs/common';
 import { Prisma, BeverageTypeEnum } from '@prisma/client';
 import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 
@@ -137,7 +134,7 @@ describe('BottlingService', () => {
       expect(result).toEqual(mockBottlingBatch);
     });
 
-    it('debe lanzar BadRequestException si no se especifica lote de crianza ni de destilación', async () => {
+    it('debe lanzar 422 VALIDATION_ERROR si no se especifica lote de crianza ni de destilación', async () => {
       const dto = {
         productType: BeverageTypeEnum.SINGANI,
         finalAlcoholAbv: 40.0,
@@ -148,7 +145,14 @@ describe('BottlingService', () => {
 
       await expect(
         service.create(mockWineryId, mockUserId, dto as CreateBottlingBatchDto),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({
+        statusCode: 422,
+        errorCode: 'VALIDATION_ERROR',
+        details: [
+          { field: 'wineAgingBatchId', message: expect.any(String) },
+          { field: 'productionBatchId', message: expect.any(String) },
+        ],
+      });
     });
 
     it('debe lanzar UnprocessableEntityException si la estrategia rechaza el embotellado (ej: reposo < 180 días)', async () => {

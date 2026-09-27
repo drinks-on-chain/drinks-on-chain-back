@@ -1,15 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
-import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
-import { GlobalExceptionFilter } from '../src/shared/filters/global-exception.filter';
+import { configureApp } from '../src/app.setup';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -46,21 +41,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
 
-    app.enableVersioning({
-      type: VersioningType.URI,
-      defaultVersion: '1',
-    });
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.useGlobalInterceptors(new ResponseTransformInterceptor());
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
+    configureApp(app);
 
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);

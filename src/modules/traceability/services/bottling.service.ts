@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
@@ -16,6 +15,9 @@ import {
   WineAgingBatch,
   ProductionBatch,
 } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 
 @Injectable()
 export class BottlingService {
@@ -32,9 +34,12 @@ export class BottlingService {
     dto: CreateBottlingBatchDto,
   ): Promise<BottlingBatch> {
     if (!dto.wineAgingBatchId && !dto.productionBatchId) {
-      throw new BadRequestException(
-        'Debe especificar un lote de crianza (wineAgingBatchId) o un lote de producción/destilación (productionBatchId)',
-      );
+      const message =
+        'Debe especificar un lote de crianza (wineAgingBatchId) o un lote de producción/destilación (productionBatchId)';
+      throw new ValidationException([
+        { field: 'wineAgingBatchId', message },
+        { field: 'productionBatchId', message },
+      ]);
     }
 
     const winery = await this.prisma.winery.findUnique({
@@ -151,7 +156,7 @@ export class BottlingService {
   async findAll(
     wineryId: string | undefined,
     query: QueryBottlingBatchesDto,
-  ): Promise<{ items: BottlingBatch[]; total: number }> {
+  ): Promise<Paginated<BottlingBatch>> {
     const where: Prisma.BottlingBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.productType && { productType: query.productType }),
@@ -163,8 +168,7 @@ export class BottlingService {
     const [items, total] = await Promise.all([
       this.prisma.bottlingBatch.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { bottlingDate: 'desc' },
         include: {
           labAnalysis: true,
@@ -173,7 +177,7 @@ export class BottlingService {
       this.prisma.bottlingBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
   async findById(wineryId: string | undefined, id: string) {

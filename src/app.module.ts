@@ -14,12 +14,14 @@ import { HarvestBatchesModule } from './modules/harvest-batches/harvest-batches.
 import { TraceabilityModule } from './modules/traceability/traceability.module';
 import { StorageModule } from './shared/storage/storage.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
+import { IdempotencyModule } from './shared/idempotency/idempotency.module';
 
 @Module({
   imports: [
     AppConfigModule,
     PrismaModule,
     StorageModule,
+    IdempotencyModule,
     HealthModule,
     ThrottlerModule.forRoot([
       {

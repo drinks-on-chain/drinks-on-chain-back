@@ -1,12 +1,15 @@
-import {
-  Injectable,
-  NotFoundException,
-  BadRequestException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CreateWineAgingBatchDto } from '../dto/create-wine-aging-batch.dto';
 import { Prisma, WineAgingBatch, AgingStatusEnum } from '@prisma/client';
+import {
+  PaginationQueryDto,
+  toPage,
+  toPrismaPage,
+} from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ConflictException as AppConflictException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
 
 @Injectable()
 export class WineAgingService {
@@ -30,7 +33,8 @@ export class WineAgingService {
     }
 
     if (tank.wineAgingBatch) {
-      throw new BadRequestException(
+      throw new AppConflictException(
+        ErrorCode.FERMENTATION_TANK_ALREADY_TRANSFERRED,
         `La cuba ${tank.tankCode} ya ha sido transferida a un lote de crianza previo`,
       );
     }
@@ -92,7 +96,8 @@ export class WineAgingService {
 
   async findAll(
     wineryId: string | undefined,
-  ): Promise<{ items: WineAgingBatch[]; total: number }> {
+    query: PaginationQueryDto,
+  ): Promise<Paginated<WineAgingBatch>> {
     const where: Prisma.WineAgingBatchWhereInput = {
       ...(wineryId && { wineryId }),
     };
@@ -100,6 +105,7 @@ export class WineAgingService {
     const [items, total] = await Promise.all([
       this.prisma.wineAgingBatch.findMany({
         where,
+        ...toPrismaPage(query),
         orderBy: { createdAt: 'desc' },
         include: {
           fermentationTank: true,
@@ -108,6 +114,6 @@ export class WineAgingService {
       this.prisma.wineAgingBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 }

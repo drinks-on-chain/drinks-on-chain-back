@@ -17,7 +17,7 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiNotFoundResponse,
-  ApiBadRequestResponse,
+  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { HarvestBatchesService } from './harvest-batches.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
@@ -34,6 +34,9 @@ import {
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 
 @ApiTags('Vendimia y Pesaje')
 @ApiBearerAuth('JWT-auth')
@@ -44,6 +47,7 @@ export class HarvestBatchesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(
     UserRoleEnum.WINERY_ADMIN,
     UserRoleEnum.AGRONOMIST,
@@ -59,7 +63,11 @@ export class HarvestBatchesController {
     description: 'Lote de vendimia registrado',
     type: HarvestBatchResponseDto,
   })
-  @ApiBadRequestResponse({ description: 'Peso bruto menor o igual a tara' })
+  @ApiUnprocessableEntityResponse({
+    description:
+      'VALIDATION_ERROR: datos inválidos o peso bruto menor o igual a tara (`grossWeightKg`)',
+    type: ApiErrorResponseDto,
+  })
   @ApiNotFoundResponse({ description: 'Parcela no encontrada en esta bodega' })
   async create(
     @TenantId() wineryId: string,
@@ -79,9 +87,8 @@ export class HarvestBatchesController {
     description:
       'Obtiene el listado de lotes de vendimia con soporte de filtros por año y estado fitosanitario.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Listado de lotes de vendimia',
+  @ApiPaginatedResponse(HarvestBatchResponseDto, {
+    description: 'Página de lotes de vendimia',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,

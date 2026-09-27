@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { WineAgingService } from '../services/wine-aging.service';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { NotFoundException, BadRequestException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { Prisma, AgingStatusEnum } from '@prisma/client';
 
 describe('WineAgingService', () => {
@@ -91,7 +91,7 @@ describe('WineAgingService', () => {
       expect(result).toEqual(mockAgingBatch);
     });
 
-    it('debe lanzar BadRequestException si la cuba ya tiene un lote de crianza asignado', async () => {
+    it('debe lanzar 409 FERMENTATION_TANK_ALREADY_TRANSFERRED si la cuba ya tiene un lote de crianza asignado', async () => {
       mockPrismaService.fermentationTank.findFirst.mockResolvedValue({
         ...mockTank,
         wineAgingBatch: { id: 'existing-aging' },
@@ -103,9 +103,12 @@ describe('WineAgingService', () => {
         plannedMonths: 12,
       };
 
-      await expect(service.createAgingBatch(mockWineryId, dto)).rejects.toThrow(
-        BadRequestException,
-      );
+      await expect(
+        service.createAgingBatch(mockWineryId, dto),
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'FERMENTATION_TANK_ALREADY_TRANSFERRED',
+      });
     });
   });
 

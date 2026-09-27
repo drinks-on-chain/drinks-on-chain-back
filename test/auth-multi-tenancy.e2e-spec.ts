@@ -1,15 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import * as bcrypt from 'bcrypt';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
-import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
-import { GlobalExceptionFilter } from '../src/shared/filters/global-exception.filter';
+import { configureApp } from '../src/app.setup';
 import {
   UserRoleEnum,
   WineryCategoryEnum,
@@ -42,21 +37,8 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     app = moduleFixture.createNestApplication();
 
-    app.enableVersioning({
-      type: VersioningType.URI,
-      defaultVersion: '1',
-    });
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.useGlobalInterceptors(new ResponseTransformInterceptor());
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
+    configureApp(app);
 
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);
@@ -241,8 +223,18 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
       .expect(200);
 
     expect(pendingRes.body.success).toBe(true);
+    // Página { items, total, limit, offset } (contrato O0 §2)
+    expect(Object.keys(pendingRes.body.data).sort()).toEqual([
+      'items',
+      'limit',
+      'offset',
+      'total',
+    ]);
+    expect(pendingRes.body.data.limit).toBe(20);
+    expect(pendingRes.body.data.offset).toBe(0);
+    expect(pendingRes.body.data.total).toBeGreaterThanOrEqual(1);
     expect(
-      pendingRes.body.data.some(
+      pendingRes.body.data.items.some(
         (w: { id: string }) => w.id === createdWineryId,
       ),
     ).toBe(true);
@@ -336,6 +328,33 @@ describe('Auth & Multi-Tenancy Flow (e2e)', () => {
 
     expect(wineryRes.body.success).toBe(true);
     expect(wineryRes.body.data.commercialName).toBe('Bodega Kohlberg');
+  });
+
+  // 9b. MIEMBROS PAGINADOS
+  it('9b. GET /v1/wineries/my/members - Devuelve la página de miembros de su bodega', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/v1/wineries/my/members?limit=1')
+      .set('Authorization', `Bearer ${enologistToken}`)
+      .expect(200);
+
+    // Dueño + enóloga = 2 miembros activos; limit=1 → uno por página
+    expect(res.body.data).toEqual({
+      items: [expect.objectContaining({ memberRole: 'OWNER' })],
+      total: 2,
+      limit: 1,
+      offset: 0,
+    });
+
+    const second = await request(app.getHttpServer())
+      .get('/v1/wineries/my/members?limit=1&offset=1')
+      .set('Authorization', `Bearer ${enologistToken}`)
+      .expect(200);
+    expect(second.body.data.items).toEqual([
+      expect.objectContaining({
+        userId: enologistUserId,
+        memberRole: WineryMemberRoleEnum.ENOLOGIST,
+      }),
+    ]);
   });
 
   // 10. RENOVACIÓN DE TOKEN

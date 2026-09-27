@@ -35,11 +35,22 @@ export class WineryRepository {
     });
   }
 
-  async findPendingWineries(): Promise<Winery[]> {
-    return this.prisma.winery.findMany({
-      where: { certificationStatus: WineryStatusEnum.PENDING },
-      orderBy: { createdAt: 'desc' },
-    });
+  /** Bodegas pendientes de aprobación (una página) y su total. */
+  async findPendingWineries(page: {
+    take: number;
+    skip: number;
+  }): Promise<[Winery[], number]> {
+    const where: Prisma.WineryWhereInput = {
+      certificationStatus: WineryStatusEnum.PENDING,
+    };
+    return Promise.all([
+      this.prisma.winery.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        ...page,
+      }),
+      this.prisma.winery.count({ where }),
+    ]);
   }
 
   async update(id: string, data: Prisma.WineryUpdateInput): Promise<Winery> {

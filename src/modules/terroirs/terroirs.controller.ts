@@ -31,6 +31,8 @@ import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Terroirs y Parcelas')
 @ApiBearerAuth('JWT-auth')
@@ -41,6 +43,7 @@ export class TerroirsController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.AGRONOMIST)
   @ApiOperation({
     summary: 'Registrar una nueva parcela de cultivo',
@@ -71,9 +74,8 @@ export class TerroirsController {
     description:
       'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Listado de parcelas',
+  @ApiPaginatedResponse(TerroirResponseDto, {
+    description: 'Página de parcelas',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,

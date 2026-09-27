@@ -95,9 +95,15 @@ describe('TerroirsService', () => {
         offset: 0,
       });
 
-      expect(result.items).toHaveLength(1);
-      expect(result.total).toBe(1);
-      expect(prisma.terroir.findMany).toHaveBeenCalled();
+      expect(result).toEqual({
+        items: [mockTerroir],
+        total: 1,
+        limit: 10,
+        offset: 0,
+      });
+      expect(prisma.terroir.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ take: 10, skip: 0 }),
+      );
     });
   });
 

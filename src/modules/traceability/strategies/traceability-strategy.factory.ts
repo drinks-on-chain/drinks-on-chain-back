@@ -1,9 +1,11 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { ITraceabilityStrategy } from './interfaces/traceability-strategy.interface';
 import { WineTraceabilityStrategy } from './wine-traceability.strategy';
 import { SinganiTraceabilityStrategy } from './singani-traceability.strategy';
 import { BeerTraceabilityStrategy } from './beer-traceability.strategy';
 import { BeverageTypeEnum, WineryCategoryEnum } from '@prisma/client';
+import { DomainException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
 
 @Injectable()
 export class TraceabilityStrategyFactory {
@@ -35,7 +37,8 @@ export class TraceabilityStrategyFactory {
       return this.singaniStrategy;
     }
 
-    throw new BadRequestException(
+    throw new DomainException(
+      ErrorCode.TRACEABILITY_STRATEGY_NOT_FOUND,
       `No se encontró una estrategia de trazabilidad registrada para el tipo de bebida "${type}"`,
     );
   }

@@ -1,17 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import {
-  INestApplication,
-  ValidationPipe,
-  VersioningType,
-} from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as request from 'supertest';
 import * as path from 'path';
 import * as fs from 'fs';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
-import { ResponseTransformInterceptor } from '../src/shared/interceptors/response-transform.interceptor';
-import { GlobalExceptionFilter } from '../src/shared/filters/global-exception.filter';
+import { configureApp } from '../src/app.setup';
 import { UserRoleEnum } from '@prisma/client';
 
 describe('Uploads & File Storage System (e2e)', () => {
@@ -30,21 +25,8 @@ describe('Uploads & File Storage System (e2e)', () => {
 
     app = moduleFixture.createNestApplication<NestExpressApplication>();
 
-    app.enableVersioning({
-      type: VersioningType.URI,
-      defaultVersion: '1',
-    });
-
-    app.useGlobalPipes(
-      new ValidationPipe({
-        whitelist: true,
-        forbidNonWhitelisted: true,
-        transform: true,
-      }),
-    );
-
-    app.useGlobalInterceptors(new ResponseTransformInterceptor());
-    app.useGlobalFilters(new GlobalExceptionFilter());
+    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
+    configureApp(app);
 
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
@@ -94,17 +76,20 @@ describe('Uploads & File Storage System (e2e)', () => {
       expect(res.body.success).toBe(false);
     });
 
-    it('debe rechazar la petición si no se envía ningún archivo en multipart (400 Bad Request)', async () => {
+    it('debe rechazar la petición si no se envía ningún archivo en multipart (422 VALIDATION_ERROR en file)', async () => {
       const res = await request(app.getHttpServer())
         .post('/v1/uploads')
         .set('Authorization', `Bearer ${authToken}`);
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toContain('archivo');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual([
+        { field: 'file', message: expect.stringContaining('archivo') },
+      ]);
     });
 
-    it('debe rechazar archivos con tipos MIME no autorizados como scripts o ejecutables (400 Bad Request)', async () => {
+    it('debe rechazar archivos con tipos MIME no autorizados como scripts o ejecutables (422 VALIDATION_ERROR en file)', async () => {
       const res = await request(app.getHttpServer())
         .post('/v1/uploads')
         .set('Authorization', `Bearer ${authToken}`)
@@ -113,9 +98,15 @@ describe('Uploads & File Storage System (e2e)', () => {
           contentType: 'application/javascript',
         });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(422);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.message).toContain('Tipo de archivo no permitido');
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details).toEqual([
+        {
+          field: 'file',
+          message: expect.stringContaining('Tipo de archivo no permitido'),
+        },
+      ]);
     });
   });
 

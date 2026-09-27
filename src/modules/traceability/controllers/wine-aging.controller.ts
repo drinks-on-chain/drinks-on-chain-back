@@ -4,6 +4,7 @@ import {
   Post,
   Body,
   Param,
+  Query,
   UseGuards,
   HttpCode,
   HttpStatus,
@@ -25,6 +26,9 @@ import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Crianza en Madera y Guarda (Vino)')
 @ApiBearerAuth('JWT-auth')
@@ -35,6 +39,7 @@ export class WineAgingController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Iniciar lote de crianza en barricas',
@@ -59,8 +64,14 @@ export class WineAgingController {
     summary: 'Listar lotes de crianza',
     description: 'Obtiene el listado de barricas y lotes en guarda.',
   })
-  async findAll(@TenantId() wineryId: string | undefined) {
-    return this.wineAgingService.findAll(wineryId);
+  @ApiPaginatedResponse(WineAgingResponseDto, {
+    description: 'Página de lotes de crianza',
+  })
+  async findAll(
+    @TenantId() wineryId: string | undefined,
+    @Query() query: PaginationQueryDto,
+  ) {
+    return this.wineAgingService.findAll(wineryId, query);
   }
 
   @Get(':id')

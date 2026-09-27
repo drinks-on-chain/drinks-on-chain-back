@@ -5,7 +5,6 @@ import {
   UploadedFile,
   Query,
   UseGuards,
-  BadRequestException,
   Inject,
   HttpStatus,
   HttpCode,
@@ -26,6 +25,8 @@ import {
   STORAGE_SERVICE,
 } from '../../shared/storage/storage.interface';
 import { UploadResponseDto } from './dto/upload-response.dto';
+import { ValidationException } from '@shared/exceptions/validation.exception';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 
 const ALLOWED_MIME_TYPES = [
   // Imágenes
@@ -85,9 +86,15 @@ export class UploadsController {
     type: UploadResponseDto,
   })
   @ApiResponse({
-    status: 400,
+    status: 422,
     description:
-      'Archivo faltante, excede el tamaño máximo (15MB) o tipo MIME no permitido.',
+      'VALIDATION_ERROR en `file`: archivo faltante o tipo MIME no permitido.',
+    type: ApiErrorResponseDto,
+  })
+  @ApiResponse({
+    status: 413,
+    description: 'El archivo excede el tamaño máximo (15MB).',
+    type: ApiErrorResponseDto,
   })
   @UseInterceptors(
     FileInterceptor('file', {
@@ -97,7 +104,8 @@ export class UploadsController {
       fileFilter: (_req, file, callback) => {
         if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
           return callback(
-            new BadRequestException(
+            ValidationException.forField(
+              'file',
               `Tipo de archivo no permitido: '${file.mimetype}'. Se permiten únicamente imágenes (JPEG, PNG, WEBP, SVG, GIF) y documentos PDF.`,
             ),
             false,
@@ -112,7 +120,8 @@ export class UploadsController {
     @Query('folder') folder?: string,
   ): Promise<UploadResponseDto> {
     if (!file) {
-      throw new BadRequestException(
+      throw ValidationException.forField(
+        'file',
         'Debe proporcionar un archivo en el campo multipart/form-data "file".',
       );
     }

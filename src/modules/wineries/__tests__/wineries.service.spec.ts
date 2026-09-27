@@ -5,7 +5,7 @@ import { WineryMemberRepository } from '../repositories/winery-member.repository
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { ConflictException, BadRequestException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 import {
   WineryCategoryEnum,
   WineryStatusEnum,
@@ -244,7 +244,7 @@ describe('WineriesService', () => {
       );
     });
 
-    it('debe arrojar BadRequestException si la bodega ya no está en estado PENDING', async () => {
+    it('debe arrojar 409 WINERY_NOT_PENDING si la bodega ya no está en estado PENDING', async () => {
       mockWineryRepository.findById.mockResolvedValue({
         id: 'winery-uuid-1',
         certificationStatus: WineryStatusEnum.ACTIVE,
@@ -252,7 +252,82 @@ describe('WineriesService', () => {
 
       await expect(
         service.approveWinery('winery-uuid-1', 'admin-user-id'),
-      ).rejects.toThrow(BadRequestException);
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'WINERY_NOT_PENDING',
+      });
+    });
+  });
+
+  describe('listas paginadas (contrato O0 §2)', () => {
+    it('getPendingWineries devuelve { items, total, limit, offset } y pagina en el repositorio', async () => {
+      mockWineryRepository.findPendingWineries.mockResolvedValue([
+        [
+          {
+            id: 'winery-uuid-2',
+            legalName: 'Pendiente S.A.',
+            commercialName: 'Bodega Pendiente',
+            certificationStatus: WineryStatusEnum.PENDING,
+          },
+        ],
+        41,
+      ]);
+
+      const page = await service.getPendingWineries({ limit: 20, offset: 20 });
+
+      expect(mockWineryRepository.findPendingWineries).toHaveBeenCalledWith({
+        take: 20,
+        skip: 20,
+      });
+      expect(page).toMatchObject({ total: 41, limit: 20, offset: 20 });
+      expect(page.items).toHaveLength(1);
+      expect(page.items[0]).toMatchObject({ id: 'winery-uuid-2' });
+    });
+
+    it('getMyMembers devuelve { items, total, limit, offset } de la bodega', async () => {
+      mockWineryMemberRepository.findMembersByWineryId.mockResolvedValue([
+        [
+          {
+            id: 'member-1',
+            memberRole: WineryMemberRoleEnum.ENOLOGIST,
+            professionalLicenseNumber: null,
+            isActive: true,
+            joinedAt: new Date('2026-09-01T00:00:00Z'),
+            user: {
+              id: 'user-1',
+              fullName: 'Valeria Soliz',
+              email: 'valeria@example.com',
+            },
+          },
+        ],
+        1,
+      ]);
+
+      const page = await service.getMyMembers('winery-uuid-1', {
+        limit: 5,
+        offset: 0,
+      });
+
+      expect(
+        mockWineryMemberRepository.findMembersByWineryId,
+      ).toHaveBeenCalledWith('winery-uuid-1', { take: 5, skip: 0 });
+      expect(page).toEqual({
+        items: [
+          {
+            id: 'member-1',
+            userId: 'user-1',
+            fullName: 'Valeria Soliz',
+            email: 'valeria@example.com',
+            memberRole: WineryMemberRoleEnum.ENOLOGIST,
+            professionalLicenseNumber: null,
+            isActive: true,
+            joinedAt: new Date('2026-09-01T00:00:00Z'),
+          },
+        ],
+        total: 1,
+        limit: 5,
+        offset: 0,
+      });
     });
   });
 });

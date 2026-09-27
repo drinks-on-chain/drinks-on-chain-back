@@ -1,11 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe, VersioningType, Logger } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
-import { ResponseTransformInterceptor } from './shared/interceptors/response-transform.interceptor';
-import { HttpLoggingInterceptor } from './shared/interceptors/logging.interceptor';
-import { GlobalExceptionFilter } from './shared/filters/global-exception.filter';
+import { configureApp } from './app.setup';
 
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
@@ -48,31 +46,11 @@ async function bootstrap() {
   app.enableCors(buildCorsOptions(allowedOrigins));
   logger.log(`CORS habilitado para: ${allowedOrigins.join(', ')}`);
 
-  // 3. Versionado global de API (/v1/...)
-  app.enableVersioning({
-    type: VersioningType.URI,
-    defaultVersion: '1',
-  });
+  // 3. Versionado /v1, validación (422 con details por campo), envoltorio de
+  //    respuesta y filtro de errores: lo mismo que usan las e2e
+  configureApp(app);
 
-  // 4. Pipes globales de validación DTO
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      forbidNonWhitelisted: true,
-      transform: true,
-    }),
-  );
-
-  // 5. Interceptores globales (Respuesta estándar + Logging de auditoría)
-  app.useGlobalInterceptors(
-    new ResponseTransformInterceptor(),
-    new HttpLoggingInterceptor(),
-  );
-
-  // 6. Filtros globales de excepción
-  app.useGlobalFilters(new GlobalExceptionFilter());
-
-  // 7. Configuración de Swagger / OpenAPI en /docs
+  // 4. Configuración de Swagger / OpenAPI en /docs
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Drinks on Chain API')
     .setDescription(

@@ -10,7 +10,7 @@ import {
   ApiTags,
   ApiOperation,
   ApiResponse,
-  ApiBadRequestResponse,
+  ApiUnprocessableEntityResponse,
   ApiConflictResponse,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
@@ -21,6 +21,7 @@ import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { AuthResponseDto, AuthTokensDto } from './dto/auth-response.dto';
 import { Public } from './decorators/public.decorator';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 
 @ApiTags('Autenticación')
 @Controller('auth')
@@ -42,7 +43,10 @@ export class AuthController {
     description: 'Usuario registrado exitosamente',
     type: AuthResponseDto,
   })
-  @ApiBadRequestResponse({ description: 'Datos de registro inválidos' })
+  @ApiUnprocessableEntityResponse({
+    description: 'VALIDATION_ERROR: datos de registro inválidos',
+    type: ApiErrorResponseDto,
+  })
   @ApiConflictResponse({ description: 'El correo electrónico ya existe' })
   async signup(@Body() dto: SignupDto): Promise<AuthResponseDto> {
     return this.authService.signup(dto);

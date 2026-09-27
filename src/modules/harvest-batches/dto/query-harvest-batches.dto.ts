@@ -1,9 +1,10 @@
-import { IsOptional, IsInt, IsUUID, IsEnum, Min } from 'class-validator';
+import { IsOptional, IsInt, IsUUID, IsEnum } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { PhytoStatusEnum } from '@prisma/client';
 
-export class QueryHarvestBatchesDto {
+export class QueryHarvestBatchesDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     example: 2026,
     description: 'Filtrar por año de vendimia',
@@ -27,24 +28,4 @@ export class QueryHarvestBatchesDto {
   @IsOptional()
   @IsEnum(PhytoStatusEnum)
   phytosanitaryStatus?: PhytoStatusEnum;
-
-  @ApiPropertyOptional({
-    default: 50,
-    description: 'Límite de resultados',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
-
-  @ApiPropertyOptional({
-    default: 0,
-    description: 'Desplazamiento para paginación',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number = 0;
 }

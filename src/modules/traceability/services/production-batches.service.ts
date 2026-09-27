@@ -1,7 +1,6 @@
 import {
   Injectable,
   NotFoundException,
-  BadRequestException,
   UnprocessableEntityException,
   Logger,
 } from '@nestjs/common';
@@ -16,6 +15,9 @@ import {
   RestStatusEnum,
   BeverageTypeEnum,
 } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ValidationException } from '@shared/exceptions/validation.exception';
 
 @Injectable()
 export class ProductionBatchesService {
@@ -66,7 +68,8 @@ export class ProductionBatchesService {
     ) {
       const sum = dto.outputVolumeLiters + dto.wasteVolumeLiters;
       if (sum > dto.inputVolumeLiters * 1.05) {
-        throw new BadRequestException(
+        throw ValidationException.forField(
+          'outputVolumeLiters',
           `Balance de masa inconsistente: La suma de corazón (${dto.outputVolumeLiters} L) y descarte (${dto.wasteVolumeLiters} L) excede el volumen de entrada (${dto.inputVolumeLiters} L)`,
         );
       }
@@ -206,7 +209,7 @@ export class ProductionBatchesService {
   async findAll(
     wineryId: string | undefined,
     query: QueryProductionBatchesDto,
-  ): Promise<{ items: ProductionBatch[]; total: number }> {
+  ): Promise<Paginated<ProductionBatch>> {
     const where: Prisma.ProductionBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.processType && { processType: query.processType }),
@@ -219,8 +222,7 @@ export class ProductionBatchesService {
     const [items, total] = await Promise.all([
       this.prisma.productionBatch.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { processStartDate: 'desc' },
         include: {
           fermentationTank: true,
@@ -229,6 +231,6 @@ export class ProductionBatchesService {
       this.prisma.productionBatch.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 }

@@ -16,6 +16,8 @@ import {
   EnologicalTreatment,
   TankStatusEnum,
 } from '@prisma/client';
+import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
 
 @Injectable()
 export class FermentationService {
@@ -65,7 +67,7 @@ export class FermentationService {
   async findTanks(
     wineryId: string | undefined,
     query: QueryTanksDto,
-  ): Promise<{ items: FermentationTank[]; total: number }> {
+  ): Promise<Paginated<FermentationTank>> {
     const where: Prisma.FermentationTankWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.status && { status: query.status }),
@@ -76,8 +78,7 @@ export class FermentationService {
     const [items, total] = await Promise.all([
       this.prisma.fermentationTank.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { startDate: 'desc' },
         include: {
           harvestBatch: true,
@@ -86,7 +87,7 @@ export class FermentationService {
       this.prisma.fermentationTank.count({ where }),
     ]);
 
-    return { items, total };
+    return toPage(items, total, query);
   }
 
   async findTankById(wineryId: string | undefined, id: string) {

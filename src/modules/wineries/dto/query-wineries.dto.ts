@@ -1,9 +1,9 @@
-import { IsOptional, IsString, IsEnum, IsInt, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString, IsEnum } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { WineryStatusEnum, WineryCategoryEnum } from '@prisma/client';
 
-export class QueryWineriesDto {
+export class QueryWineriesDto extends PaginationQueryDto {
   @ApiPropertyOptional({
     enum: WineryStatusEnum,
     description:
@@ -27,24 +27,4 @@ export class QueryWineriesDto {
   @IsOptional()
   @IsString()
   search?: string;
-
-  @ApiPropertyOptional({
-    default: 50,
-    description: 'Límite de resultados por página',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(1)
-  limit?: number = 50;
-
-  @ApiPropertyOptional({
-    default: 0,
-    description: 'Desplazamiento para paginación',
-  })
-  @IsOptional()
-  @Type(() => Number)
-  @IsInt()
-  @Min(0)
-  offset?: number = 0;
 }

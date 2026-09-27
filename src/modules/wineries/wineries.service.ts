@@ -2,7 +2,6 @@ import {
   Injectable,
   ConflictException,
   NotFoundException,
-  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { WineryRepository } from './repositories/winery.repository';
@@ -32,6 +31,14 @@ import {
   User,
 } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import {
+  PaginationQueryDto,
+  toPage,
+  toPrismaPage,
+} from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import { ConflictException as AppConflictException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
 
 type WineryWithMembers = Winery & {
   members?: (WineryMember & {
@@ -278,11 +285,17 @@ export class WineriesService {
   /**
    * Lista todos los miembros operativos de la bodega
    */
-  async getMyMembers(wineryId: string): Promise<WineryMemberItemDto[]> {
-    const members =
-      await this.wineryMemberRepository.findMembersByWineryId(wineryId);
+  async getMyMembers(
+    wineryId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<WineryMemberItemDto>> {
+    const [members, total] =
+      await this.wineryMemberRepository.findMembersByWineryId(
+        wineryId,
+        toPrismaPage(query),
+      );
 
-    return members.map((m) => ({
+    const items = members.map((m) => ({
       id: m.id,
       userId: m.user.id,
       fullName: m.user.fullName,
@@ -292,14 +305,23 @@ export class WineriesService {
       isActive: m.isActive,
       joinedAt: m.joinedAt,
     }));
+    return toPage(items, total, query);
   }
 
   /**
    * Lista todas las bodegas pendientes de aprobación (Solo Platform Admin)
    */
-  async getPendingWineries(): Promise<WineryResponseDto[]> {
-    const wineries = await this.wineryRepository.findPendingWineries();
-    return wineries.map((w) => this.mapToWineryResponse(w));
+  async getPendingWineries(
+    query: PaginationQueryDto,
+  ): Promise<Paginated<WineryResponseDto>> {
+    const [wineries, total] = await this.wineryRepository.findPendingWineries(
+      toPrismaPage(query),
+    );
+    return toPage(
+      wineries.map((w) => this.mapToWineryResponse(w)),
+      total,
+      query,
+    );
   }
 
   /**
@@ -316,7 +338,8 @@ export class WineriesService {
     }
 
     if (winery.certificationStatus !== WineryStatusEnum.PENDING) {
-      throw new BadRequestException(
+      throw new AppConflictException(
+        ErrorCode.WINERY_NOT_PENDING,
         `La bodega se encuentra en estado '${winery.certificationStatus}' y no puede ser aprobada nuevamente`,
       );
     }
@@ -361,7 +384,8 @@ export class WineriesService {
     }
 
     if (winery.certificationStatus !== WineryStatusEnum.PENDING) {
-      throw new BadRequestException(
+      throw new AppConflictException(
+        ErrorCode.WINERY_NOT_PENDING,
         `La bodega se encuentra en estado '${winery.certificationStatus}' y no puede ser rechazada`,
       );
     }
@@ -384,7 +408,7 @@ export class WineriesService {
    */
   async findAllWineries(
     query: QueryWineriesDto,
-  ): Promise<{ items: WineryResponseDto[]; total: number }> {
+  ): Promise<Paginated<WineryResponseDto>> {
     const where: Prisma.WineryWhereInput = {
       ...(query.status && { certificationStatus: query.status }),
       ...(query.beverageCategory && {
@@ -402,8 +426,7 @@ export class WineriesService {
     const [items, total] = await Promise.all([
       this.prisma.winery.findMany({
         where,
-        take: query.limit ?? 50,
-        skip: query.offset ?? 0,
+        ...toPrismaPage(query),
         orderBy: { createdAt: 'desc' },
         include: {
           wallets: true,
@@ -415,10 +438,11 @@ export class WineriesService {
       this.prisma.winery.count({ where }),
     ]);
 
-    return {
-      items: items.map((w) => this.mapToWineryResponse(w)),
+    return toPage(
+      items.map((w) => this.mapToWineryResponse(w)),
       total,
-    };
+      query,
+    );
   }
 
   private mapToWineryResponse(winery: WineryWithMembers): WineryResponseDto {

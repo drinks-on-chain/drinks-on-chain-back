@@ -27,6 +27,8 @@ import { TenantGuard } from '@modules/auth/guards/tenant.guard';
 import { Roles } from '@modules/auth/decorators/roles.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { UserRoleEnum } from '@prisma/client';
+import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
+import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Destilación y Procesos Especiales (Singani)')
 @ApiBearerAuth('JWT-auth')
@@ -39,6 +41,7 @@ export class ProductionBatchesController {
 
   @Post('distillation')
   @HttpCode(HttpStatus.CREATED)
+  @Idempotent()
   @Roles(UserRoleEnum.WINERY_ADMIN, UserRoleEnum.ENOLOGIST)
   @ApiOperation({
     summary: 'Registrar proceso de destilación de Singani',
@@ -105,6 +108,9 @@ export class ProductionBatchesController {
     summary: 'Listar lotes de destilación y producción',
     description:
       'Retorna los lotes de transformación con filtros por proceso y estado de reposo.',
+  })
+  @ApiPaginatedResponse(ProductionBatchResponseDto, {
+    description: 'Página de lotes de destilación y producción',
   })
   async findAll(
     @TenantId() wineryId: string | undefined,
