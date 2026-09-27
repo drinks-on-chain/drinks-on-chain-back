@@ -101,5 +101,9 @@ docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env lo
 ```
 
 - **Migraciones**: con `RUN_MIGRATIONS=true` la API aplica `prisma migrate deploy` al arrancar. Un rollback **no** revierte migraciones: escríbelas compatibles hacia atrás (añadir antes de quitar).
-- **Semilla**: la imagen no incluye `ts-node`; el superadministrador inicial se crea con `pnpm prisma:seed` desde una copia del repo apuntando a la base (o con la semilla determinista de la Ola 0 · 0.10).
+- **Semilla** (superusuario y datos de demostración, idempotente; detalle en el README, "Datos de demostración"): va compilada en la imagen. Con `SUPERADMIN_*`, `SEED_DEMO` y `SEED_DEMO_PASSWORD` definidos en `~/doc-dev/.env` (y el contenedor `api` recreado después de editarlos: `docker compose … up -d api` o el siguiente despliegue):
+  ```bash
+  cd ~/doc-dev/current
+  docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env exec api node dist/seed.js
+  ```
 - **Copias**: pendientes (`pg_dump` diario fuera del servidor, O0-OPS-2); no forman parte de este script.

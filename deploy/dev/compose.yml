@@ -55,6 +55,12 @@ services:
       # en producción queda apagado si no se define (SE-08)
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
       LOG_FORMAT: ${LOG_FORMAT:-json}
+      # Solo para la semilla (exec api node dist/seed.js); la API no las lee
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
+      SEED_DEMO: ${SEED_DEMO:-false}
+      SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
     volumes:

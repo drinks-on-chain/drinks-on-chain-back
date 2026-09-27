@@ -117,7 +117,7 @@ drinks-on-chain-backend/
    - **Organizaciones y membresías**: una persona puede estar en varias organizaciones (`PLATFORM`, `WINERY`, `PICKUP_POINT`) con un rol en cada una: plataforma `SUPERADMIN`/`ADMIN`/`OPERATIONS`/`SUPPORT`; bodega `OWNER`/`ENOLOGIST`/`AGRONOMIST`/`OPERATOR`/`ACCOUNTANT`. La organización activa se elige con `POST /v1/auth/switch-organization`; `GET /v1/users/me` devuelve `{ user, memberships, activeOrganizationId }`.
    - **Autorización**: guards globales (límite por IP real → acceso y sesión viva → `@Audience`/`@OrgType`/`@Roles` contra la organización activa → bodega de la petición). El personal de plataforma opera sobre una bodega con `?wineryId=` (obligatorio en escrituras). Una bodega solo puede añadir o reactivar membresías **de sí misma** (SE-01).
    - `users.user_role` (`PLATFORM_ADMIN`, `WINERY_ADMIN`…) y `winery_members` quedan **obsoletos** hasta H1: solo alimentan los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`).
-   > 🔒 El endpoint público `POST /v1/auth/signup` solo crea cuentas `CONSUMER` o `WINERY_ADMIN`; el superadministrador sale del seeder (membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega lo incorpora su dueño. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
+   > 🔒 El endpoint público `POST /v1/auth/signup` solo crea cuentas `CONSUMER` o `WINERY_ADMIN`; el superadministrador sale de la semilla (`SUPERADMIN_*`, membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega lo incorpora su dueño. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
 5. **Grafo DAG de Trazabilidad:** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
 6. **Formato Estándar de Respuesta API:**
    ```json
@@ -163,7 +163,7 @@ pnpm install
 cp .env.example .env              # cambia cada change-me (openssl rand -hex 32)
 docker compose up -d              # Postgres 5435, Redis 6379, Mailpit 1025/8025, MinIO 9000/9001
 pnpm prisma:deploy                # aplica las migraciones (o pnpm prisma:migrate al crear una nueva)
-pnpm prisma:seed                  # superadministrador inicial (idempotente)
+pnpm seed                         # superusuario y datos de demostración (idempotente; ver "Datos de demostración")
 pnpm start:dev                    # API en http://localhost:4000/v1 · Swagger en /docs
 pnpm start:worker:dev             # worker (otra terminal): outbox, colas y tareas programadas
 ```
@@ -262,6 +262,47 @@ Con la API levantada:
 - **Swagger UI:** <http://localhost:4000/docs>
 - **JSON OpenAPI Spec:** <http://localhost:4000/docs-json> (mismo documento que `openapi.json`)
 - Sin `SWAGGER_ENABLED`, ambos quedan apagados en producción (SE-08); `SWAGGER_ENABLED=true` los activa. En desarrollo quedan activos: <https://136.243.223.39.sslip.io/docs>.
+
+### 🌱 Datos de demostración (0.10, OPS-09)
+
+La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se puede ejecutar las veces que haga falta sin duplicar nada. Escribe cada fila con `upsert` por su id fijo (o por su clave natural: correo, persona + organización) y las lecturas de fermentación con `createMany({ skipDuplicates })`; volver a ejecutarla devuelve los datos de demostración a su estado inicial y no toca lo creado aparte. Va compilada en la imagen (`dist/seed.js` y los fixtures en `dist/seed/fixtures/`), así que no necesita `ts-node`.
+
+| Dónde | Comando |
+|---|---|
+| Local (lee `.env`) | `pnpm seed` (también `pnpm prisma:seed`) |
+| Imagen | `node dist/seed.js` |
+| Servidor de desarrollo | `cd ~/doc-dev/current && docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env exec api node dist/seed.js` |
+
+| Variable | Uso |
+|---|---|
+| `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, `SUPERADMIN_NAME` | Superusuario (membresía `SUPERADMIN` de la plataforma). Si falta el correo o la contraseña, **no se crea** y se avisa: no hay contraseña por defecto. Si ya existe, se actualizan su nombre y su contraseña (la del entorno manda) |
+| `SEED_DEMO` | `true`: personal interno, bodegas y trazabilidad de los mocks. Por defecto `false` (solo plataforma y superusuario). Nunca en producción |
+| `SEED_DEMO_PASSWORD` | Contraseña de **todas** las personas de demostración; obligatoria con `SEED_DEMO=true` |
+
+Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `change-me` de los `.env.example`. En el servidor, las variables pasan al contenedor `api` desde `~/doc-dev/.env` (`deploy/dev/compose.yml`; la API no las lee): tras editarlas, `docker compose … up -d api` (o el siguiente despliegue) antes del `exec`.
+
+**Contenido** (con `SEED_DEMO=true`): los fixtures de `@drinks-on-chain/mocks` copiados en `src/seed/fixtures/` (versión en `source.json`; se actualizan con `pnpm seed:sync [-- ruta/a/drinks-on-chain-mocks]`), con los **mismos ids (UUID v5 con el espacio de nombres de los mocks), nombres, códigos y fechas**, para que una pantalla muestre lo mismo con los mocks y con el backend:
+
+- Personal interno: `administracion@drinksonchain.test` (`ADMIN`), `operaciones@drinksonchain.test` y `analista@drinksonchain.test` (`OPERATIONS`), `soporte@drinksonchain.test` (`SUPPORT`).
+- Seis bodegas en todos los estados: Altos de Calamuchita y Cinti Viejo `ACTIVE`, Viñedos del Guadalquivir y Sol de Padcaya `INVITED`, Casa Uriondo `SUSPENDED`, Valle Escondido `REVOKED`, cada una con su organización (mismo id).
+- Personas de bodega con sus membresías: dueños, enólogas, agrónomos, operarios y una contadora bloqueada por la plataforma; Sofía Aramayo (`sofia@aramayo.test`) es enóloga en Altos y dueña de Casa Uriondo; Inés Salazar, agrónoma en Cinti Viejo y operaria bloqueada por el dueño en Altos.
+- Trazabilidad: 11 parcelas → 12 vendimias → 14 tanques con 228 lecturas y 16 tratamientos → 4 crianzas y 5 destilaciones → 4 embotellados (`ALT-2026-WINE-001`, `CVJ-2026-SINGANI-001`…) → 3 análisis de laboratorio.
+- Fechas fijas de los mocks (día de referencia 2026-09-25): no se desplazan al día en que se ejecuta.
+
+**Diferencias con los mocks** (lo que el modelo actual aún no tiene o resuelve de otra forma):
+
+| Mocks | Semilla |
+|---|---|
+| `gestor@drinksonchain.test` (`SUPERADMIN`) | No se crea: el superusuario es el de `SUPERADMIN_*` |
+| Consumidores (`maria@`, `carlos@tribu.test`) y cajero del POS | No se crean hasta el Marketplace y el POS |
+| Contraseña `demo1234` | La de `SEED_DEMO_PASSWORD` |
+| Organización de plataforma `uid('organization:platform')` | `00000000-0000-4000-8000-000000000001` (la de la migración) |
+| `lotPrefix`, `slug`, historia pública, sitio web e historial de estados de las bodegas | Sin columna todavía (Ola 1). Los códigos de lote de los fixtures se guardan tal cual, pero un embotellado nuevo usa aún las tres primeras letras del nombre comercial |
+| Invitaciones, solicitudes, ajustes por bodega, bitácora, buzón y TOTP de la Ola 1 | Llegan con sus endpoints (Ola 1) |
+| Tratamientos sin autor | `authorizedByMemberId` obligatorio: la enóloga activa de la bodega (si no, el dueño) |
+| Lecturas con `recordedByMemberId` | `recordedByUserId`: la persona de ese miembro |
+| Billeteras sin bóveda | `dynamicVaultId` simulado `demo-vault-<id>` (billeteras y bodegas con cuenta Stellar) |
+| Archivos `/mocks/uploads/…` | Las mismas rutas, sin archivo en el almacenamiento |
 
 ---
 
