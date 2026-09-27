@@ -122,6 +122,10 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-doc-minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?Define MINIO_ROOT_PASSWORD}
+    # API S3 solo en localhost: nginx la publica con su propio subdominio
+    # (S3_PUBLIC_ENDPOINT) para que el navegador abra las URL firmadas.
+    ports:
+      - '127.0.0.1:${MINIO_API_HOST_PORT:-9000}:9000'
     volumes:
       - minio_data:/data
     networks: [internal]
