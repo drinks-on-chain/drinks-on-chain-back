@@ -61,6 +61,17 @@ services:
       SUPERADMIN_NAME: ${SUPERADMIN_NAME:-}
       SEED_DEMO: ${SEED_DEMO:-false}
       SEED_DEMO_PASSWORD: ${SEED_DEMO_PASSWORD:-}
+      SEED_DEMO_TOTP_SECRET: ${SEED_DEMO_TOTP_SECRET:-}
+      # Cuenta, segundo factor e invitaciones (Ola 1). Sin MFA_ENCRYPTION_KEY la
+      # API arranca con una clave derivada de JWT_SECRET y lo avisa en el log.
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      # Clave de prueba de Cloudflare Turnstile (siempre valida) hasta tener la real
+      TURNSTILE_SECRET_KEY: ${TURNSTILE_SECRET_KEY:-1x0000000000000000000000000000000AA}
+      # Enlaces de los correos (invitación, recuperación, verificación)
+      APP_URL_ERP: ${APP_URL_ERP:-https://drinks-on-chain-erp.vercel.app}
+      APP_URL_BACKOFFICE: ${APP_URL_BACKOFFICE:-https://drinks-on-chain-backoffice.vercel.app}
+      APP_URL_POS: ${APP_URL_POS:-}
+      APP_URL_MARKETPLACE: ${APP_URL_MARKETPLACE:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
     volumes:

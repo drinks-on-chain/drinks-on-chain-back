@@ -14,9 +14,56 @@
     }
   ],
   "paths": {
+    "/v1/auth/forgot-password": {
+      "post": {
+        "description": "Siempre 202 (no revela si el correo tiene cuenta). Si la tiene y está activa, envía un enlace de un solo uso que caduca en 60 minutos a la app de `X-Client-App` (ERP por defecto). Con captcha (Turnstile) y campo trampa `website`.",
+        "operationId": "AccountController_forgotPassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Petición recibida (`data: null`)"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CAPTCHA_UNAVAILABLE: no se pudo comprobar el captcha",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Pedir un enlace para restablecer la contraseña",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
     "/v1/auth/login": {
       "post": {
-        "description": "Valida correo y contraseña y abre una sesión: persona (con `audience`), membresías, organización activa (la última usada o la primera activa, plataforma antes que bodega) y tokens (acceso de 15 min). Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`. Tras varios fallos seguidos (por correo o por IP) responde 429 `AUTH_TOO_MANY_ATTEMPTS` con `Retry-After` (bloqueo progresivo).",
+        "description": "Valida correo y contraseña y abre una sesión: persona (con `audience`), membresías, organización activa (la última usada o la primera activa, plataforma antes que bodega) y tokens (acceso de 15 min). Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`. **Personal de plataforma** (membresía de plataforma activa): responde `{ mfa: { required, enrolled, mfaToken } }` sin tokens ni cookie; la sesión se abre con `/v1/auth/mfa/verify` o, la primera vez, `/v1/auth/mfa/enroll` + `/v1/auth/mfa/enroll/confirm` (PLT-05). Tras varios fallos seguidos (por correo o por IP) responde 429 `AUTH_TOO_MANY_ATTEMPTS` con `Retry-After` (bloqueo progresivo).",
         "operationId": "AuthController_login_v1",
         "parameters": [],
         "requestBody": {
@@ -31,11 +78,18 @@
         },
         "responses": {
           "200": {
-            "description": "Sesión abierta",
+            "description": "Sesión abierta o, para el personal de plataforma, reto del segundo factor",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AuthResponseDto"
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AuthResponseDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MfaChallengeResponseDto"
+                    }
+                  ]
                 }
               }
             }
@@ -126,6 +180,188 @@
         ]
       }
     },
+    "/v1/auth/mfa/enroll": {
+      "post": {
+        "description": "Con el `mfaToken` de un login con `enrolled: false`: devuelve el secreto (y la URI `otpauth://` para el QR) que hay que confirmar con `/v1/auth/mfa/enroll/confirm`. Repetirlo con el mismo reto devuelve el mismo secreto.",
+        "operationId": "MfaController_enroll_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaEnrollResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_MFA_TOKEN_INVALID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTH_MFA_ALREADY_ENROLLED: usar /v1/auth/mfa/verify",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Empezar a inscribir el segundo factor",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
+    "/v1/auth/mfa/enroll/confirm": {
+      "post": {
+        "description": "Con el primer código de la app de autenticación: deja el segundo factor inscrito, abre la sesión (como el login) y devuelve 10 códigos de recuperación de un solo uso que solo se muestran esta vez. Además, `Set-Cookie: doc_rt=<refresco>; HttpOnly; Secure; SameSite=Lax`.",
+        "operationId": "MfaController_confirm_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MfaEnrollConfirmResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_MFA_TOKEN_INVALID o AUTH_MFA_INVALID_CODE (en `code`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTH_MFA_ALREADY_ENROLLED o AUTH_MFA_ENROLLMENT_NOT_STARTED (falta /mfa/enroll)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "AUTH_TOO_MANY_ATTEMPTS con `Retry-After`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Confirmar la inscripción del segundo factor",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
+    "/v1/auth/mfa/verify": {
+      "post": {
+        "description": "Con el `mfaToken` del login y un código TOTP de 6 dígitos (±30 s; un código no vale dos veces) o un código de recuperación (un solo uso) abre la sesión, como el login. Además, `Set-Cookie: doc_rt=<refresco>; HttpOnly; Secure; SameSite=Lax`. Cinco códigos incorrectos seguidos anulan el reto, bloquean el segundo factor 5 minutos (429 con `Retry-After`) y avisan por correo.",
+        "operationId": "MfaController_verify_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MfaCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sesión abierta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_MFA_TOKEN_INVALID (reto caducado, usado o desconocido) o AUTH_MFA_INVALID_CODE (en `code`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "AUTH_MFA_NOT_ENROLLED: hay que inscribirlo primero",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "AUTH_TOO_MANY_ATTEMPTS con `Retry-After`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Superar el segundo factor",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
     "/v1/auth/refresh": {
       "post": {
         "description": "Lee el refresco de la cookie `doc_rt` (o, hasta H1, del cuerpo), lo rota y responde como el login. Además, `Set-Cookie: doc_rt=<refresco>; Max-Age=<7 días personal | 30 consumidores>; Path=/; HttpOnly; Secure; SameSite=Lax`. Un refresco ya rotado presentado otra vez dentro del periodo de gracia (20 s) devuelve el mismo par nuevo; fuera de él revoca la sesión (401 `AUTH_REFRESH_REUSED`).",
@@ -164,6 +400,90 @@
           }
         },
         "summary": "Renovar la sesión (rotativa)",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
+    "/v1/auth/resend-verification": {
+      "post": {
+        "description": "Siempre 202. Si el correo tiene una cuenta activa sin verificar, envía un enlace nuevo (el anterior deja de valer). Con captcha y campo trampa `website`.",
+        "operationId": "AccountController_resendVerification_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Petición recibida (`data: null`)"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR o CAPTCHA_INVALID (en `captchaToken`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "CAPTCHA_UNAVAILABLE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Reenviar el enlace de verificación del correo",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
+      }
+    },
+    "/v1/auth/reset-password": {
+      "post": {
+        "description": "Cambia la contraseña, gasta el enlace, cierra **todas** las sesiones de la persona y le avisa por correo.",
+        "operationId": "AccountController_resetPassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Contraseña cambiada"
+          },
+          "422": {
+            "description": "AUTH_RESET_TOKEN_INVALID (en `token`), AUTH_WEAK_PASSWORD (en `password`) o VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Elegir una contraseña nueva con el enlace del correo",
         "tags": [
           "Autenticación"
         ],
@@ -254,7 +574,7 @@
             }
           },
           "403": {
-            "description": "ORG_MEMBERSHIP_BLOCKED (membresía bloqueada) u ORG_REVOKED (organización revocada)",
+            "description": "ORG_MEMBERSHIP_BLOCKED (membresía bloqueada), ORG_REVOKED (organización revocada) o AUTH_MFA_REQUIRED (organización de plataforma sin segundo factor en la sesión)",
             "content": {
               "application/json": {
                 "schema": {
@@ -283,6 +603,42 @@
         "tags": [
           "Autenticación"
         ]
+      }
+    },
+    "/v1/auth/verify-email": {
+      "post": {
+        "operationId": "AccountController_verifyEmail_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Correo verificado"
+          },
+          "422": {
+            "description": "AUTH_EMAIL_TOKEN_INVALID (en `token`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Confirmar el correo con el enlace recibido",
+        "tags": [
+          "Autenticación"
+        ],
+        "security": []
       }
     },
     "/v1/bottling": {
@@ -1200,6 +1556,307 @@
         "security": []
       }
     },
+    "/v1/invitations/{id}/resend": {
+      "post": {
+        "description": "Token y caducidad nuevos (el enlace anterior deja de valer). Pendiente o caducada. La gestiona el dueño de la organización (activa) o el back office (las de usuarios internos, solo administración).",
+        "operationId": "InvitationsController_resend_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionalReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "INVITATION_NOT_FOUND (también si es de otra organización)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVITATION_NOT_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Reenviar una invitación",
+        "tags": [
+          "Invitaciones"
+        ]
+      }
+    },
+    "/v1/invitations/{id}/revoke": {
+      "post": {
+        "operationId": "InvitationsController_revoke_v1",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionalReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "INVITATION_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVITATION_NOT_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Anular una invitación pendiente",
+        "tags": [
+          "Invitaciones"
+        ]
+      }
+    },
+    "/v1/invitations/{token}": {
+      "get": {
+        "description": "Datos para la pantalla de aceptar: organización, rol, quién invita, caducidad, estado y si el correo ya tiene cuenta (`accountExists`).",
+        "operationId": "PublicInvitationsController_preview_v1",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationPreviewDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "INVITATION_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Ver una invitación por su token",
+        "tags": [
+          "Invitaciones"
+        ],
+        "security": []
+      }
+    },
+    "/v1/invitations/{token}/accept": {
+      "post": {
+        "description": "Cuenta nueva (sin sesión): `{ fullName, password }`; la cuenta nace con el correo verificado. Cuenta existente: `{}` con la sesión (acceso y cookie `doc_rt`) de la persona con **ese mismo correo**. Responde como el login con la organización invitada activa y pone la cookie `doc_rt`. Una invitación de plataforma responde el reto del segundo factor (`{ mfa }`, sin cookie): la sesión se abre con `/v1/auth/mfa/*`.",
+        "operationId": "PublicInvitationsController_accept_v1",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Sesión con la organización invitada activa, o reto TOTP",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AuthResponseDto"
+                    },
+                    {
+                      "$ref": "#/components/schemas/MfaChallengeResponseDto"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "AUTH_LOGIN_REQUIRED (la cuenta existe: iniciar sesión), AUTH_REFRESH_INVALID o acceso inválido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "INVITATION_EMAIL_MISMATCH, ORG_REVOKED u ORG_BLOCKED_BY_PLATFORM",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "INVITATION_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "INVITATION_NOT_PENDING u ORG_ALREADY_MEMBER",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "INVITATION_EXPIRED, AUTH_WEAK_PASSWORD o VALIDATION_ERROR (faltan `fullName`/`password`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Aceptar una invitación",
+        "tags": [
+          "Invitaciones"
+        ],
+        "security": [
+          {},
+          {
+            "bearer": []
+          }
+        ]
+      }
+    },
     "/v1/lab-analyses": {
       "post": {
         "description": "Registra los parámetros físico-químicos (ABV, acidez, SO2, metanol, cobre) y dictamina conformidad SENASAG.",
@@ -1478,6 +2135,183 @@
         ]
       }
     },
+    "/v1/organizations/current/invitations": {
+      "get": {
+        "description": "Más recientes primero. `status` filtra por el estado presentado (una pendiente vencida es `EXPIRED`).",
+        "operationId": "CurrentOrganizationInvitationsController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/InvitationStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InvitationDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitaciones de mi organización",
+        "tags": [
+          "Invitaciones"
+        ]
+      },
+      "post": {
+        "description": "Envía el correo con el enlace (caduca en `invitacion.caducidadHoras`, 72 h). El rol de dueño está reservado a la plataforma.",
+        "operationId": "CurrentOrganizationInvitationsController_create_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "ORG_OWNER_ROLE_RESERVED, AUTH_INSUFFICIENT_PERMISSIONS u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_ALREADY_MEMBER o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ORG_MEMBER_LIMIT_REACHED (en `email`) o VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitar a alguien a mi organización",
+        "tags": [
+          "Invitaciones"
+        ]
+      }
+    },
     "/v1/organizations/current/settings": {
       "get": {
         "description": "Valor efectivo de cada parámetro para la bodega activa: su ajuste si existe (source WINERY) o el estándar general (source GLOBAL). No paginada: son menos de 50.",
@@ -1523,6 +2357,216 @@
         "summary": "Configuración efectiva de mi bodega",
         "tags": [
           "Configuración"
+        ]
+      }
+    },
+    "/v1/platform/accounts/{userId}": {
+      "get": {
+        "description": "Ampliación del contrato O1: estado (ACTIVE/BLOCKED), motivo y fecha del bloqueo y todas sus membresías.",
+        "operationId": "PlatformUsersController_account_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDetailDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Estado de la cuenta completa de una persona",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/accounts/{userId}/block": {
+      "post": {
+        "description": "No entra a ningún sistema y todas sus sesiones se cierran al instante. Solo administración; el superusuario está protegido.",
+        "operationId": "PlatformUsersController_blockAccount_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiredReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccountStatusDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: ya bloqueada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bloquear la cuenta completa de una persona",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/accounts/{userId}/unblock": {
+      "post": {
+        "operationId": "PlatformUsersController_unblockAccount_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiredReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAccountStatusDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: no está bloqueada",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Desbloquear la cuenta completa de una persona",
+        "tags": [
+          "Back office · usuarios internos"
         ]
       }
     },
@@ -1924,6 +2968,248 @@
         "summary": "Tablero del back office",
         "tags": [
           "Back office · Tablero"
+        ]
+      }
+    },
+    "/v1/platform/organizations/{organizationId}/invitations": {
+      "get": {
+        "description": "Ampliación del contrato O1. Más recientes primero; status filtra por el estado presentado (una pendiente vencida es EXPIRED).",
+        "operationId": "PlatformUsersController_organizationInvitations_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/InvitationStatus"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InvitationDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitaciones de una bodega",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      },
+      "post": {
+        "description": "En nombre de la bodega (`ACTIVE` o `SUSPENDED`), con motivo opcional; avisa por correo al dueño (EQP-10). El rol de dueño está reservado al alta y a la transferencia.",
+        "operationId": "PlatformUsersController_inviteToOrganization_v1",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlatformCreateInvitationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS, ORG_OWNER_ROLE_RESERVED u ORG_NOT_ACTIVE",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "ORG_NOT_FOUND (no es una bodega)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_ALREADY_MEMBER o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "ORG_MEMBER_LIMIT_REACHED o VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitar a una persona al equipo de una bodega",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/permissions": {
+      "get": {
+        "description": "Cada capacidad con el nivel de cada rol (FULL, READ, OWN, NONE). Es la misma matriz que aplican las rutas del back office (PLT-04).",
+        "operationId": "PlatformUsersController_permissions_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PermissionMatrixDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Matriz de permisos por rol",
+        "tags": [
+          "Back office · usuarios internos"
         ]
       }
     },
@@ -2467,6 +3753,543 @@
           "Back office · Configuración"
         ],
         "x-requires-reason": "always"
+      }
+    },
+    "/v1/platform/users": {
+      "get": {
+        "description": "Miembros de la organización de plataforma y las invitaciones pendientes (`status: INVITED`, `membershipId: null`, con `invitationId`).",
+        "operationId": "PlatformUsersController_list_v1",
+        "parameters": [
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Resultados por página (1–100)",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "offset",
+            "required": false,
+            "in": "query",
+            "description": "Resultados que se saltan desde el inicio",
+            "schema": {
+              "minimum": 0,
+              "default": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "BLOCKED",
+                "INVITED"
+              ]
+            }
+          },
+          {
+            "name": "role",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/PlatformRole"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página de resultados",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "total",
+                    "limit",
+                    "offset"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PlatformUserDto"
+                      }
+                    },
+                    "total": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 1,
+                      "description": "Total de resultados con los filtros aplicados"
+                    },
+                    "limit": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 100,
+                      "example": 20
+                    },
+                    "offset": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "example": 0
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR: filtros inválidos o `limit` fuera de 1–100",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Usuarios internos",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      },
+      "post": {
+        "description": "`ADMIN`, `OPERATIONS` o `SUPPORT` (`SUPERADMIN` no se asigna). El correo lleva al Backoffice; al aceptar, la persona inscribe su segundo factor.",
+        "operationId": "PlatformUsersController_invite_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePlatformUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvitationDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "ORG_ALREADY_MEMBER o INVITATION_ALREADY_PENDING",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Invitar a un usuario interno",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/users/{membershipId}": {
+      "patch": {
+        "description": "Con motivo. Cierra sus sesiones de plataforma (el rol viaja en el acceso). El superusuario no se degrada.",
+        "operationId": "PlatformUsersController_update_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePlatformUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND: no es una membresía de plataforma",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "VALIDATION_ERROR (falta `reason`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar el rol de un usuario interno",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/users/{membershipId}/block": {
+      "post": {
+        "description": "Solo el id de una **membresía** de plataforma (la cuenta completa: `/v1/platform/accounts/{userId}/block`). Cierra sus sesiones de plataforma al instante.",
+        "operationId": "PlatformUsersController_block_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiredReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: ya bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Bloquear la membresía de plataforma de un usuario interno",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/users/{membershipId}/reset-mfa": {
+      "post": {
+        "description": "Borra su TOTP y sus códigos de recuperación, cierra todas sus sesiones y le avisa por correo: inscribirá de nuevo al entrar. El del superusuario solo lo restablece otro superusuario.",
+        "operationId": "PlatformUsersController_resetMfa_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiredReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Restablecer el segundo factor de un usuario interno",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/users/{membershipId}/unblock": {
+      "post": {
+        "operationId": "PlatformUsersController_unblock_v1",
+        "parameters": [
+          {
+            "name": "membershipId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequiredReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformUserDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "CONFLICT: no está bloqueado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Desbloquear la membresía de plataforma",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
+      }
+    },
+    "/v1/platform/users/{userId}/send-password-reset": {
+      "post": {
+        "description": "Enlace de un solo uso (60 min) al Backoffice si es personal de plataforma o al ERP si no. Nunca se envían contraseñas.",
+        "operationId": "PlatformUsersController_sendPasswordReset_v1",
+        "parameters": [
+          {
+            "name": "userId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OptionalReasonDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Enviado (`data: null`)"
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol), PLATFORM_SUPERADMIN_PROTECTED u ORG_CANNOT_MODIFY_SELF",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "USER_NOT_FOUND",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Enviar a una persona un enlace para restablecer su contraseña",
+        "tags": [
+          "Back office · usuarios internos"
+        ]
       }
     },
     "/v1/production-batches": {
@@ -3241,7 +5064,7 @@
         ]
       },
       "patch": {
-        "description": "Permite modificar nombre completo, teléfono y preferencia de idioma.",
+        "description": "Nombre, teléfono, idioma (`es`/`en`), preferencias de comunicación (`notificationPrefs`, parcial) y consentimiento de promociones (se guarda con su fecha). Responde como `GET /v1/users/me`: `{ user, memberships, activeOrganizationId }` (contrato O1 §1).",
         "operationId": "UsersController_updateProfile_v1",
         "parameters": [],
         "requestBody": {
@@ -3256,17 +5079,27 @@
         },
         "responses": {
           "200": {
-            "description": "Perfil de usuario actualizado exitosamente",
+            "description": "Perfil actualizado",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/UserProfileResponseDto"
+                  "$ref": "#/components/schemas/MeResponseDto"
                 }
               }
             }
           },
           "401": {
             "description": "No autenticado"
+          },
+          "422": {
+            "description": "VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -3274,7 +5107,48 @@
             "bearer": []
           }
         ],
-        "summary": "Actualizar datos de perfil del usuario",
+        "summary": "Actualizar mi perfil y mis preferencias",
+        "tags": [
+          "Usuarios"
+        ]
+      }
+    },
+    "/v1/users/me/password": {
+      "post": {
+        "description": "Con la contraseña actual. Cierra las **demás** sesiones de la persona (esta sigue abierta) y avisa por correo.",
+        "operationId": "UsersController_changePassword_v1",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Contraseña cambiada"
+          },
+          "422": {
+            "description": "AUTH_INVALID_CURRENT_PASSWORD (en `currentPassword`), AUTH_WEAK_PASSWORD (en `newPassword`) o VALIDATION_ERROR",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Cambiar mi contraseña",
         "tags": [
           "Usuarios"
         ]
@@ -4139,6 +6013,129 @@
   },
   "components": {
     "schemas": {
+      "AcceptInvitationDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "example": "Ana Gutiérrez"
+          },
+          "password": {
+            "type": "string",
+            "description": "Contraseña de la cuenta nueva: al menos 10 caracteres y que no sea común",
+            "example": "vendimia-de-altura-2026"
+          }
+        }
+      },
+      "AccountDetailDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "fullName": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BLOCKED"
+            ]
+          },
+          "blockedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "blockedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountMembershipDto"
+            }
+          }
+        },
+        "required": [
+          "userId",
+          "fullName",
+          "email",
+          "status",
+          "blockedReason",
+          "blockedAt",
+          "memberships"
+        ]
+      },
+      "AccountMembershipDto": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string"
+          },
+          "organizationId": {
+            "type": "string"
+          },
+          "organizationType": {
+            "type": "string",
+            "enum": [
+              "PLATFORM",
+              "WINERY",
+              "PICKUP_POINT"
+            ]
+          },
+          "organizationName": {
+            "type": "string"
+          },
+          "organizationStatus": {
+            "type": "string",
+            "enum": [
+              "INVITED",
+              "ACTIVE",
+              "SUSPENDED",
+              "REVOKED"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "example": "OWNER"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BLOCKED"
+            ]
+          },
+          "blockedBy": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "PLATFORM"
+            ],
+            "nullable": true
+          },
+          "blockedReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "membershipId",
+          "organizationId",
+          "organizationType",
+          "organizationName",
+          "organizationStatus",
+          "role",
+          "status",
+          "blockedBy",
+          "blockedReason"
+        ]
+      },
       "AddMemberDto": {
         "type": "object",
         "properties": {
@@ -4780,6 +6777,60 @@
           "createdAt"
         ]
       },
+      "CapabilityDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "platform.users"
+          },
+          "label": {
+            "type": "string",
+            "example": "Usuarios internos"
+          },
+          "roles": {
+            "type": "object",
+            "description": "Nivel de cada rol: FULL, READ, OWN (solo lo suyo) o NONE",
+            "additionalProperties": {
+              "type": "string",
+              "enum": [
+                "FULL",
+                "READ",
+                "OWN",
+                "NONE"
+              ]
+            },
+            "example": {
+              "SUPERADMIN": "FULL",
+              "ADMIN": "FULL",
+              "OPERATIONS": "NONE"
+            }
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "roles"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "example": "contraseña-actual"
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "Contraseña nueva: al menos 10 caracteres y que no sea común (422 `AUTH_WEAK_PASSWORD`)",
+            "example": "vendimia-de-altura-2026"
+          }
+        },
+        "required": [
+          "currentPassword",
+          "newPassword"
+        ]
+      },
       "CreateBatchLabAnalysisDto": {
         "type": "object",
         "properties": {
@@ -5292,6 +7343,28 @@
           "initialAcidityGl"
         ]
       },
+      "CreateInvitationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "enologa@altos.test"
+          },
+          "role": {
+            "example": "ENOLOGIST",
+            "description": "Rol de la organización (bodega: ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT). `OWNER` → 403 `ORG_OWNER_ROLE_RESERVED`",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipRole"
+              }
+            ]
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ]
+      },
       "CreateMemberDto": {
         "type": "object",
         "properties": {
@@ -5343,6 +7416,33 @@
           "password",
           "fullName",
           "memberRole"
+        ]
+      },
+      "CreatePlatformUserDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "soporte2@drinksonchain.test"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "OPERATIONS",
+              "SUPPORT"
+            ],
+            "example": "SUPPORT"
+          },
+          "reason": {
+            "type": "object",
+            "description": "Motivo (3–500 caracteres); queda en la bitácora",
+            "nullable": true
+          }
+        },
+        "required": [
+          "email",
+          "role"
         ]
       },
       "CreateTerroirDto": {
@@ -5927,6 +8027,29 @@
           "createdAt"
         ]
       },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "captchaToken": {
+            "type": "string",
+            "description": "Token de Cloudflare Turnstile. En desarrollo, cualquier texto con la clave de prueba",
+            "example": "XXXX.DUMMY.TOKEN.XXXX"
+          },
+          "website": {
+            "type": "string",
+            "description": "Campo trampa: debe llegar vacío (si no, 202 sin hacer nada). No se muestra al usuario",
+            "example": ""
+          },
+          "email": {
+            "type": "string",
+            "example": "ana@bodega.bo"
+          }
+        },
+        "required": [
+          "captchaToken",
+          "email"
+        ]
+      },
       "HarvestBatchResponseDto": {
         "type": "object",
         "properties": {
@@ -6070,6 +8193,167 @@
           "uptime"
         ]
       },
+      "InvitationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "example": "45a3d555-de55-5dcf-af73-d97324c07209"
+          },
+          "email": {
+            "type": "string",
+            "example": "enologa@altos.test"
+          },
+          "organizationId": {
+            "type": "string",
+            "example": "8d7e2c1a-4b5f-4c3d-9e8f-1a2b3c4d5e6f"
+          },
+          "organizationType": {
+            "example": "WINERY",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationType"
+              }
+            ]
+          },
+          "organizationName": {
+            "type": "string",
+            "example": "Altos de Calamuchita"
+          },
+          "role": {
+            "example": "ENOLOGIST",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipRole"
+              }
+            ]
+          },
+          "status": {
+            "example": "PENDING",
+            "description": "Una pendiente con la caducidad vencida se presenta `EXPIRED`",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InvitationStatus"
+              }
+            ]
+          },
+          "expiresAt": {
+            "type": "string",
+            "example": "2026-09-30T14:00:00.000Z"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-09-27T14:00:00.000Z"
+          },
+          "invitedBy": {
+            "$ref": "#/components/schemas/InvitedByDto"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "organizationId",
+          "organizationType",
+          "organizationName",
+          "role",
+          "status",
+          "expiresAt",
+          "createdAt",
+          "invitedBy"
+        ]
+      },
+      "InvitationPreviewDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "enologa@altos.test"
+          },
+          "organizationName": {
+            "type": "string",
+            "example": "Altos de Calamuchita"
+          },
+          "organizationType": {
+            "example": "WINERY",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/OrganizationType"
+              }
+            ]
+          },
+          "role": {
+            "example": "ENOLOGIST",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipRole"
+              }
+            ]
+          },
+          "invitedByName": {
+            "type": "string",
+            "example": "Jorge Salinas"
+          },
+          "expiresAt": {
+            "type": "string",
+            "example": "2026-09-30T14:00:00.000Z"
+          },
+          "status": {
+            "example": "PENDING",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/InvitationStatus"
+              }
+            ]
+          },
+          "accountExists": {
+            "type": "boolean",
+            "example": false,
+            "description": "`true`: iniciar sesión con ese correo y aceptar con `{}`; `false`: crear la cuenta con `{ fullName, password }`"
+          }
+        },
+        "required": [
+          "email",
+          "organizationName",
+          "organizationType",
+          "role",
+          "invitedByName",
+          "expiresAt",
+          "status",
+          "accountExists"
+        ]
+      },
+      "InvitationStatus": {
+        "type": "string",
+        "enum": [
+          "PENDING",
+          "ACCEPTED",
+          "EXPIRED",
+          "REVOKED"
+        ]
+      },
+      "InvitedByDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "example": "4e89872f-1de3-5f01-968b-2203e12dbfd0"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Jorge Salinas"
+          },
+          "viaPlatform": {
+            "type": "boolean",
+            "example": false,
+            "description": "`true` si invitó el back office en nombre de la organización"
+          }
+        },
+        "required": [
+          "userId",
+          "fullName",
+          "viaPlatform"
+        ]
+      },
       "LivenessDataDto": {
         "type": "object",
         "properties": {
@@ -6206,6 +8490,14 @@
                 "$ref": "#/components/schemas/Audience"
               }
             ]
+          },
+          "notificationPrefs": {
+            "$ref": "#/components/schemas/NotificationPrefsDto"
+          },
+          "promotionsConsent": {
+            "type": "boolean",
+            "example": false,
+            "description": "Consentimiento de promociones (con fecha en el servidor)"
           }
         },
         "required": [
@@ -6303,6 +8595,181 @@
           "BLOCKED"
         ]
       },
+      "MfaChallengeDto": {
+        "type": "object",
+        "properties": {
+          "required": {
+            "type": "boolean",
+            "example": true,
+            "enum": [
+              true
+            ]
+          },
+          "enrolled": {
+            "type": "boolean",
+            "example": true,
+            "description": "`false`: aún no inscribió su app de autenticación (`/v1/auth/mfa/enroll`)"
+          },
+          "mfaToken": {
+            "type": "string",
+            "description": "Reto de un solo uso válido 5 minutos",
+            "example": "Q2hhbGxlbmdlLXRva2VuLWV4YW1wbGUtMzItYnl0ZXM"
+          }
+        },
+        "required": [
+          "required",
+          "enrolled",
+          "mfaToken"
+        ]
+      },
+      "MfaChallengeResponseDto": {
+        "type": "object",
+        "properties": {
+          "mfa": {
+            "$ref": "#/components/schemas/MfaChallengeDto"
+          }
+        },
+        "required": [
+          "mfa"
+        ]
+      },
+      "MfaCodeDto": {
+        "type": "object",
+        "properties": {
+          "mfaToken": {
+            "type": "string",
+            "description": "Reto del login (`mfa.mfaToken`): 5 min, un solo uso",
+            "example": "Q2hhbGxlbmdlLXRva2VuLWV4YW1wbGUtMzItYnl0ZXM"
+          },
+          "code": {
+            "type": "string",
+            "description": "Código TOTP de 6 dígitos o, en `verify`, un código de recuperación (`XXXXX-XXXXX`)",
+            "example": "123456"
+          }
+        },
+        "required": [
+          "mfaToken",
+          "code"
+        ]
+      },
+      "MfaEnrollConfirmResponseDto": {
+        "type": "object",
+        "properties": {
+          "user": {
+            "$ref": "#/components/schemas/AuthUserDto"
+          },
+          "memberships": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MembershipDto"
+            }
+          },
+          "activeOrganizationId": {
+            "type": "string",
+            "nullable": true,
+            "example": "8d7e2c1a-4b5f-4c3d-9e8f-1a2b3c4d5e6f",
+            "description": "Organización activa: la última usada o la primera membresía activa (plataforma antes que bodega); null si no tiene"
+          },
+          "tokens": {
+            "$ref": "#/components/schemas/AuthTokensDto"
+          },
+          "recoveryCodes": {
+            "minItems": 10,
+            "maxItems": 10,
+            "description": "Códigos de recuperación de un solo uso. Se muestran solo esta vez",
+            "example": [
+              "7K2QD-M4XPA",
+              "0B9ZR-TT3HC"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "user",
+          "memberships",
+          "activeOrganizationId",
+          "tokens",
+          "recoveryCodes"
+        ]
+      },
+      "MfaEnrollResponseDto": {
+        "type": "object",
+        "properties": {
+          "otpauthUrl": {
+            "type": "string",
+            "description": "URI `otpauth://totp/…` para el código QR",
+            "example": "otpauth://totp/Drinks%20on%20Chain:ana%40drinksonchain.test?secret=JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP&issuer=Drinks%20on%20Chain"
+          },
+          "secret": {
+            "type": "string",
+            "description": "Secreto en base32, para escribirlo a mano si no se lee el QR",
+            "example": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP"
+          }
+        },
+        "required": [
+          "otpauthUrl",
+          "secret"
+        ]
+      },
+      "MfaTokenDto": {
+        "type": "object",
+        "properties": {
+          "mfaToken": {
+            "type": "string",
+            "description": "Reto del login (`mfa.mfaToken`): 5 min, un solo uso",
+            "example": "Q2hhbGxlbmdlLXRva2VuLWV4YW1wbGUtMzItYnl0ZXM"
+          }
+        },
+        "required": [
+          "mfaToken"
+        ]
+      },
+      "NotificationPrefsDto": {
+        "type": "object",
+        "properties": {
+          "lotProgress": {
+            "type": "boolean",
+            "example": true
+          },
+          "redemptionReminders": {
+            "type": "boolean",
+            "example": true
+          }
+        },
+        "required": [
+          "lotProgress",
+          "redemptionReminders"
+        ]
+      },
+      "NotificationPrefsPatchDto": {
+        "type": "object",
+        "properties": {
+          "lotProgress": {
+            "type": "boolean",
+            "example": true,
+            "description": "Avisos de avance de etapa de los lotes comprados"
+          },
+          "redemptionReminders": {
+            "type": "boolean",
+            "example": true,
+            "description": "Recordatorios de canje (ventana a punto de vencer)"
+          }
+        }
+      },
+      "OptionalReasonDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "object",
+            "description": "Motivo (3–500 caracteres); queda en la bitácora",
+            "example": "La bodega lo pidió por soporte",
+            "nullable": true
+          }
+        }
+      },
       "OrganizationStatus": {
         "type": "string",
         "enum": [
@@ -6318,6 +8785,155 @@
           "PLATFORM",
           "WINERY",
           "PICKUP_POINT"
+        ]
+      },
+      "PermissionMatrixDto": {
+        "type": "object",
+        "properties": {
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CapabilityDto"
+            }
+          }
+        },
+        "required": [
+          "capabilities"
+        ]
+      },
+      "PlatformCreateInvitationDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "example": "enologa@altos.test"
+          },
+          "role": {
+            "example": "ENOLOGIST",
+            "description": "Rol de la organización (bodega: ENOLOGIST, AGRONOMIST, OPERATOR, ACCOUNTANT). `OWNER` → 403 `ORG_OWNER_ROLE_RESERVED`",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MembershipRole"
+              }
+            ]
+          },
+          "reason": {
+            "type": "object",
+            "description": "Motivo (3–500 caracteres); queda en la bitácora",
+            "nullable": true
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ]
+      },
+      "PlatformRole": {
+        "type": "string",
+        "enum": [
+          "SUPERADMIN",
+          "ADMIN",
+          "OPERATIONS",
+          "SUPPORT"
+        ]
+      },
+      "PlatformUserDto": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "string",
+            "nullable": true,
+            "description": "null en una invitación pendiente"
+          },
+          "userId": {
+            "type": "string",
+            "nullable": true,
+            "description": "null si el correo invitado aún no tiene cuenta"
+          },
+          "fullName": {
+            "type": "string",
+            "example": "Valeria Méndez",
+            "description": "En una invitación pendiente sin cuenta, el correo"
+          },
+          "email": {
+            "type": "string",
+            "example": "operaciones@drinksonchain.test"
+          },
+          "role": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/PlatformRole"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BLOCKED",
+              "INVITED"
+            ]
+          },
+          "blockedBy": {
+            "type": "string",
+            "enum": [
+              "OWNER",
+              "PLATFORM"
+            ],
+            "nullable": true
+          },
+          "blockedReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "joinedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": "2026-04-04T09:15:00.000Z"
+          },
+          "lastLoginAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "mfaEnabled": {
+            "type": "boolean",
+            "example": true,
+            "description": "¿Tiene el TOTP inscrito?"
+          },
+          "invitationId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Invitación pendiente (para reenviarla o anularla)"
+          },
+          "accountStatus": {
+            "type": "string",
+            "enum": [
+              "ACTIVE",
+              "BLOCKED"
+            ],
+            "nullable": true,
+            "description": "Estado de la cuenta completa (ampliación O1): BLOCKED si la plataforma la bloqueó; null en una invitación sin cuenta"
+          },
+          "accountBlockedReason": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "membershipId",
+          "userId",
+          "fullName",
+          "email",
+          "role",
+          "status",
+          "blockedBy",
+          "blockedReason",
+          "joinedAt",
+          "lastLoginAt",
+          "mfaEnabled",
+          "invitationId",
+          "accountStatus",
+          "accountBlockedReason"
         ]
       },
       "ProductionBatchResponseDto": {
@@ -6441,6 +9057,60 @@
         },
         "required": [
           "rejectionReason"
+        ]
+      },
+      "RequiredReasonDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "description": "Motivo (3–500 caracteres); queda en la bitácora",
+            "example": "Dejó la empresa"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
+      "ResendVerificationDto": {
+        "type": "object",
+        "properties": {
+          "captchaToken": {
+            "type": "string",
+            "description": "Token de Cloudflare Turnstile. En desarrollo, cualquier texto con la clave de prueba",
+            "example": "XXXX.DUMMY.TOKEN.XXXX"
+          },
+          "website": {
+            "type": "string",
+            "description": "Campo trampa: debe llegar vacío (si no, 202 sin hacer nada). No se muestra al usuario",
+            "example": ""
+          },
+          "email": {
+            "type": "string",
+            "example": "ana@bodega.bo"
+          }
+        },
+        "required": [
+          "captchaToken",
+          "email"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Token del enlace del correo"
+          },
+          "password": {
+            "type": "string",
+            "description": "Contraseña nueva: al menos 10 caracteres y que no sea común (422 `AUTH_WEAK_PASSWORD`)",
+            "example": "vendimia-de-altura-2026"
+          }
+        },
+        "required": [
+          "token",
+          "password"
         ]
       },
       "ResetSettingOverridesDto": {
@@ -7076,6 +9746,26 @@
           "phytosanitaryStatus"
         ]
       },
+      "UpdatePlatformUserDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "ADMIN",
+              "OPERATIONS",
+              "SUPPORT"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "Motivo (3–500 caracteres)"
+          }
+        },
+        "required": [
+          "reason"
+        ]
+      },
       "UpdateSettingDto": {
         "type": "object",
         "properties": {
@@ -7239,7 +9929,19 @@
           "preferredLocale": {
             "type": "string",
             "example": "en",
-            "description": "Preferencia de idioma (es / en)"
+            "enum": [
+              "es",
+              "en"
+            ],
+            "description": "Preferencia de idioma"
+          },
+          "notificationPrefs": {
+            "$ref": "#/components/schemas/NotificationPrefsPatchDto"
+          },
+          "promotionsConsent": {
+            "type": "boolean",
+            "example": false,
+            "description": "Consentimiento de promociones; se guarda con la fecha en que se dio"
           }
         }
       },
@@ -7318,75 +10020,48 @@
           "sizeBytes"
         ]
       },
-      "UserProfileResponseDto": {
+      "UserAccountStatusDto": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string",
-            "example": "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+          "userId": {
+            "type": "string"
           },
           "email": {
-            "type": "string",
-            "example": "juan.perez@bodega.bo"
+            "type": "string"
           },
           "fullName": {
-            "type": "string",
-            "example": "Juan Pérez"
+            "type": "string"
           },
-          "userRole": {
+          "status": {
             "type": "string",
             "enum": [
-              "PLATFORM_ADMIN",
-              "WINERY_ADMIN",
-              "ENOLOGIST",
-              "AGRONOMIST",
-              "CONSUMER",
-              "POS_OPERATOR"
-            ],
-            "example": "CONSUMER",
-            "deprecated": true,
-            "description": "Obsoleto (H1): rol global de 0.1; los permisos van por membresía"
+              "ACTIVE",
+              "BLOCKED"
+            ]
           },
-          "phoneNumber": {
-            "type": "object",
-            "example": "+59170012345"
-          },
-          "preferredLocale": {
+          "blockedReason": {
             "type": "string",
-            "example": "es"
-          },
-          "isActive": {
-            "type": "boolean",
-            "example": true
-          },
-          "lastLoginAt": {
-            "type": "object",
-            "example": "2026-09-06T20:00:00.000Z"
-          },
-          "createdAt": {
-            "format": "date-time",
-            "type": "string",
-            "example": "2026-09-06T20:00:00.000Z"
-          },
-          "wineryMemberships": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WineryMembershipDto"
-            }
-          },
-          "primaryWallet": {
-            "$ref": "#/components/schemas/WalletResponseDto"
+            "nullable": true
           }
         },
         "required": [
-          "id",
+          "userId",
           "email",
           "fullName",
-          "userRole",
-          "preferredLocale",
-          "isActive",
-          "createdAt",
-          "wineryMemberships"
+          "status",
+          "blockedReason"
+        ]
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Token del enlace del correo"
+          }
+        },
+        "required": [
+          "token"
         ]
       },
       "WalletResponseDto": {
