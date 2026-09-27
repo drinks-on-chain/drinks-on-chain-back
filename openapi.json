@@ -1142,6 +1142,64 @@
         "security": []
       }
     },
+    "/v1/health/live": {
+      "get": {
+        "description": "No consulta dependencias: sirve para saber si hay que reiniciar el proceso.",
+        "operationId": "HealthController_getLiveness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LivenessDataDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Liveness: el proceso responde",
+        "tags": [
+          "System"
+        ],
+        "security": []
+      }
+    },
+    "/v1/health/ready": {
+      "get": {
+        "description": "Responde 200 si puede atender tráfico y 503 (con el mismo cuerpo) si falta alguna dependencia.",
+        "operationId": "HealthController_getReadiness_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatusDataDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Alguna dependencia no está disponible",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthStatusDataDto"
+                }
+              }
+            }
+          }
+        },
+        "summary": "Readiness: base de datos, Redis y almacenamiento disponibles",
+        "tags": [
+          "System"
+        ],
+        "security": []
+      }
+    },
     "/v1/lab-analyses": {
       "post": {
         "description": "Registra los parámetros físico-químicos (ABV, acidez, SO2, metanol, cobre) y dictamina conformidad SENASAG.",
@@ -1231,6 +1289,43 @@
         "summary": "Consultar certificado de laboratorio por ID de lote de embotellado",
         "tags": [
           "Laboratorio Físico-Químico"
+        ]
+      }
+    },
+    "/v1/organizations/current/settings": {
+      "get": {
+        "description": "Valor efectivo de cada parámetro para la bodega activa: su ajuste si existe (source WINERY) o el estándar general (source GLOBAL). No paginada: son menos de 50.",
+        "operationId": "SettingsController_getCurrent_v1",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/EffectiveSettingDto"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Sin sesión"
+          },
+          "403": {
+            "description": "Sin una bodega activa"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "Configuración efectiva de mi bodega",
+        "tags": [
+          "Configuración"
         ]
       }
     },
@@ -1838,14 +1933,14 @@
     },
     "/v1/uploads": {
       "post": {
-        "description": "Almacena un archivo localmente o en el servicio externo configurado (S3/Cloud). Retorna la URL pública accesible que debe asociarse al flujo correspondiente (inspección fitosanitaria, certificados D.O., etiqueta de lote o informe de laboratorio).",
+        "description": "Solo personal de una organización (no consumidores). El tipo se reconoce por el contenido (firma de bytes), no por el nombre ni el MIME declarado; sin SVG. Máximo 5 MB por imagen y 15 MB por PDF. El archivo queda privado bajo el prefijo de la organización activa; se devuelve su `key` (lo que se guarda) y una URL firmada de corta vida para verlo ahora. Para verlo después, `GET /v1/uploads/url?key=`.",
         "operationId": "UploadsController_uploadFile_v1",
         "parameters": [
           {
             "name": "folder",
             "required": false,
             "in": "query",
-            "description": "Subcarpeta o categoría de destino (ej. \"inspections\", \"labels\", \"lab-reports\", \"certificates\", \"logos\")",
+            "description": "Categoría (ej. \"inspections\", \"labels\", \"lab-reports\", \"certificates\", \"logos\"); solo letras, números, \"-\" y \"_\"",
             "schema": {
               "example": "inspections",
               "type": "string"
@@ -1865,7 +1960,7 @@
                   "file": {
                     "type": "string",
                     "format": "binary",
-                    "description": "Archivo binario a subir (Máx 15MB. Formatos: PDF, JPEG, PNG, WEBP, SVG, GIF)"
+                    "description": "Archivo (PDF hasta 15 MB; JPEG, PNG, WEBP o GIF hasta 5 MB)"
                   }
                 }
               }
@@ -1874,7 +1969,7 @@
         },
         "responses": {
           "201": {
-            "description": "Archivo almacenado con éxito.",
+            "description": "",
             "content": {
               "application/json": {
                 "schema": {
@@ -1883,8 +1978,18 @@
               }
             }
           },
+          "403": {
+            "description": "Consumidor o personal sin organización activa",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
           "413": {
-            "description": "El archivo excede el tamaño máximo (15MB).",
+            "description": "FILE_TOO_LARGE: supera el máximo de su tipo",
             "content": {
               "application/json": {
                 "schema": {
@@ -1894,7 +1999,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_ERROR en `file`: archivo faltante o tipo MIME no permitido.",
+            "description": "VALIDATION_ERROR (falta el archivo) o FILE_TYPE_NOT_ALLOWED (el contenido no es un tipo admitido o no coincide con el declarado)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1909,7 +2014,54 @@
             "bearer": []
           }
         ],
-        "summary": "Subir archivo o imagen (PDF, JPG, PNG, WEBP, SVG)",
+        "summary": "Subir un archivo privado (PDF, JPEG, PNG, WEBP, GIF)",
+        "tags": [
+          "Uploads"
+        ]
+      }
+    },
+    "/v1/uploads/url": {
+      "get": {
+        "description": "Para mostrar un archivo guardado por su `key`. Solo archivos de la organización activa (la plataforma, cualquiera).",
+        "operationId": "UploadsController_signedUrl_v1",
+        "parameters": [
+          {
+            "name": "key",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignedUrlResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "FILE_NOT_FOUND: no existe o no es de tu organización",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "URL firmada nueva de un archivo",
         "tags": [
           "Uploads"
         ]
@@ -4098,6 +4250,68 @@
           "contactEmail"
         ]
       },
+      "EffectiveSettingDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "example": "trazabilidad.singani.reposoMinimoDias"
+          },
+          "description": {
+            "type": "string",
+            "example": "Reposo mínimo tras la destilación"
+          },
+          "value": {
+            "description": "Valor efectivo: número, sí/no, texto, lista u objeto según el parámetro; null = vacío (ilimitado, desactivado o sin definir)",
+            "example": 180,
+            "nullable": true,
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              {
+                "type": "object"
+              }
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "GLOBAL",
+              "WINERY"
+            ],
+            "description": "WINERY = ajuste de la bodega; GLOBAL = estándar general"
+          },
+          "appliesAt": {
+            "type": "string",
+            "enum": [
+              "LOT",
+              "COLLECTION",
+              "IMMEDIATE"
+            ],
+            "description": "Cuándo se aplica: se fija en el lote al crearlo, en la colección al aprobarla o de inmediato"
+          }
+        },
+        "required": [
+          "key",
+          "description",
+          "value",
+          "source",
+          "appliesAt"
+        ]
+      },
       "ErrorBodyDto": {
         "type": "object",
         "properties": {
@@ -4341,6 +4555,16 @@
             "example": "connected",
             "description": "Estado de la conexión a Redis"
           },
+          "storage": {
+            "type": "string",
+            "example": "connected",
+            "enum": [
+              "connected",
+              "disconnected",
+              "not_configured"
+            ],
+            "description": "Estado del almacenamiento de objetos (MinIO/S3 o carpeta local); cuenta en la readiness"
+          },
           "uptime": {
             "type": "number",
             "example": 42.15,
@@ -4351,7 +4575,33 @@
           "status",
           "database",
           "redis",
+          "storage",
           "uptime"
+        ]
+      },
+      "LivenessDataDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "example": "ok"
+          },
+          "uptime": {
+            "type": "number",
+            "example": 42.15,
+            "description": "Segundos de actividad continua"
+          },
+          "release": {
+            "type": "object",
+            "example": "a928324",
+            "nullable": true,
+            "description": "Release desplegada (RELEASE_SHA), si se conoce"
+          }
+        },
+        "required": [
+          "status",
+          "uptime",
+          "release"
         ]
       },
       "LoginDto": {
@@ -4702,6 +4952,31 @@
           "rejectionReason"
         ]
       },
+      "SignedUrlResponseDto": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "Clave del archivo en el almacenamiento privado. Es lo que se guarda en los registros; la URL se pide de nuevo cuando se va a mostrar.",
+            "example": "org/0b5c1f3e-8a2d-4c1e-9f7a-2d3e4f5a6b7c/inspections/2026/09/1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d.pdf"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL firmada de lectura, de corta vida (15 min por defecto). No se guarda: caduca.",
+            "example": "https://storage.example.com/doc-uploads/org/…/inspections/2026/09/….pdf?X-Amz-Signature=…"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Momento en que caduca la URL (ISO 8601, UTC)",
+            "example": "2026-09-27T12:15:00.000Z"
+          }
+        },
+        "required": [
+          "key",
+          "url",
+          "expiresAt"
+        ]
+      },
       "SignupDto": {
         "type": "object",
         "properties": {
@@ -5036,15 +5311,20 @@
       "UploadResponseDto": {
         "type": "object",
         "properties": {
-          "url": {
-            "type": "string",
-            "description": "URL pública completa accesible para consultar o descargar el archivo",
-            "example": "http://localhost:3000/uploads/inspections/1742880000000-a1b2c3d4.pdf"
-          },
           "key": {
             "type": "string",
-            "description": "Ruta relativa / clave de almacenamiento único",
-            "example": "inspections/1742880000000-a1b2c3d4.pdf"
+            "description": "Clave del archivo en el almacenamiento privado. Es lo que se guarda en los registros; la URL se pide de nuevo cuando se va a mostrar.",
+            "example": "org/0b5c1f3e-8a2d-4c1e-9f7a-2d3e4f5a6b7c/inspections/2026/09/1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d.pdf"
+          },
+          "url": {
+            "type": "string",
+            "description": "URL firmada de lectura, de corta vida (15 min por defecto). No se guarda: caduca.",
+            "example": "https://storage.example.com/doc-uploads/org/…/inspections/2026/09/….pdf?X-Amz-Signature=…"
+          },
+          "expiresAt": {
+            "type": "string",
+            "description": "Momento en que caduca la URL (ISO 8601, UTC)",
+            "example": "2026-09-27T12:15:00.000Z"
           },
           "originalName": {
             "type": "string",
@@ -5053,8 +5333,15 @@
           },
           "mimeType": {
             "type": "string",
-            "description": "Tipo MIME del archivo",
-            "example": "application/pdf"
+            "description": "Tipo real del archivo, reconocido por su contenido",
+            "example": "application/pdf",
+            "enum": [
+              "image/jpeg",
+              "image/png",
+              "image/webp",
+              "image/gif",
+              "application/pdf"
+            ]
           },
           "sizeBytes": {
             "type": "number",
@@ -5063,8 +5350,9 @@
           }
         },
         "required": [
-          "url",
           "key",
+          "url",
+          "expiresAt",
           "originalName",
           "mimeType",
           "sizeBytes"
