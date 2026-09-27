@@ -469,21 +469,30 @@ enum BeverageTypeEnum {
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
-  id                 String       @id @default(uuid()) @db.Uuid
-  email              String       @unique @db.VarChar(255)
-  phoneNumber        String?      @unique @map("phone_number") @db.VarChar(20)
-  passwordHash       String       @map("password_hash") @db.VarChar(255)
-  fullName           String       @map("full_name") @db.VarChar(200)
+  id                  String       @id @default(uuid()) @db.Uuid
+  email               String       @unique @db.VarChar(255)
+  phoneNumber         String?      @unique @map("phone_number") @db.VarChar(20)
+  passwordHash        String       @map("password_hash") @db.VarChar(255)
+  fullName            String       @map("full_name") @db.VarChar(200)
   /// Obsoleto (H1): rol global de 0.1; ya no autoriza nada.
-  userRole           UserRoleEnum @map("user_role")
-  dynamicUserId      String?      @unique @map("dynamic_user_id") @db.VarChar(200)
-  preferredLocale    String       @default("es") @map("preferred_locale") @db.Char(2)
-  isActive           Boolean      @default(true) @map("is_active")
-  lastLoginAt        DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  userRole            UserRoleEnum @map("user_role")
+  dynamicUserId       String?      @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale     String       @default("es") @map("preferred_locale") @db.Char(2)
+  isActive            Boolean      @default(true) @map("is_active")
+  lastLoginAt         DateTime?    @map("last_login_at") @db.Timestamptz(6)
   /// Última organización activa elegida (la de por defecto al iniciar sesión).
-  lastOrganizationId String?      @map("last_organization_id") @db.Uuid
-  createdAt          DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt          DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastOrganizationId  String?      @map("last_organization_id") @db.Uuid
+  /// Correo comprobado (enlace de verificación, invitación o recuperación).
+  emailVerifiedAt     DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  /// Preferencias de comunicación (IAM-09): `{ lotProgress, redemptionReminders }`.
+  notificationPrefs   Json         @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
+  /// Consentimiento de promociones con su fecha (null = no aceptado).
+  promotionsConsentAt DateTime?    @map("promotions_consent_at") @db.Timestamptz(6)
+  /// Bloqueo de la cuenta completa por la plataforma (`is_active = false`).
+  blockedReason       String?      @map("blocked_reason") @db.VarChar(500)
+  blockedAt           DateTime?    @map("blocked_at") @db.Timestamptz(6)
+  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
   lastOrganization         Organization?     @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
@@ -494,6 +503,11 @@ model User {
   wallets                  UserWallet[]
   approvedWineries         Winery[]          @relation("ApprovedByUser")
   recordedFermentationLogs FermentationLog[]
+  accountTokens            AccountToken[]
+  mfa                      UserMfa?
+  mfaRecoveryCodes         MfaRecoveryCode[]
+  mfaChallenges            MfaChallenge[]
+  invitationsSent          Invitation[]      @relation("InvitationInvitedBy")
 
   @@map("users")
 }
@@ -555,6 +569,7 @@ model Organization {
   memberships     Membership[]
   activeSessions  Session[]
   lastUsedByUsers User[]       @relation("UserLastOrganization")
+  invitations     Invitation[]
 
   @@index([type])
   @@map("organizations")
@@ -599,6 +614,8 @@ model Session {
   expiresAt            DateTime     @map("expires_at") @db.Timestamptz(6)
   revokedAt            DateTime?    @map("revoked_at") @db.Timestamptz(6)
   revokedReason        String?      @map("revoked_reason") @db.VarChar(50)
+  /// Segundo factor superado en esta sesión (obligatorio para la plataforma, PLT-05).
+  mfaVerifiedAt        DateTime?    @map("mfa_verified_at") @db.Timestamptz(6)
   ip                   String?      @db.VarChar(64)
   userAgent            String?      @map("user_agent") @db.VarChar(300)
 
@@ -608,6 +625,138 @@ model Session {
   @@index([userId, revokedAt])
   @@index([activeOrganizationId, revokedAt])
   @@map("sessions")
+}
+
+// -----------------------------------------------------------------------------
+// CUENTA, SEGUNDO FACTOR E INVITACIONES (Ola 1 · 1.1 y 1.2; contrato O1 §1–§2)
+// docs/arquitectura/identidad.md. De los tokens solo se guarda el SHA-256.
+// Las filas de seguridad de una persona se borran con ella (no son negocio).
+// -----------------------------------------------------------------------------
+enum AccountTokenPurposeEnum {
+  PASSWORD_RESET
+  EMAIL_VERIFICATION
+
+  @@map("account_token_purpose_enum")
+}
+
+/// Enlace de un solo uso enviado por correo (recuperación de contraseña,
+/// verificación del correo).
+model AccountToken {
+  id          String                  @id @default(uuid()) @db.Uuid
+  userId      String                  @map("user_id") @db.Uuid
+  purpose     AccountTokenPurposeEnum
+  tokenHash   String                  @unique @map("token_hash") @db.Char(64)
+  /// Correo al que se envió (el que queda verificado).
+  email       String                  @db.VarChar(255)
+  expiresAt   DateTime                @map("expires_at") @db.Timestamptz(6)
+  usedAt      DateTime?               @map("used_at") @db.Timestamptz(6)
+  createdAt   DateTime                @default(now()) @map("created_at") @db.Timestamptz(6)
+  requestedIp String?                 @map("requested_ip") @db.VarChar(64)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@map("account_tokens")
+}
+
+/// Segundo factor TOTP de una persona (PLT-05). El secreto va cifrado con
+/// AES-256-GCM (`MFA_ENCRYPTION_KEY`). La fila existe también sin inscribir
+/// para contar los fallos seguidos y el bloqueo temporal.
+model UserMfa {
+  userId          String    @id @map("user_id") @db.Uuid
+  secretEncrypted String?   @map("secret_encrypted") @db.Text
+  enrolledAt      DateTime? @map("enrolled_at") @db.Timestamptz(6)
+  /// Último paso de 30 s aceptado: un mismo código no vale dos veces.
+  lastUsedStep    Int?      @map("last_used_step")
+  failedAttempts  Int       @default(0) @map("failed_attempts")
+  lockedUntil     DateTime? @map("locked_until") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_mfa")
+}
+
+/// Códigos de recuperación (10 por inscripción, un solo uso; se guarda su HMAC).
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.Char(64)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
+}
+
+/// Reto de segundo factor (`mfaToken`): 5 min, un solo uso. Lo emite el login
+/// (o aceptar una invitación de plataforma) sin abrir sesión.
+model MfaChallenge {
+  id                     String    @id @default(uuid()) @db.Uuid
+  userId                 String    @map("user_id") @db.Uuid
+  tokenHash              String    @unique @map("token_hash") @db.Char(64)
+  /// Secreto propuesto en `mfa/enroll`, pendiente de confirmar (cifrado).
+  pendingSecretEncrypted String?   @map("pending_secret_encrypted") @db.Text
+  /// Organización que queda activa al superarlo (invitación aceptada).
+  organizationId         String?   @map("organization_id") @db.Uuid
+  expiresAt              DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt                 DateTime? @map("used_at") @db.Timestamptz(6)
+  ip                     String?   @db.VarChar(64)
+  userAgent              String?   @map("user_agent") @db.VarChar(300)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("mfa_challenges")
+}
+
+enum InvitationStatusEnum {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+
+  @@map("invitation_status_enum")
+}
+
+/// Invitación a una organización (IAM-10, EQP-03, PLT-02). Una `PENDING` con
+/// `expires_at` vencido se presenta como `EXPIRED`.
+model Invitation {
+  id               String               @id @default(uuid()) @db.Uuid
+  email            String               @db.VarChar(255)
+  organizationId   String               @map("organization_id") @db.Uuid
+  role             MembershipRoleEnum
+  status           InvitationStatusEnum @default(PENDING)
+  tokenHash        String               @unique @map("token_hash") @db.Char(64)
+  expiresAt        DateTime             @map("expires_at") @db.Timestamptz(6)
+  invitedByUserId  String?              @map("invited_by_user_id") @db.Uuid
+  invitedByName    String               @map("invited_by_name") @db.VarChar(200)
+  viaPlatform      Boolean              @default(false) @map("via_platform")
+  /// Nombre propuesto (alta de bodega); la persona elige el suyo al aceptar.
+  inviteeName      String?              @map("invitee_name") @db.VarChar(200)
+  /// `MEMBER`, `OWNER_ONBOARDING` u `OWNERSHIP_TRANSFER` (alta y transferencia, §4).
+  purpose          String               @default("MEMBER") @db.VarChar(30)
+  /// Datos del proceso que la creó (p. ej. la transferencia de titularidad).
+  metadata         Json?                @db.JsonB
+  sentCount        Int                  @default(1) @map("sent_count")
+  lastSentAt       DateTime             @default(now()) @map("last_sent_at") @db.Timestamptz(6)
+  acceptedAt       DateTime?            @map("accepted_at") @db.Timestamptz(6)
+  acceptedByUserId String?              @map("accepted_by_user_id") @db.Uuid
+  revokedAt        DateTime?            @map("revoked_at") @db.Timestamptz(6)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime             @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization  Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invitedByUser User?        @relation("InvitationInvitedBy", fields: [invitedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status])
+  @@index([email, status])
+  @@index([status, expiresAt])
+  @@map("invitations")
 }
 
 /// Obsoleto (H1): perfil del miembro en la bodega (matrícula) y autoría de la
