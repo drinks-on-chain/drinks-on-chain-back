@@ -293,6 +293,55 @@ export interface FixtureInvitation {
   };
 }
 
+/** Solicitud de alta de los mocks (contrato O1 §3). */
+export interface FixtureApplication {
+  id: string;
+  status:
+    | 'UNVERIFIED'
+    | 'RECEIVED'
+    | 'IN_REVIEW'
+    | 'MEETING_SCHEDULED'
+    | 'APPROVED'
+    | 'REJECTED';
+  createdAt: IsoDate;
+  updatedAt: IsoDate;
+  legalName: string;
+  tradeName: string;
+  taxId: string;
+  category: 'WINERY' | 'BREWERY' | 'DISTILLERY' | 'OTHER';
+  region: string;
+  contactName: string;
+  contactEmail: string;
+  contactPhone: string | null;
+  message: string | null;
+  assignee: { userId: string; fullName: string } | null;
+  meeting: {
+    scheduledAt: IsoDate;
+    channel: 'CALL' | 'VIDEO' | 'IN_PERSON';
+    notes: string | null;
+  } | null;
+  decision: { by: string; at: IsoDate; reason: string | null } | null;
+  wineryId: string | null;
+  notes: { id: string; text: string; by: string; at: IsoDate }[];
+  _mock: { verifyToken: string | null };
+}
+
+/** Perfil de la Ola 1 de una bodega de los mocks (slug, prefijo, historial). */
+export interface FixtureWineryProfile {
+  wineryId: string;
+  slug: string;
+  lotPrefix: string | null;
+  publicStory: string | null;
+  website: string | null;
+  activatedAt: IsoDate | null;
+  statusHistory: {
+    status: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
+    at: IsoDate;
+    by: string;
+    reason: string | null;
+  }[];
+}
+
 /** Quién tiene el segundo factor inscrito en los mocks (sin secretos). */
 export interface FixtureStaffMfa {
   userId: string;
@@ -315,6 +364,8 @@ export interface MockFixtures {
   memberBlocks: FixtureMemberBlock[];
   invitations: FixtureInvitation[];
   staffMfa: FixtureStaffMfa[];
+  applications: FixtureApplication[];
+  wineryProfiles: FixtureWineryProfile[];
   terroirs: FixtureTerroir[];
   harvestBatches: FixtureHarvestBatch[];
   fermentationTanks: FixtureFermentationTank[];
@@ -342,6 +393,8 @@ export function loadMockFixtures(dir: string = FIXTURES_DIR): MockFixtures {
     memberBlocks: read(dir, 'member-blocks.json'),
     invitations: read(dir, 'invitations.json'),
     staffMfa: read(dir, 'staff-mfa.json'),
+    applications: read(dir, 'applications.json'),
+    wineryProfiles: read(dir, 'winery-profiles.json'),
     terroirs: read(dir, 'terroirs.json'),
     harvestBatches: read(dir, 'harvest-batches.json'),
     fermentationTanks: read(dir, 'fermentation-tanks.json'),

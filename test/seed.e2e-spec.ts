@@ -12,6 +12,7 @@ import { mockId } from '../src/seed/ids';
 import { runSeed } from '../src/seed/run-seed';
 import { SeedOptions } from '../src/seed/seed.options';
 import { demoInvitationToken } from '../src/seed/identity.seed';
+import { demoApplicationToken } from '../src/seed/organizations.seed';
 import { hashOpaqueToken } from '../src/shared/security/opaque-token';
 import { TEST_TOTP_SECRET, testMfaCrypto } from './helpers/identity';
 
@@ -68,6 +69,9 @@ async function countAll(prisma: PrismaClient) {
     productions,
     bottlings,
     labs,
+    applications,
+    applicationNotes,
+    statusChanges,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.organization.count(),
@@ -84,6 +88,9 @@ async function countAll(prisma: PrismaClient) {
     prisma.productionBatch.count(),
     prisma.bottlingBatch.count(),
     prisma.batchLabAnalysis.count(),
+    prisma.wineryApplication.count(),
+    prisma.wineryApplicationNote.count(),
+    prisma.wineryStatusChange.count(),
   ]);
   return {
     users,
@@ -101,6 +108,9 @@ async function countAll(prisma: PrismaClient) {
     productions,
     bottlings,
     labs,
+    applications,
+    applicationNotes,
+    statusChanges,
   };
 }
 
@@ -167,6 +177,11 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
       productions: fx.productionBatches.length,
       bottlings: fx.bottlingBatches.length,
       labs: fx.labAnalyses.length,
+      applications: fx.applications.length,
+      statusChanges: fx.wineryProfiles.reduce(
+        (n, p) => n + p.statusHistory.length,
+        0,
+      ),
     });
     // Personal interno ADMIN, OPERATIONS, SUPPORT (sin el SUPERADMIN de los mocks)
     expect(demo.platformMemberships).toBe(4);
@@ -280,6 +295,45 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
     expect(testMfaCrypto().decrypt(mfa[0].secretEncrypted!)).toBe(
       TEST_TOTP_SECRET,
     );
+  });
+
+  it('solicitudes en todos los estados y perfil de las bodegas (Ola 1 · 1.3–1.5)', async () => {
+    const applications = await prisma.wineryApplication.findMany({
+      include: { notes: true },
+    });
+    expect(new Set(applications.map((a) => a.status))).toEqual(
+      new Set([
+        'UNVERIFIED',
+        'RECEIVED',
+        'IN_REVIEW',
+        'MEETING_SCHEDULED',
+        'APPROVED',
+        'REJECTED',
+      ]),
+    );
+    const unverified = applications.find((a) => a.status === 'UNVERIFIED')!;
+    expect(unverified.verifyTokenHash).toBe(
+      hashOpaqueToken(
+        demoApplicationToken(DEMO_PASSWORD, 'demo-verificacion-alto-camargo'),
+      ),
+    );
+    expect(unverified.verifyExpiresAt!.getTime()).toBeGreaterThan(Date.now());
+    const approved = applications.filter((a) => a.status === 'APPROVED');
+    expect(approved.every((a) => a.wineryId && a.decidedAt)).toBe(true);
+
+    const wineries = await prisma.winery.findMany({
+      include: { statusChanges: { orderBy: { changedAt: 'asc' } } },
+    });
+    const byId = new Map(wineries.map((w) => [w.id, w]));
+    expect(byId.get(ALTOS)).toMatchObject({
+      slug: 'altos-de-calamuchita',
+      lotPrefix: 'ALT',
+    });
+    expect(byId.get(CINTI_VIEJO)?.lotPrefix).toBe('CVJ');
+    expect(byId.get(mockId('winery:padcaya'))?.lotPrefix).toBeNull();
+    expect(
+      byId.get(mockId('winery:uriondo'))?.statusChanges.map((c) => c.status),
+    ).toEqual(['INVITED', 'ACTIVE', 'SUSPENDED']);
   });
 
   it('una dueña de demostración inicia sesión y ve sus parcelas', async () => {

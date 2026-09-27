@@ -31,6 +31,8 @@ const BACKOFFICE_FILES = [
   'member-blocks.json',
   'invitations.json',
   'staff-mfa.json',
+  'applications.json',
+  'winery-profiles.json',
 ] as const;
 
 const mocksDir = resolve(
