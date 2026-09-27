@@ -37,6 +37,9 @@ export const Roles = (...roles: MembershipRole[]) =>
 /**
  * Ruta del ERP que exige la bodega activa en estado `ACTIVE` (SE-05). En la
  * Ola 0 solo deja un aviso en los logs; con `FEATURE_ENFORCE_ACTIVE_ORG=true`
- * responde 403 `ORG_NOT_ACTIVE` (Ola 1).
+ * responde 403 `ORG_NOT_ACTIVE` (Ola 1). `allow` admite además otros estados
+ * (contrato O1 §4: el perfil y la bitácora propia se leen en `SUSPENDED`).
  */
-export const RequireActiveOrg = () => SetMetadata(REQUIRE_ACTIVE_ORG_KEY, true);
+export const RequireActiveOrg = (
+  options: { allow?: readonly ('INVITED' | 'SUSPENDED')[] } = {},
+) => SetMetadata(REQUIRE_ACTIVE_ORG_KEY, { allow: options.allow ?? [] });

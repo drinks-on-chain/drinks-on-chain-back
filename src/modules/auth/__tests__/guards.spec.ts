@@ -169,6 +169,19 @@ describe('AuthorizationGuard (contrato O0 §6)', () => {
       }),
     );
   });
+
+  it('SE-05: @RequireActiveOrg({ allow }) admite los estados indicados (bitácora propia en SUSPENDED)', () => {
+    const meta = {
+      [ORG_TYPES_KEY]: ['WINERY'],
+      [REQUIRE_ACTIVE_ORG_KEY]: { allow: ['SUSPENDED'] },
+    };
+    expect(
+      run(meta, principal({ organizationStatus: 'SUSPENDED' }), 'GET', true),
+    ).toBe(true);
+    expect(() =>
+      run(meta, principal({ organizationStatus: 'INVITED' }), 'GET', true),
+    ).toThrow(expect.objectContaining({ errorCode: 'ORG_NOT_ACTIVE' }));
+  });
 });
 
 describe('TenantGuard (bodega de la petición)', () => {

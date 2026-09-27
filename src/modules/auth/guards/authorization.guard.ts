@@ -123,10 +123,17 @@ export class AuthorizationGuard implements CanActivate {
       this.checkRoles(user, roles);
     }
 
+    const requireActive = this.meta<{ allow?: readonly string[] } | boolean>(
+      REQUIRE_ACTIVE_ORG_KEY,
+      context,
+    );
+    const allowedStatuses =
+      typeof requireActive === 'object' ? (requireActive.allow ?? []) : [];
     if (
-      this.meta<boolean>(REQUIRE_ACTIVE_ORG_KEY, context) &&
+      requireActive &&
       user.organizationType === 'WINERY' &&
-      user.organizationStatus !== 'ACTIVE'
+      user.organizationStatus !== 'ACTIVE' &&
+      !allowedStatuses.includes(user.organizationStatus ?? '')
     ) {
       if (this.settings.enforceActiveOrganization) {
         throw new AppException(
