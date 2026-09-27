@@ -75,10 +75,24 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Fixtures de `@drinks-on-chain/mocks` 0.3.0-rc.2 copiados (`pnpm seed:sync`): personal interno, 6 bodegas en todos los estados con sus membresías y bloqueos, trazabilidad completa del ERP con los mismos ids, códigos y fechas · 2026-09-27
   - [x] e2e: dos ejecuciones sobre un esquema vacío sin duplicados y una dueña de demo que inicia sesión y ve sus parcelas · 2026-09-27
   - [ ] Ejecutarla en el servidor de desarrollo con contraseñas generadas allí (coordinación)
-  - [ ] `lotPrefix`, perfiles públicos, invitaciones y ajustes por bodega de los mocks cuando existan en el modelo (Ola 1)
+  - [ ] `lotPrefix`, perfiles públicos y ajustes por bodega de los mocks cuando existan en el modelo (Ola 1; las invitaciones y el TOTP ya están, 1.1–1.2)
 
 ## Etapa 1 · Back office y bodegas (Ola 1)
 
+- [x] **1.1 Usuarios internos** (PLT-01, PLT-02, PLT-03, PLT-04, PLT-05) — superusuario por semilla, usuarios internos por invitación con rol, permisos por rol, 2FA TOTP. · 2026-09-27 ([`docs/arquitectura/identidad.md`](arquitectura/identidad.md#cuenta-segundo-factor-e-invitaciones-ola-1--11-y-12))
+  - [x] TOTP obligatorio para el personal de plataforma: login con reto (`mfaToken` 5 min, un solo uso), `mfa/enroll`, `mfa/enroll/confirm` (10 códigos de recuperación con HMAC), `mfa/verify`; secretos cifrados (AES-256-GCM, `MFA_ENCRYPTION_KEY`); 5 fallos → 429 y correo; sin repetir códigos · 2026-09-27
+  - [x] La plataforma solo queda activa en sesiones con segundo factor: `switch-organization` → 403 `AUTH_MFA_REQUIRED`; las sesiones de plataforma anteriores se revocan · 2026-09-27
+  - [x] `GET/POST /v1/platform/users`, `PATCH /v1/platform/users/{membershipId}`, `/block`, `/unblock`, `/reset-mfa`; `POST /v1/platform/accounts/{userId}/block|unblock` y `GET /v1/platform/accounts/{userId}` (ampliación); `send-password-reset`; superusuario protegido · 2026-09-27
+  - [x] `GET /v1/platform/permissions`: matriz única en código que también dan los `@Roles` del back office · 2026-09-27
+  - [x] Semilla: TOTP del personal interno de demo con `SEED_DEMO_TOTP_SECRET` · 2026-09-27
+- [x] **1.2 Cuentas** (IAM-05, IAM-06, IAM-09, IAM-10; EQP-03 en invitaciones) — aceptar invitación (cuenta nueva o membresía añadida), recuperación de contraseña, verificación de correo, perfil. · 2026-09-27
+  - [x] `forgot-password` (202 siempre, captcha Turnstile y campo trampa), `reset-password` (revoca todas las sesiones), `verify-email`, `resend-verification`, `POST /users/me/password` (revoca las demás), `PATCH /users/me` con preferencias y consentimiento con fecha; política de contraseñas → 422 `AUTH_WEAK_PASSWORD` · 2026-09-27
+  - [x] Invitaciones: token de un solo uso (hash), caducidad `invitacion.caducidadHoras`, `GET /invitations/{token}`, `accept` (cuenta nueva o existente con el mismo correo; plataforma → TOTP), `resend`, `revoke`, `GET/POST /organizations/current/invitations`, `GET/POST /platform/organizations/{id}/invitations` (el `GET`, ampliación); límite de colaboradores; `InvitationsService.create` y `onAccepted` para la parte B · 2026-09-27
+  - [x] Correos: invitación, recuperación, contraseña cambiada, verificación, 2FA restablecido, intentos fallidos y aviso al dueño; enlaces con `APP_URL_*` · 2026-09-27
+  - [x] Bitácora de cada acción con motivo donde el contrato lo exige · 2026-09-27
+  - [x] Semilla: invitaciones de demostración con token secreto (HMAC con `SEED_DEMO_PASSWORD`) · 2026-09-27
+  - [x] Pruebas: unitarias y e2e (recuperación hasta Mailpit, TOTP, invitaciones, límites, permisos por rol y entre organizaciones) · 2026-09-27
+  - [ ] Definir `MFA_ENCRYPTION_KEY` y la clave real de Turnstile en el servidor (coordinación)
 - [x] **1.7 Configuración en el back office** (CFG-02, CFG-03, CFG-04, CFG-07) — estándar general, ajustes por bodega (selección o todas), volver al estándar, historial y mínimo legal como piso con excepción de administración. · 2026-09-27 ([`docs/arquitectura/configuracion.md`](arquitectura/configuracion.md#back-office-ola-1))
   - [x] `GET/PUT /v1/platform/settings[/{key}]`, `GET/PUT …/{key}/overrides`, `POST …/overrides/reset`, `GET …/{key}/history` con permisos por rol (§9) · 2026-09-27
   - [x] `GET /v1/organizations/current/settings` con `@OrgType('WINERY')`, `?wineryId=` para la plataforma y `@RequireActiveOrg()` · 2026-09-27

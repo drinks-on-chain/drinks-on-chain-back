@@ -154,6 +154,27 @@ Cuando una comprobación de un campo depende de otro y se hace en el servicio, s
 | `AUTH_TOO_MANY_ATTEMPTS` | 429 | Bloqueo progresivo del login, con `Retry-After` |
 | `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Audiencia, tipo de organización activa o rol insuficientes |
 
+### Cuenta, segundo factor e invitaciones (contrato O1 §1–§2)
+| Código | HTTP | Descripción |
+|---|---|---|
+| `AUTH_WEAK_PASSWORD` | 422 | Contraseña nueva corta (< 10) o común; un detalle por problema en el campo |
+| `AUTH_INVALID_CURRENT_PASSWORD` | 422 | `POST /users/me/password` con la contraseña actual incorrecta |
+| `AUTH_RESET_TOKEN_INVALID` | 422 | Enlace de recuperación desconocido, usado o caducado |
+| `AUTH_EMAIL_TOKEN_INVALID` | 422 | Enlace de verificación del correo desconocido, usado o caducado |
+| `AUTH_MFA_REQUIRED` | 403 | `switch-organization` a la plataforma sin segundo factor en la sesión |
+| `AUTH_MFA_TOKEN_INVALID` | 401 | Reto de segundo factor (`mfaToken`) desconocido, usado o caducado |
+| `AUTH_MFA_INVALID_CODE` | 401 | Código TOTP o de recuperación incorrecto (5 seguidos → 429) |
+| `AUTH_MFA_NOT_ENROLLED` / `AUTH_MFA_ALREADY_ENROLLED` / `AUTH_MFA_ENROLLMENT_NOT_STARTED` | 409 | Paso del segundo factor que no corresponde |
+| `AUTH_LOGIN_REQUIRED` | 401 | Aceptar una invitación de una cuenta que existe sin su sesión |
+| `CAPTCHA_INVALID` | 422 | Captcha (Turnstile) rechazado, en `captchaToken` |
+| `CAPTCHA_UNAVAILABLE` | 503 | No se pudo comprobar el captcha con Cloudflare |
+| `USER_NOT_FOUND` | 404 | Persona inexistente (acciones de la plataforma) |
+| `INVITATION_NOT_FOUND` | 404 | Token o id desconocido, o de otra organización |
+| `INVITATION_EXPIRED` | 422 | Invitación caducada: reenviarla |
+| `INVITATION_NOT_PENDING` | 409 | Aceptada o anulada |
+| `INVITATION_ALREADY_PENDING` | 409 | Ya hay una pendiente para ese correo en la organización |
+| `INVITATION_EMAIL_MISMATCH` | 403 | La sesión es de otra persona |
+
 ### Organizaciones y membresías
 | Código | HTTP | Descripción |
 |---|---|---|
@@ -162,7 +183,11 @@ Cuando una comprobación de un campo depende de otro y se hace en el servicio, s
 | `ORG_REVOKED` | 403 | Cambiar a una organización revocada |
 | `ORG_NOT_ACTIVE` | 403 | ERP con la bodega activa no `ACTIVE` (SE-05; `details[0].message` = estado; desde la Ola 1) |
 | `ORG_BLOCKED_BY_PLATFORM` | 403 | El dueño intenta reactivar una membresía que bloqueó la plataforma |
-| `ORG_ALREADY_MEMBER` | 409 | La persona ya es miembro activo |
+| `ORG_ALREADY_MEMBER` | 409 | La persona ya es miembro (activo o bloqueado) |
+| `ORG_OWNER_ROLE_RESERVED` | 403 | El rol de dueño solo se asigna en el alta o la transferencia |
+| `ORG_MEMBER_LIMIT_REACHED` | 422 | Límite de colaboradores (activos + invitaciones pendientes), en `email` |
+| `ORG_CANNOT_MODIFY_SELF` | 403 | Cambiar, bloquear o degradar la propia membresía o cuenta |
+| `PLATFORM_SUPERADMIN_PROTECTED` | 403 | El superusuario no se bloquea ni se degrada |
 
 Un recurso de otra bodega sigue respondiendo **404** (`NOT_FOUND`), nunca 403.
 

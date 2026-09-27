@@ -189,6 +189,15 @@ Variables nuevas de la Ola 0 · 0.7–0.9 (todas con valores por defecto de desa
 | `LOG_FORMAT` | api, worker | `json` (por defecto) o `text` |
 | `SWAGGER_ENABLED` | api | Sin definir: activo fuera de producción, apagado en producción |
 
+Variables nuevas de la Ola 1 · 1.1–1.2 (cuenta, segundo factor e invitaciones; ver [`docs/arquitectura/identidad.md`](docs/arquitectura/identidad.md)):
+
+| Variable | Proceso | Uso |
+|---|---|---|
+| `MFA_ENCRYPTION_KEY` | api | Clave (≥ 32 caracteres, `openssl rand -base64 32`) con la que se cifran los secretos TOTP en la base (AES-256-GCM). Sin ella la API arranca con una clave derivada de `JWT_SECRET` y lo avisa en el log; lo cifrado así se sigue leyendo cuando se define |
+| `TURNSTILE_SECRET_KEY` | api | Captcha de los formularios públicos (Cloudflare Turnstile). Obligatoria en producción; fuera de ella, y por defecto en `deploy/dev/compose.yml`, la clave de prueba que siempre valida (`1x0000000000000000000000000000000AA`, sin llamar a Cloudflare) |
+| `APP_URL_ERP`, `APP_URL_BACKOFFICE`, `APP_URL_POS`, `APP_URL_MARKETPLACE` | api | URL base de cada app en los enlaces de los correos. Por defecto `http://localhost:3002`, `3003`, `3004`, `3005`; en el servidor de desarrollo, las de Vercel del ERP y el Backoffice |
+| `SEED_DEMO_TOTP_SECRET` | semilla | Secreto TOTP (base32) del personal interno de demostración (`DRINKSONCHAINDEMOTOTPKEY` = el de los mocks). Sin él, lo inscriben al entrar |
+
 **CORS**: `CORS_ALLOWED_ORIGINS` es una lista de orígenes exactos separada por comas (`https://erp.ejemplo.com,http://localhost:3002`). No se admiten comodines ni se refleja el origen de la petición; vacía fuera de producción equivale a `http://localhost:3002,http://localhost:3009`. Cabeceras permitidas: `Authorization`, `Content-Type`, `X-Correlation-ID`, `Idempotency-Key`, `Accept-Language`, `X-Client-App`; expuestas: `X-Correlation-ID`, `Retry-After`.
 
 ### ✅ Puertas de calidad
@@ -278,6 +287,7 @@ La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se p
 | `SUPERADMIN_EMAIL`, `SUPERADMIN_PASSWORD`, `SUPERADMIN_NAME` | Superusuario (membresía `SUPERADMIN` de la plataforma). Si falta el correo o la contraseña, **no se crea** y se avisa: no hay contraseña por defecto. Si ya existe, se actualizan su nombre y su contraseña (la del entorno manda) |
 | `SEED_DEMO` | `true`: personal interno, bodegas y trazabilidad de los mocks. Por defecto `false` (solo plataforma y superusuario). Nunca en producción |
 | `SEED_DEMO_PASSWORD` | Contraseña de **todas** las personas de demostración; obligatoria con `SEED_DEMO=true` |
+| `SEED_DEMO_TOTP_SECRET` | Secreto TOTP (base32) del personal interno inscrito en los mocks (administración, operaciones, soporte); se cifra como en la API (necesita `JWT_SECRET` y, si la API la usa, `MFA_ENCRYPTION_KEY`). Sin él quedan sin inscribir y lo inscriben en su primer inicio de sesión |
 
 Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `change-me` de los `.env.example`. En el servidor, las variables pasan al contenedor `api` desde `~/doc-dev/.env` (`deploy/dev/compose.yml`; la API no las lee): tras editarlas, `docker compose … up -d api` (o el siguiente despliegue) antes del `exec`.
 
@@ -298,7 +308,9 @@ Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `ch
 | Contraseña `demo1234` | La de `SEED_DEMO_PASSWORD` |
 | Organización de plataforma `uid('organization:platform')` | `00000000-0000-4000-8000-000000000001` (la de la migración) |
 | `lotPrefix`, `slug`, historia pública, sitio web e historial de estados de las bodegas | Sin columna todavía (Ola 1). Los códigos de lote de los fixtures se guardan tal cual, pero un embotellado nuevo usa aún las tres primeras letras del nombre comercial |
-| Invitaciones, solicitudes, ajustes por bodega, bitácora, buzón y TOTP de la Ola 1 | Llegan con sus endpoints (Ola 1) |
+| Invitaciones (`demo-invitacion-…`) | Mismos ids, correos, roles y estados, con las fechas desplazadas del día de referencia a hoy (las pendientes siguen vigentes). El token no es el legible de los mocks (público): es un HMAC con `SEED_DEMO_PASSWORD`; la semilla escribe en su log la ruta `/invitacion/<token>` de cada pendiente o caducada |
+| TOTP del personal interno | Con `SEED_DEMO_TOTP_SECRET`, sin códigos de recuperación |
+| Solicitudes, ajustes por bodega, bitácora y buzón de la Ola 1 | Llegan con sus endpoints (Ola 1) |
 | Tratamientos sin autor | `authorizedByMemberId` obligatorio: la enóloga activa de la bodega (si no, el dueño) |
 | Lecturas con `recordedByMemberId` | `recordedByUserId`: la persona de ese miembro |
 | Billeteras sin bóveda | `dynamicVaultId` simulado `demo-vault-<id>` (billeteras y bodegas con cuenta Stellar) |
