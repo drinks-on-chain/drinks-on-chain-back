@@ -83,11 +83,15 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/harvest-batches',
       'GET /v1/organizations/current/audit',
       'GET /v1/organizations/current/invitations',
+      'GET /v1/organizations/current/members',
       'GET /v1/platform/audit',
       'GET /v1/platform/organizations/{organizationId}/invitations',
+      'GET /v1/platform/organizations/{organizationId}/members',
       'GET /v1/platform/settings/{key}/history',
       'GET /v1/platform/settings/{key}/overrides',
       'GET /v1/platform/users',
+      'GET /v1/platform/wineries',
+      'GET /v1/platform/winery-applications',
       'GET /v1/production-batches',
       'GET /v1/terroirs',
       'GET /v1/wine-aging',
@@ -156,6 +160,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/health/live',
       'GET /v1/health/ready',
       'GET /v1/invitations/{token}',
+      'GET /v1/public/wineries/{slug}',
       'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/forgot-password',
       'POST /v1/auth/login',
@@ -168,6 +173,8 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/auth/reset-password',
       'POST /v1/auth/signup',
       'POST /v1/auth/verify-email',
+      'POST /v1/public/winery-applications',
+      'POST /v1/public/winery-applications/verify',
     ];
     // Públicas que además aceptan una sesión (@OptionalAuth)
     const OPTIONAL_AUTH = ['POST /v1/invitations/{token}/accept'];
