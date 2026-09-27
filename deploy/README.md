@@ -4,7 +4,7 @@ Por ahora solo existe el entorno de **desarrollo** (servidor compartido). Stagin
 
 | Archivo | Qué es |
 |---|---|
-| `dev/compose.yml` | Pila de desarrollo: `api` (construida desde la propia release), Postgres 16, Redis 7 con contraseña, Mailpit y MinIO en una red interna |
+| `dev/compose.yml` | Pila de desarrollo: `api` (construida desde la propia release), `worker` (misma imagen, `node dist/worker.js`), Postgres 16, Redis 7 con contraseña, Mailpit y MinIO en una red interna |
 | `dev/.env.example` | Plantilla de `~/doc-dev/.env` en el servidor (secretos, orígenes CORS, nombres de volúmenes) |
 | `dev/deploy.sh` | Script de despliegue idempotente con rollback; en el servidor vive en `~/doc-dev/bin/deploy.sh` |
 
@@ -17,7 +17,7 @@ flowchart LR
   C -->|scp| D["~/doc-dev/releases/SHA.tgz"]
   D -->|ssh| E["~/doc-dev/bin/deploy.sh SHA"]
   E --> F["docker compose up -d --build"]
-  F -->|healthy| G["~/doc-dev/DEPLOYED"]
+  F -->|api y worker healthy| G["~/doc-dev/DEPLOYED"]
   F -->|no sana| H[rollback a la release anterior]
 ```
 
@@ -27,9 +27,11 @@ flowchart LR
    - extrae la release en `~/doc-dev/src-<sha>` (si ya existe, la reutiliza);
    - cambia el enlace `~/doc-dev/current` a esa carpeta (cambio atómico);
    - ejecuta `docker compose -p doc-dev -f current/deploy/dev/compose.yml --env-file ~/doc-dev/.env up -d --build --remove-orphans`;
-   - espera a que el contenedor `api` esté *healthy* (el `HEALTHCHECK` de la imagen llama a `/v1/health` y exige Postgres y Redis conectados); falla antes si la API se reinicia 3 veces;
+   - espera a que los contenedores `api` y `worker` estén *healthy* (`DEPLOY_HEALTH_SERVICES`; la API por el `HEALTHCHECK` de la imagen, que llama a `/v1/health` y exige Postgres y Redis; el worker por `node dist/worker-healthcheck.js`, que exige un latido reciente, que solo se escribe con Postgres, Redis, el relay del outbox y las colas en marcha). Un servicio que no exista en el compose de la release (una release antigua sin worker) se omite. Falla antes si alguno se reinicia 3 veces;
    - si queda sana, escribe `~/doc-dev/DEPLOYED` (sha, fecha, anterior), conserva las 3 últimas releases y borra las demás (carpeta, tarball e imagen `drinks-on-chain-back:dev-<sha>`);
-   - si no, muestra los logs de la API, vuelve el enlace a la release anterior, la relanza y sale con error (el job de GitHub queda en rojo).
+   - si no, muestra los logs de la API y del worker, vuelve el enlace a la release anterior, la relanza y sale con error (el job de GitHub queda en rojo).
+
+> El worker arranca cuando la API está sana (la API aplica las migraciones; el worker no) y tiene 30 s de gracia al parar para terminar los trabajos en curso. Ver [`docs/arquitectura/outbox.md`](../docs/arquitectura/outbox.md).
 
 Si la secret `DEV_SSH_HOST` no existe, el job de despliegue se salta sin fallar (la CI sigue en verde hasta la puesta en marcha).
 
@@ -94,6 +96,7 @@ cat ~/doc-dev/DEPLOYED                                   # qué está desplegado
 cd ~/doc-dev/current
 docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env ps
 docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env logs -f api
+docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env logs -f worker   # JSON con correlationId
 ~/doc-dev/bin/deploy.sh <sha-anterior>                   # volver a una release conservada
 ```
 

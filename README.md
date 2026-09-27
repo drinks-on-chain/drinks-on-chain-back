@@ -41,10 +41,10 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `118/118` tests pasando (26 suites).
-- **Pruebas E2E:** `37/37` tests pasando (4 suites completas).
+- **Pruebas Unitarias:** `164/164` tests pasando (35 suites).
+- **Pruebas E2E:** `51/51` tests pasando (6 suites completas).
 - **Compilación TypeScript:** modo estricto (`strict: true`) sin errores; ESLint 9 sin errores (CI en cada push y PR).
-- **Base de Datos:** 14 modelos relacionales y 14 enums migrados y sincronizados en PostgreSQL.
+- **Base de Datos:** 15 modelos relacionales y 15 enums migrados y sincronizados en PostgreSQL (incluido el outbox).
 
 ---
 
@@ -80,11 +80,19 @@ drinks-on-chain-backend/
 │   │   ├── users/                      # Perfiles de usuario y gestión de cuenta
 │   │   ├── wallets/                    # Provisión de billeteras custodiales en Stellar
 │   │   └── wineries/                   # Onboarding institucional y membresías
+│   │       └── jobs/                   # Procesadores del worker (winery.created, member.added)
+│   ├── worker/                         # Proceso worker: relay del outbox, colas BullMQ,
+│   │                                   # tareas programadas, latido (healthcheck)
+│   ├── main.ts                         # Proceso api (HTTP)
+│   ├── worker.ts                       # Proceso worker (sin HTTP)
 │   └── shared/                         # Utilidades transversales e interceptores
 │       ├── decorators/                 # @CurrentUser(), @TenantId(), @Public()
 │       ├── filters/                    # GlobalExceptionFilter (estándar de error API)
 │       ├── interceptors/               # ResponseTransformInterceptor (envelope { success: true })
+│       ├── logging/                    # Logger JSON con correlationId
+│       ├── outbox/                     # OutboxService.add(tx, evento): outbox transaccional
 │       ├── prisma/                     # PrismaService singleton
+│       ├── queue/                      # Colas nombradas, @HandlesJob, @ScheduledTask
 │       ├── storage/                    # IStorageService agnóstico (Local, S3, Supabase)
 │       └── utils/                      # Criptografía SHA-256, utilitarios de QR y sanitización
 └── test/                               # Suite de pruebas de integración End-to-End (E2E)
@@ -158,11 +166,12 @@ docker compose up -d              # Postgres 5435, Redis 6379, Mailpit 1025/8025
 pnpm prisma:deploy                # aplica las migraciones (o pnpm prisma:migrate al crear una nueva)
 pnpm prisma:seed                  # superadministrador inicial (idempotente)
 pnpm start:dev                    # API en http://localhost:4000/v1 · Swagger en /docs
+pnpm start:worker:dev             # worker (otra terminal): outbox, colas y tareas programadas
 ```
 
 - Todos los puertos de `docker-compose.yml` se publican solo en `127.0.0.1`; las contraseñas salen del `.env` (`POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `MINIO_ROOT_PASSWORD`) y deben coincidir con `DATABASE_URL` y `REDIS_URL`.
 - La API usa el puerto **4000** en local (el 3000 es del sitio de bodegas y el 3002 del ERP).
-- La API también puede correr en contenedor: `docker compose --profile app up -d --build` (migra al arrancar).
+- La API y el worker también pueden correr en contenedor: `docker compose --profile app up -d --build` (la API migra al arrancar; el worker arranca cuando la API está sana).
 - Mailpit: <http://localhost:8025>. MinIO: consola en <http://localhost:9001> (aún sin uso en el código; llega con la Ola 0 · 0.9).
 
 #### Variables de entorno
@@ -195,10 +204,37 @@ La CI además aplica las migraciones sobre una base vacía (`prisma migrate depl
 | GHSA-ggr8-5vv4-36mx | `deepmerge-ts` (`prisma` → `@prisma/config`) | Solo lo usa la CLI de Prisma al leer su configuración; se va con Prisma 7 |
 | GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j | `toml` (`@stellar/stellar-sdk` 13) | Solo para resolver `stellar.toml`, que el backend no usa; el SDK se actualiza en la Ola 3 (SE-02) |
 
+### 🧵 Procesos: `api` y `worker`
+
+Una sola imagen, dos procesos (docs-back/03 §2 y §4):
+
+| Proceso | Comando | Qué hace |
+|---|---|---|
+| `api` | `node dist/main.js` (`pnpm start:prod`) | HTTP `/v1`: valida, autoriza, escribe en PostgreSQL y en el **outbox** en la misma transacción y responde. Nunca espera a la red ni al correo |
+| `worker` | `node dist/worker.js` (`pnpm start:worker`) | Sin HTTP. Publica el outbox en BullMQ, procesa las colas `chain`, `email`, `scheduled` y `default`, ejecuta las tareas programadas y escribe un latido para su healthcheck (`node dist/worker-healthcheck.js`) |
+
+```mermaid
+flowchart LR
+  API["api"] -->|"transacción: datos + outbox_events"| PG[("PostgreSQL")]
+  PG -->|"relay · FOR UPDATE SKIP LOCKED"| W["worker"]
+  W -->|"jobId = id del evento"| R[("Redis · BullMQ")]
+  R -->|"@HandlesJob(cola, tipo)"| W
+  W --> EXT["red · correo · banco<br/>(hoy simulados)"]
+```
+
+**Añadir un procesador** (detalle y garantías en [`docs/arquitectura/outbox.md`](docs/arquitectura/outbox.md)):
+
+1. En el servicio, dentro de `prisma.$transaction(async (tx) => …)`: `await this.outbox.add(tx, { type: 'order.paid', aggregateType: 'order', aggregateId, queue: QUEUE_CHAIN, payload })` (importa `OutboxModule`).
+2. En `src/modules/<modulo>/jobs/`: una clase `@Injectable()` + `@HandlesJob(QUEUE_CHAIN, 'order.paid')` que implemente `JobHandler<OutboxJobData<Payload>>`. **Idempotente**: la entrega es "al menos una vez".
+3. Regístrala en un `<modulo>-jobs.module.ts` y añade ese módulo a `JOB_MODULES` en `src/worker/worker.module.ts`.
+4. Tareas programadas: igual, con `@ScheduledTask({ name, pattern: '0 3 * * *' })` (cron UTC) o `{ name, every: ms }`.
+
+Variables del worker (todas opcionales salvo `DATABASE_URL` y `REDIS_URL`) en `.env.example`, bloque "Worker".
+
 ### 🐳 Imagen y despliegue
 
 - `Dockerfile` multi-etapa (`node:22-alpine`, pnpm por corepack, solo dependencias de producción, usuario `node`, `HEALTHCHECK` a `/v1/health`). Con `RUN_MIGRATIONS=true`, `docker/entrypoint.sh` ejecuta `prisma migrate deploy` antes de arrancar.
-- **Desarrollo**: cada push a `dev` con la CI en verde se despliega solo en el servidor de desarrollo (`deploy-dev.yml` → `git archive` → `scp` → `deploy.sh`), con rollback automático si la API no queda sana. Detalles, puesta en marcha y secretos en [`deploy/README.md`](deploy/README.md).
+- **Desarrollo**: cada push a `dev` con la CI en verde se despliega solo en el servidor de desarrollo (`deploy-dev.yml` → `git archive` → `scp` → `deploy.sh`), con rollback automático si la API o el worker no quedan sanos. Detalles, puesta en marcha y secretos en [`deploy/README.md`](deploy/README.md).
 - Ramas: trabajo en `dev` (o ramas `feat/…` integradas en `dev`); `main` solo por PR `dev → main`.
 
 ### 📚 OpenAPI como contrato (OPS-12)
