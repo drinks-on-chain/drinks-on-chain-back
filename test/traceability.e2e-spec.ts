@@ -91,13 +91,12 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       });
     wineryId = wineryRes.body.data.id;
 
-    // Aprobar Bodega 1
+    // Aprobar Bodega 1 (activa: el ERP exige la bodega ACTIVE, SE-05)
     await request(app.getHttpServer())
       .post(`/v1/wineries/${wineryId}/approve`)
       .set('Authorization', `Bearer ${platformAdminToken}`)
-      .send({
-        onchainProducerId: `PROD-${timestamp.toString().slice(-6)}`,
-      });
+      .send({ approvalNotes: `PROD-${timestamp.toString().slice(-6)}` })
+      .expect(200);
 
     // Login Winery Admin con tenant activo
     const wAdminLogin = await request(app.getHttpServer())
@@ -191,7 +190,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
     await request(app.getHttpServer())
       .post(`/v1/wineries/${winery2Id}/approve`)
       .set('Authorization', `Bearer ${platformAdminToken}`)
-      .send({});
+      .send({})
+      .expect(200);
 
     const w2Login = await request(app.getHttpServer())
       .post('/v1/auth/login')

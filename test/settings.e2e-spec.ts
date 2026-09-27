@@ -66,6 +66,15 @@ describe('Configuración (e2e)', () => {
       })
       .expect(201);
     wineryId = winery.body.data.id as string;
+    // Bodega activa (como tras aceptar el dueño): el ERP exige ACTIVE (SE-05)
+    await prisma.winery.update({
+      where: { id: wineryId },
+      data: { certificationStatus: 'ACTIVE', activatedAt: new Date() },
+    });
+    await prisma.organization.update({
+      where: { id: wineryId },
+      data: { status: 'ACTIVE' },
+    });
   });
 
   afterAll(async () => {
