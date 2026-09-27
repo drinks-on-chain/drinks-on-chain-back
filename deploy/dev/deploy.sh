@@ -15,6 +15,8 @@
 #      omite.
 #   5. Si queda sana: escribe ~/doc-dev/DEPLOYED y conserva las 3 últimas
 #      releases. Si no: vuelve al enlace anterior, relanza y sale con error.
+#   6. Si queda sana y la release trae un deploy/dev/deploy.sh distinto del
+#      instalado, lo copia a ~/doc-dev/bin/deploy.sh (install -m 700).
 #
 # Idempotente: repetir el mismo <sha> no rompe nada. Un candado evita dos
 # despliegues a la vez. Variables opcionales (entorno o ~/doc-dev/.env):
@@ -119,6 +121,22 @@ wait_healthy() {
   return 1
 }
 
+# Instala $1 como $BASE/bin/deploy.sh (700) si difiere del instalado.
+install_self() {
+  local candidate="$1" installed="$BASE/bin/deploy.sh"
+  [[ -f "$candidate" ]] || return 0
+  if [[ -f "$installed" ]] && cmp -s "$candidate" "$installed"; then
+    return 0
+  fi
+  mkdir -p "$BASE/bin"
+  if install -m 700 "$candidate" "$installed.new" && mv -f "$installed.new" "$installed"; then
+    log "deploy.sh actualizado en $installed desde la release"
+  else
+    rm -f "$installed.new"
+    log "AVISO: no se pudo actualizar $installed (se sigue con el anterior)"
+  fi
+}
+
 # --- 1. Extraer ------------------------------------------------------------------
 if [[ -f "$TARGET/.release-ok" ]]; then
   log "release $SHA ya extraída en $TARGET"
@@ -155,6 +173,12 @@ if compose "$TARGET" up -d --build --remove-orphans && wait_healthy "$TARGET"; t
     rm -rf "$dir" "$RELEASES_DIR/$old_sha.tgz"
     docker image rm "drinks-on-chain-back:dev-$old_sha" >/dev/null 2>&1 || true
   done
+
+  # --- 6. deploy.sh autoinstalable ----------------------------------------------
+  # Si la release trae otro deploy.sh, se instala para el próximo despliegue.
+  # install escribe un archivo nuevo y mv lo sustituye de forma atómica: esta
+  # ejecución sigue leyendo el script anterior (su inodo sigue abierto).
+  install_self "$TARGET/deploy/dev/deploy.sh"
 
   log "desplegado $SHA"
   echo "$SHA"
