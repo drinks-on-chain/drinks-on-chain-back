@@ -47,7 +47,26 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Guards globales y `@Audience`/`@OrgType`/`@Roles`/`@RequireActiveOrg` por membresía; matriz de roles del ERP de docs-back/05 §3; plataforma con `?wineryId=` obligatorio en escrituras (OP-07); SE-05 como aviso (`FEATURE_ENFORCE_ACTIVE_ORG`) · 2026-09-27
   - [x] SE-01: las rutas de una bodega solo crean o reactivan su propia membresía; nada escribe ya `users.user_role` · 2026-09-27
   - [ ] Retirar `users.user_role`, `winery_members` y los campos de compatibilidad (cierre de la Ola 1, H1)
-- [ ] **0.7 Bitácora base** (AUD-01, AUD-02) — registro en la misma transacción, solo inserción, encadenada por hash.
-- [ ] **0.8 Configuración base** (CFG-01, CFG-05) — definiciones de parámetros y valor efectivo con caché.
-- [ ] **0.9 Servicios comunes** (CMP-01, OPS-06, OPS-12, OPS-01, OPS-03, SE-04, SE-08) — correo con plantillas y cola (Mailpit en desarrollo), almacenamiento privado con URL firmadas (MinIO), OpenAPI publicado (hecho en 0.3), healthcheck y logs JSON.
+- [x] **0.7 Bitácora base** (AUD-01, AUD-02) — registro en la misma transacción, solo inserción, encadenada por hash. · 2026-09-27 ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md))
+  - [x] Tabla `audit_events` con la forma del contrato O1 §7, `seq` monotónico, `hash` SHA-256 del evento canónico y `prevHash` · 2026-09-27
+  - [x] Inmutabilidad en la base: trigger que rechaza `UPDATE`, `DELETE` y `TRUNCATE` · 2026-09-27
+  - [x] `AuditService.record(tx, …)` en la misma transacción con `pg_advisory_xact_lock`, saneado de `before`/`after`, `transaction()` y `recordStandalone()`; `verifyChain(from, to)` · 2026-09-27
+  - [x] Contexto de la petición (`src/shared/context/request-context.ts`) con persona, organización, rol, sesión, audiencia, IP, correlación y app (`X-Client-App`) · 2026-09-27
+  - [x] Instrumentado: inicio de sesión correcto y fallido, alta/aprobación/rechazo de bodega y altas del ERP · 2026-09-27
+  - [x] Pruebas: escrituras simultáneas, rollback sin entrada, `UPDATE`/`DELETE`/`TRUNCATE` rechazados, manipulación detectada · 2026-09-27
+  - [ ] Usuario de base de datos de la aplicación sin permisos de `UPDATE`/`DELETE` sobre la bitácora (infraestructura de producción)
+- [x] **0.8 Configuración base** (CFG-01, CFG-05) — definiciones de parámetros y valor efectivo con caché. · 2026-09-27 ([`docs/arquitectura/configuracion.md`](arquitectura/configuracion.md))
+  - [x] Tablas de definiciones, estándar general, ajustes por bodega e historial · 2026-09-27
+  - [x] Catálogo completo de docs-back/05 §4 (27 claves, mínimos legales de A-31) copiado a la base al arrancar · 2026-09-27
+  - [x] `SettingsService`: valor efectivo con caché en Redis e invalidación al confirmar y por `setting.changed`; `snapshot(wineryId)` para el lote (CFG-06); validación de tipo, límites, nivel y mínimo legal con excepción · 2026-09-27
+  - [x] Escrituras con historial y bitácora (`setGlobal`, `setOverrides`, `resetOverrides`) listas para los endpoints de la Ola 1 · 2026-09-27
+  - [x] `GET /v1/organizations/current/settings` (solo lectura) · 2026-09-27
+- [x] **0.9 Servicios comunes** (CMP-01, OPS-06, OPS-12, OPS-01, OPS-03, SE-04, SE-08) — correo con plantillas y cola (Mailpit en desarrollo), almacenamiento privado con URL firmadas (MinIO), OpenAPI publicado (hecho en 0.3), healthcheck y logs JSON. · 2026-09-27 ([`docs/arquitectura/correo-y-archivos.md`](arquitectura/correo-y-archivos.md))
+  - [x] Correo: plantillas Handlebars (texto + HTML, marca, español), cola `email`, SMTP con `nodemailer`, `email_messages` con estado e idempotencia; Mailpit en desarrollo y en la CI · 2026-09-27
+  - [x] Almacenamiento privado: driver S3 (MinIO) con URL firmadas de corta vida y bucket creado al arrancar, driver local con URL firmadas por HMAC; sin carpeta pública (`useStaticAssets` retirado) · 2026-09-27
+  - [x] Subidas solo para personal, tipo real por firma de bytes, sin SVG, límite por tipo, prefijo por organización (SE-04) · 2026-09-27
+  - [x] `GET /v1/health/live` y `/v1/health/ready`; logs JSON en la API con `correlationId`, `sid` y `org`; Swagger apagado en producción salvo `SWAGGER_ENABLED=true` (SE-08) · 2026-09-27
+  - [x] `deploy.sh` se instala solo en `~/doc-dev/bin` al terminar un despliegue sano · 2026-09-27
+  - [ ] Publicar MinIO para el navegador en el servidor de desarrollo (nginx → `minio:9000` y `S3_PUBLIC_ENDPOINT`) (coordinación)
+  - [ ] Antivirus y cuotas por rol de las subidas (SE-04, resto)
 - [ ] **0.10 Datos de demostración** (OPS-09) — semilla determinista alineada con los mocks del frontend.
