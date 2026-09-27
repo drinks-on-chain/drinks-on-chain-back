@@ -49,7 +49,16 @@ describe('WineriesService', () => {
   const mockTx = {
     user: {
       create: jest.fn(),
+      findUnique: jest.fn().mockResolvedValue({ fullName: 'Persona' }),
     },
+    // slug libre y prefijo de lote (candados y lecturas en la transacción)
+    $executeRaw: jest.fn().mockResolvedValue(0),
+    winery: {
+      findMany: jest.fn().mockResolvedValue([]),
+      findUnique: jest.fn().mockResolvedValue(null),
+      update: jest.fn().mockResolvedValue({}),
+    },
+    wineryStatusChange: { create: jest.fn().mockResolvedValue({}) },
   };
 
   const mockOnchainProducerHook = {

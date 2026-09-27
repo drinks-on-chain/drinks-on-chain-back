@@ -22,6 +22,8 @@ describe('BottlingService', () => {
     id: mockWineryId,
     legalName: 'Destilería Casa Real S.A.',
     commercialName: 'Kuhlmann & Cia',
+    // Prefijo de lote único asignado al activarse (ORG-05): lo usa el código
+    lotPrefix: 'KUH',
   };
 
   const mockProdBatch = {
