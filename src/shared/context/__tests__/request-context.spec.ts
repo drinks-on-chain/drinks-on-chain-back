@@ -1,40 +1,38 @@
 import {
-  createRequestContext,
-  currentRequestContext,
+  getRequestContext,
   identityFromUser,
   parseClientApp,
   runWithRequestContext,
-  updateRequestContext,
+  setRequestContext,
 } from '../request-context';
 import { runWithCorrelationId } from '@shared/logging/correlation';
 import { CorrelationIdMiddleware } from '@shared/middleware/correlation-id.middleware';
 
 describe('RequestContext', () => {
   it('fuera de un contexto no hay nada y actualizar no falla', () => {
-    expect(currentRequestContext()).toBeUndefined();
-    expect(() => updateRequestContext({ userId: 'x' })).not.toThrow();
+    expect(getRequestContext()).toBeUndefined();
+    expect(() => setRequestContext({ userId: 'x' })).not.toThrow();
   });
 
   it('se completa dentro del contexto asíncrono', async () => {
-    const ctx = createRequestContext({ correlationId: 'c-1' });
-    await runWithRequestContext(ctx, async () => {
+    await runWithRequestContext({ correlationId: 'c-1' }, async () => {
       await Promise.resolve();
-      updateRequestContext({ userId: 'u-1', organizationId: undefined });
-      expect(currentRequestContext()).toMatchObject({
+      setRequestContext({ userId: 'u-1' });
+      expect(getRequestContext()).toMatchObject({
         correlationId: 'c-1',
         userId: 'u-1',
         organizationId: null,
-        clientApp: 'API',
+        clientApp: null,
       });
     });
   });
 
-  it('X-Client-App: valores conocidos, WORKER y desconocidos → API', () => {
+  it('X-Client-App: valores conocidos, WORKER y desconocidos → API, ausente → null', () => {
     expect(parseClientApp('erp')).toBe('ERP');
     expect(parseClientApp(['BACKOFFICE'])).toBe('BACKOFFICE');
     expect(parseClientApp('WORKER')).toBe('API');
     expect(parseClientApp('hacker')).toBe('API');
-    expect(parseClientApp(undefined)).toBe('API');
+    expect(parseClientApp(undefined)).toBeNull();
   });
 
   it('identidad con los claims actuales (wineryId, memberRole, userRole)', () => {
@@ -92,7 +90,7 @@ describe('RequestContext', () => {
   it('el worker ejecuta con app WORKER y el correlationId del evento', () => {
     runWithCorrelationId('evt-corr', () => {
       expect(CorrelationIdMiddleware.getCorrelationId()).toBe('evt-corr');
-      expect(currentRequestContext()?.clientApp).toBe('WORKER');
+      expect(getRequestContext()?.clientApp).toBe('WORKER');
     });
   });
 });

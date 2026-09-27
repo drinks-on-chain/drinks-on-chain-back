@@ -1,5 +1,5 @@
 import { ConsoleLogger, LogLevel } from '@nestjs/common';
-import { currentRequestContext } from '@shared/context/request-context';
+import { getRequestContext } from '@shared/context/request-context';
 import { sanitizeLogData } from '@shared/utils/log-sanitizer.util';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -49,7 +49,7 @@ export class JsonLogger extends ConsoleLogger {
       fields = rest;
       base.message = text ?? '';
     }
-    const ctx = currentRequestContext();
+    const ctx = getRequestContext();
     return {
       timestamp: new Date(timestamp).toISOString(),
       ...base,
@@ -59,7 +59,7 @@ export class JsonLogger extends ConsoleLogger {
       ...(ctx?.sessionId ? { sid: ctx.sessionId } : {}),
       ...(ctx?.organizationId ? { org: ctx.organizationId } : {}),
       ...(ctx?.userId ? { userId: ctx.userId } : {}),
-      ...(ctx && ctx.clientApp !== 'API' && ctx.clientApp !== 'WORKER'
+      ...(ctx?.clientApp && ctx.clientApp !== 'WORKER'
         ? { app: ctx.clientApp }
         : {}),
     };

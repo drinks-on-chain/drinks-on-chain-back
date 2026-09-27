@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { AuditEvent, Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { currentRequestContext } from '@shared/context/request-context';
+import { getRequestContext } from '@shared/context/request-context';
 import { AuditHashable, computeAuditHash, findBrokenLink } from './audit-hash';
 import { sanitizeAuditData } from './audit-sanitizer';
 import {
@@ -100,7 +100,7 @@ export class AuditService {
       throw new Error('Una entrada de bitácora necesita resource.type');
     }
 
-    const ctx = currentRequestContext();
+    const ctx = getRequestContext();
     const actor =
       input.actor === null
         ? null

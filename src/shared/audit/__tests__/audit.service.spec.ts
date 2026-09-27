@@ -1,7 +1,7 @@
 import { AuditService } from '../audit.service';
 import { computeAuditHash } from '../audit-hash';
 import {
-  createRequestContext,
+  emptyRequestContext,
   runWithRequestContext,
 } from '@shared/context/request-context';
 import type { PrismaService } from '@shared/prisma/prisma.service';
@@ -77,7 +77,7 @@ describe('AuditService.record', () => {
 
   it('toma actor, origen y correlación del contexto de la petición', async () => {
     const rows: Row[] = [];
-    const ctx = createRequestContext({
+    const ctx = emptyRequestContext({
       correlationId: 'corr-1',
       userId: '11111111-1111-1111-1111-111111111111',
       userFullName: 'Ana',
@@ -117,14 +117,12 @@ describe('AuditService.record', () => {
 
   it('actor null = sistema aunque haya contexto', async () => {
     const rows: Row[] = [];
-    await runWithRequestContext(
-      createRequestContext({ userId: 'u1', clientApp: 'ERP' }),
-      () =>
-        service.record(fakeTx(rows) as never, {
-          action: 'SYSTEM_TASK_DONE',
-          resource: { type: 'task' },
-          actor: null,
-        }),
+    await runWithRequestContext({ userId: 'u1', clientApp: 'ERP' }, () =>
+      service.record(fakeTx(rows) as never, {
+        action: 'SYSTEM_TASK_DONE',
+        resource: { type: 'task' },
+        actor: null,
+      }),
     );
     expect(rows[0]).toMatchObject({
       actorUserId: null,

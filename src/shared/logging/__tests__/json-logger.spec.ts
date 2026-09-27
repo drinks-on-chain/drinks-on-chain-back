@@ -1,9 +1,6 @@
 import { JsonLogger } from '../json-logger';
 import { runWithCorrelationId } from '../correlation';
-import {
-  createRequestContext,
-  runWithRequestContext,
-} from '@shared/context/request-context';
+import { runWithRequestContext } from '@shared/context/request-context';
 
 describe('JsonLogger', () => {
   const logger = new JsonLogger('worker');
@@ -54,13 +51,13 @@ describe('JsonLogger', () => {
 
   it('añade sesión, organización y persona del contexto de la petición', () => {
     const entry = runWithRequestContext(
-      createRequestContext({
+      {
         correlationId: 'corr-2',
         sessionId: 'sid-1',
         organizationId: 'org-1',
         userId: 'user-1',
         clientApp: 'ERP',
-      }),
+      },
       () => logger.buildEntry('hola', { context: 'HTTP', logLevel: 'log' }),
     );
     expect(entry).toMatchObject({
