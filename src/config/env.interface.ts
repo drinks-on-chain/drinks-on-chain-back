@@ -31,6 +31,9 @@ export interface EnvironmentVariables {
   STELLAR_INDEXER_POLL_INTERVAL_MS: number;
   STELLAR_INDEXER_START_LEDGER: number;
 
+  // Swagger UI (/docs) y documento (/docs-json)
+  SWAGGER_ENABLED: boolean;
+
   // CORS: orígenes exactos separados por comas
   CORS_ALLOWED_ORIGINS?: string;
 }

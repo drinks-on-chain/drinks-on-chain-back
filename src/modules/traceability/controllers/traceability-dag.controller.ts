@@ -24,7 +24,7 @@ import { SkipTenant } from '@modules/auth/decorators/skip-tenant.decorator';
 import { Public } from '@modules/auth/decorators/public.decorator';
 
 @ApiTags('Grafo DAG de Trazabilidad')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('traceability')
 export class TraceabilityDagController {

@@ -39,7 +39,7 @@ import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 
 @ApiTags('Vendimia y Pesaje')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('harvest-batches')
 export class HarvestBatchesController {

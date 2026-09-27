@@ -78,6 +78,10 @@ export const envValidationSchema = Joi.object({
   STELLAR_INDEXER_POLL_INTERVAL_MS: Joi.number().min(1000).default(5000),
   STELLAR_INDEXER_START_LEDGER: Joi.number().min(0).default(0),
 
+  // Swagger UI en /docs y documento en /docs-json. `false` los apaga
+  // (producción); el contrato versionado es openapi.json.
+  SWAGGER_ENABLED: Joi.boolean().default(true),
+
   // CORS: lista de orígenes exactos separada por comas; sin comodines.
   // Obligatoria en producción. El formato de cada origen se valida al
   // arrancar (src/config/cors.config.ts).

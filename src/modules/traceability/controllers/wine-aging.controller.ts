@@ -31,7 +31,7 @@ import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Crianza en Madera y Guarda (Vino)')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('wine-aging')
 export class WineAgingController {

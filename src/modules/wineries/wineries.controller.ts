@@ -48,7 +48,7 @@ import { PaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 
 @ApiTags('Bodegas y Productores')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('wineries')
 export class WineriesController {

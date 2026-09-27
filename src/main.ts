@@ -1,9 +1,10 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { Logger } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import { configureApp } from './app.setup';
+import { createOpenApiDocument } from './openapi/openapi';
 
 import { NestExpressApplication } from '@nestjs/platform-express';
 import * as path from 'path';
@@ -47,27 +48,20 @@ async function bootstrap() {
   logger.log(`CORS habilitado para: ${allowedOrigins.join(', ')}`);
 
   // 3. Versionado /v1, validación (422 con details por campo), envoltorio de
-  //    respuesta y filtro de errores: lo mismo que usan las e2e
+  //    respuesta y filtro de errores: lo mismo que usan las e2e y el OpenAPI
   configureApp(app);
 
-  // 4. Configuración de Swagger / OpenAPI en /docs
-  const swaggerConfig = new DocumentBuilder()
-    .setTitle('Drinks on Chain API')
-    .setDescription(
-      'Backend API para Trazabilidad B2B y Tokenización NFT de Bebidas en Stellar Soroban',
-    )
-    .setVersion('1.0')
-    .addBearerAuth()
-    .addTag('System', 'Endpoints de salud y configuración del sistema')
-    .build();
-
-  const document = SwaggerModule.createDocument(app, swaggerConfig);
-  SwaggerModule.setup('docs', app, document, {
-    customSiteTitle: 'Drinks on Chain API Docs',
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
+  // 4. Swagger / OpenAPI en /docs y /docs-json (SWAGGER_ENABLED=false lo apaga)
+  const swaggerEnabled =
+    String(config.get('SWAGGER_ENABLED', 'true')).toLowerCase() !== 'false';
+  if (swaggerEnabled) {
+    SwaggerModule.setup('docs', app, createOpenApiDocument(app), {
+      customSiteTitle: 'Drinks on Chain API Docs',
+      swaggerOptions: {
+        persistAuthorization: true,
+      },
+    });
+  }
 
   app.enableShutdownHooks();
 
@@ -75,9 +69,11 @@ async function bootstrap() {
   await app.listen(port);
 
   logger.log(`🚀 Application is running on: http://localhost:${port}/v1`);
-  logger.log(
-    `📚 Swagger documentation available at: http://localhost:${port}/docs`,
-  );
+  if (swaggerEnabled) {
+    logger.log(
+      `📚 Swagger documentation available at: http://localhost:${port}/docs`,
+    );
+  }
 }
 
 bootstrap();

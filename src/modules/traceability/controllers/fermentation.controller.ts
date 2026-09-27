@@ -37,7 +37,7 @@ import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Vinificación y Fermentación')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('fermentation-tanks')
 export class FermentationController {

@@ -35,7 +35,7 @@ import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Terroirs y Parcelas')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('terroirs')
 export class TerroirsController {

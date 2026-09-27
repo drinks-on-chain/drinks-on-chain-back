@@ -2,6 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { HealthService } from './health.service';
 import { HealthStatusDataDto } from './dto/health-response.dto';
+import { Public } from '@modules/auth/decorators/public.decorator';
 
 @ApiTags('System')
 @Controller('health')
@@ -9,6 +10,7 @@ export class HealthController {
   constructor(private readonly healthService: HealthService) {}
 
   @Get()
+  @Public()
   @ApiOperation({
     summary: 'Verificar el estado del servidor, base de datos y Redis',
     description:

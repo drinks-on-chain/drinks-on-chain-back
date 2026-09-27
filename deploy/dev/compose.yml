@@ -38,6 +38,8 @@ services:
       STORAGE_LOCAL_PATH: /app/uploads
       STORAGE_BASE_URL: ${STORAGE_BASE_URL:?Define STORAGE_BASE_URL}
       STELLAR_NETWORK: ${STELLAR_NETWORK:-testnet}
+      # Desarrollo publica /docs y /docs-json (el frontend lee el contrato de ahí)
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
     volumes:

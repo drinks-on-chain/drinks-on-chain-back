@@ -33,7 +33,7 @@ import { UserRoleEnum } from '@prisma/client';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Laboratorio Físico-Químico')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('lab-analyses')
 export class LabAnalysesController {

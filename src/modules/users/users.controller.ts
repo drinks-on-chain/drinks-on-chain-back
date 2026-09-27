@@ -26,7 +26,7 @@ import {
 } from '@shared/decorators/current-user.decorator';
 
 @ApiTags('Usuarios')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller('users')
 export class UsersController {

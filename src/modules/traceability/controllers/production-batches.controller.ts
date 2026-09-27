@@ -31,7 +31,7 @@ import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 
 @ApiTags('Destilación y Procesos Especiales (Singani)')
-@ApiBearerAuth('JWT-auth')
+@ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard, TenantGuard)
 @Controller('production-batches')
 export class ProductionBatchesController {
