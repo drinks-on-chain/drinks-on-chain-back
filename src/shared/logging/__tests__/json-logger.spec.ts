@@ -1,5 +1,9 @@
 import { JsonLogger } from '../json-logger';
 import { runWithCorrelationId } from '../correlation';
+import {
+  createRequestContext,
+  runWithRequestContext,
+} from '@shared/context/request-context';
 
 describe('JsonLogger', () => {
   const logger = new JsonLogger('worker');
@@ -46,5 +50,37 @@ describe('JsonLogger', () => {
     } finally {
       write.mockRestore();
     }
+  });
+
+  it('añade sesión, organización y persona del contexto de la petición', () => {
+    const entry = runWithRequestContext(
+      createRequestContext({
+        correlationId: 'corr-2',
+        sessionId: 'sid-1',
+        organizationId: 'org-1',
+        userId: 'user-1',
+        clientApp: 'ERP',
+      }),
+      () => logger.buildEntry('hola', { context: 'HTTP', logLevel: 'log' }),
+    );
+    expect(entry).toMatchObject({
+      correlationId: 'corr-2',
+      sid: 'sid-1',
+      org: 'org-1',
+      userId: 'user-1',
+      app: 'ERP',
+    });
+  });
+
+  it('un mensaje objeto va al primer nivel y saneado', () => {
+    const entry = logger.buildEntry(
+      { message: 'GET /v1/health 200', statusCode: 200, password: 'x' },
+      { context: 'HTTP', logLevel: 'log' },
+    );
+    expect(entry).toMatchObject({
+      message: 'GET /v1/health 200',
+      statusCode: 200,
+      password: '***REDACTED***',
+    });
   });
 });
