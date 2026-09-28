@@ -2,6 +2,14 @@ import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { DemoSeedSummary, seedDemo, selectDemoPeople } from './demo.seed';
 import { loadMockFixtures, MockFixtures } from './fixtures';
+import { applySeedCorrections, SEED_CORRECTIONS } from './corrections';
+import {
+  backfillHarvestChain,
+  BackfillResult,
+} from '../modules/lots/lot-backfill';
+import { resolvePassportBaseUrl } from '../modules/lots/bottle-units';
+import { AuditService } from '../shared/audit/audit.service';
+import type { PrismaService } from '../shared/prisma/prisma.service';
 import { ensurePlatformOrganization, upsertSuperadmin } from './platform.seed';
 import { SeedOptions } from './seed.options';
 import { DemoIdentitySummary, seedDemoIdentity } from './identity.seed';
@@ -22,6 +30,8 @@ export interface SeedResult {
   demo: DemoSeedSummary | null;
   identity: DemoIdentitySummary | null;
   organizations: DemoOrganizationsSummary | null;
+  /** Relleno de lotes de la Ola 2 (uno por pesaje de demostración). */
+  lots?: BackfillResult[];
 }
 
 const silentLogger: SeedLogger = {
@@ -64,7 +74,7 @@ export async function runSeed(
     return { superadmin, demo: null, identity: null, organizations: null };
   }
 
-  const fx = fixtures ?? loadMockFixtures();
+  const fx = applySeedCorrections(fixtures ?? loadMockFixtures());
   const people = selectDemoPeople(fx);
   if (
     options.superadmin &&
@@ -85,7 +95,7 @@ export async function runSeed(
           }),
         )
       : null;
-  const { demo, identity, organizations } = await prisma.$transaction(
+  const { demo, identity, organizations, lots } = await prisma.$transaction(
     async (tx) => {
       const summary = await seedDemo(tx, fx, hash);
       const ident = await seedDemoIdentity(tx, fx, {
@@ -96,9 +106,24 @@ export async function runSeed(
       const orgs = await seedDemoOrganizations(tx, fx, {
         demoPassword: demoOptions.password,
       });
-      return { demo: summary, identity: ident, organizations: orgs };
+      // Lotes de la Ola 2 (§2.6): la trazabilidad sembrada es "anterior" y se
+      // rellena con la misma lógica que la migración (idempotente)
+      const audit = new AuditService(prisma as unknown as PrismaService);
+      const lots: BackfillResult[] = [];
+      for (const h of fx.harvestBatches) {
+        lots.push(
+          await backfillHarvestChain(tx, h.id, {
+            passportBaseUrl: resolvePassportBaseUrl(process.env),
+            audit: (client, input) => audit.record(client, input),
+          }),
+        );
+        await tx.lotBackfillPending.deleteMany({
+          where: { harvestBatchId: h.id },
+        });
+      }
+      return { demo: summary, identity: ident, organizations: orgs, lots };
     },
-    { maxWait: 10_000, timeout: 120_000 },
+    { maxWait: 10_000, timeout: 300_000 },
   );
   logger.log(
     `Datos de demostración de ${fx.source.package} ${fx.source.git ?? fx.source.version} (día de referencia ${fx.source.referenceDay}): ` +
@@ -130,5 +155,14 @@ export async function runSeed(
   for (const warning of organizations.warnings) {
     logger.warn(`Semilla de bodegas: ${warning}`);
   }
-  return { superadmin, demo, identity, organizations };
+  const createdLots = lots.filter((l) => l.lotId && !l.skipped);
+  logger.log(
+    `Lotes (Ola 2): ${createdLots.length} creados, ${lots.filter((l) => l.skipped === 'ALREADY_ASSIGNED').length} ya existían; ` +
+      `${createdLots.reduce((n, l) => n + l.bottleCodes, 0)} códigos de botella; ` +
+      `${createdLots.reduce((n, l) => n + l.issues.length, 0)} incidencias de cumplimiento`,
+  );
+  for (const c of SEED_CORRECTIONS) {
+    logger.log(`Corrección de realismo aplicada: ${c.what}`);
+  }
+  return { superadmin, demo, identity, organizations, lots };
 }
