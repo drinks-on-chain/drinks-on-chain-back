@@ -7,8 +7,8 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import {
   MembershipRoleEnum,
-  UserRoleEnum,
   WineryCategoryEnum,
+  WineryStatusEnum,
 } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
@@ -25,6 +25,7 @@ import {
   deleteIdentityData,
   loginWithMfa,
 } from './helpers/identity';
+import { wineryWithOwner } from './helpers/staff-session';
 
 process.env.TRUST_PROXY = '1';
 
@@ -34,7 +35,8 @@ process.env.TRUST_PROXY = '1';
  * acepta con una cuenta nueva → bodega ACTIVE con prefijo de lote → ERP;
  * alta directa; suspender (403 ORG_NOT_ACTIVE y sesión revocada), reactivar,
  * revocar; transferir la titularidad; equipo con todas sus reglas; permisos
- * por rol (403) y entre organizaciones (404); el operario lee parcelas.
+ * por rol (403) y entre organizaciones (404); el operario lee parcelas;
+ * bodega INVITED en el ERP.
  */
 const PASSWORD = 'Password123!';
 const NEW_PASSWORD = 'vendimia-de-altura-2026';
@@ -180,7 +182,6 @@ describe('Solicitudes, bodegas y equipo · O1-BE-1 B (e2e)', () => {
         email: email(name),
         fullName: `Persona ${name}`,
         passwordHash: await bcrypt.hash(PASSWORD, 4),
-        userRole: UserRoleEnum.ENOLOGIST,
       },
     });
     const membership = await prisma.membership.create({
@@ -1225,37 +1226,20 @@ describe('Solicitudes, bodegas y equipo · O1-BE-1 B (e2e)', () => {
     });
   });
 
-  // ─── SE-05 y rutas obsoletas ─────────────────────────────────────────────
+  // ─── SE-05 ─────────────────────────────────────────────────────────────
 
-  describe('bodega INVITED en el ERP y rutas que se retiran en H1', () => {
-    it('INVITED → 403 ORG_NOT_ACTIVE; la ruta obsoleta avisa con Deprecation', async () => {
-      const ip = nextIp();
-      const signup = await http()
-        .post('/v1/auth/signup')
-        .set('X-Forwarded-For', ip)
-        .send({
-          email: email('legado'),
-          password: PASSWORD,
-          fullName: 'Dueño legado',
-          userRole: UserRoleEnum.WINERY_ADMIN,
-        })
-        .expect(201);
-      const winery = await http()
-        .post('/v1/wineries')
-        .set(auth(signup.body.data.tokens.accessToken))
-        .send({
-          legalName: `Legado ${run} S.A.`,
-          commercialName: `Legado ${run}`,
-          beverageCategory: WineryCategoryEnum.WINERY,
-          taxIdNit: taxId(),
-          geographicRegion: 'Tarija',
-          contactEmail: email('legado'),
-        })
-        .expect(201);
-      expect(winery.headers['deprecation']).toBe('true');
-      wineryIds.push(winery.body.data.id);
-      const session = await login(email('legado')).expect(200);
-      expect(session.body.data.activeOrganizationId).toBe(winery.body.data.id);
+  describe('bodega INVITED en el ERP', () => {
+    it('INVITED → 403 ORG_NOT_ACTIVE', async () => {
+      const { wineryId } = await wineryWithOwner(app, {
+        name: `Invitada ${run}`,
+        taxId: taxId(),
+        email: email('invitada'),
+        password: PASSWORD,
+        status: WineryStatusEnum.INVITED,
+      });
+      wineryIds.push(wineryId);
+      const session = await login(email('invitada')).expect(200);
+      expect(session.body.data.activeOrganizationId).toBe(wineryId);
       const res = await http()
         .get('/v1/terroirs')
         .set(auth(session.body.data.tokens.accessToken))
@@ -1264,19 +1248,6 @@ describe('Solicitudes, bodegas y equipo · O1-BE-1 B (e2e)', () => {
         code: 'ORG_NOT_ACTIVE',
         details: [{ field: null, message: 'INVITED' }],
       });
-
-      // La aprobación antigua sigue funcionando y asigna el prefijo de lote
-      const approved = await http()
-        .post(`/v1/wineries/${winery.body.data.id}/approve`)
-        .set(auth(adminToken))
-        .send({})
-        .expect(200);
-      expect(approved.headers['deprecation']).toBe('true');
-      const row = await prisma.winery.findUniqueOrThrow({
-        where: { id: winery.body.data.id },
-      });
-      expect(row.lotPrefix).toMatch(/^[A-Z]{3,5}$/);
-      expect(row.slug).toMatch(/^legado-/);
     });
   });
 });

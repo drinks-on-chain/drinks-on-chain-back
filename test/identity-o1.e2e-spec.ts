@@ -4,7 +4,6 @@ import * as request from 'supertest';
 import { randomInt } from 'crypto';
 import { tmpdir } from 'os';
 import { join } from 'path';
-import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
@@ -21,6 +20,7 @@ import {
   deleteIdentityData,
   loginWithMfa,
 } from './helpers/identity';
+import { wineryWithOwner } from './helpers/staff-session';
 
 process.env.TRUST_PROXY = '1';
 
@@ -155,44 +155,24 @@ describe('Cuenta, segundo factor, invitaciones y usuarios internos · O1-BE-1 A 
 
   async function ownerWithWinery(name: string) {
     const ip = nextIp();
-    const signup = await http()
-      .post('/v1/auth/signup')
-      .set('X-Forwarded-For', ip)
-      .send({
-        email: email(name),
-        password: PASSWORD,
-        fullName: `Dueña ${name}`,
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const winery = await http()
-      .post('/v1/wineries')
-      .set(auth(signup.body.data.tokens.accessToken))
-      .send({
-        legalName: `Bodega ${name} ${run} S.A.`,
-        commercialName: `${name} ${run}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `${randomInt(100000000, 999999999)}`,
-        geographicRegion: 'Tarija',
-        contactEmail: email(name),
-      })
-      .expect(201);
-    wineryIds.push(winery.body.data.id);
-    await http()
-      .post(`/v1/wineries/${winery.body.data.id}/approve`)
-      .set(auth(adminToken))
-      .send({})
-      .expect(200);
+    const { wineryId } = await wineryWithOwner(app, {
+      name: `${name} ${run}`,
+      taxId: `${randomInt(100000000, 999999999)}`,
+      email: email(name),
+      password: PASSWORD,
+      fullName: `Dueña ${name}`,
+    });
+    wineryIds.push(wineryId);
     const login = await http()
       .post('/v1/auth/login')
       .set('X-Forwarded-For', ip)
       .send({ email: email(name), password: PASSWORD })
       .expect(200);
-    expect(login.body.data.activeOrganizationId).toBe(winery.body.data.id);
+    expect(login.body.data.activeOrganizationId).toBe(wineryId);
     return {
       token: login.body.data.tokens.accessToken as string,
       cookie: cookieOf(login),
-      wineryId: winery.body.data.id as string,
+      wineryId,
     };
   }
 

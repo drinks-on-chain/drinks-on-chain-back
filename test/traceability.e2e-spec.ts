@@ -4,13 +4,9 @@ import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
+import { deleteIdentityData } from './helpers/identity';
+import { addWineryMember, wineryWithOwner } from './helpers/staff-session';
 import {
-  createPlatformUser,
-  deleteIdentityData,
-  loginWithMfa,
-} from './helpers/identity';
-import {
-  UserRoleEnum,
   WineryCategoryEnum,
   WineryMemberRoleEnum,
   BeverageTypeEnum,
@@ -24,8 +20,6 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
   let prisma: PrismaService;
 
   const timestamp = Date.now();
-  let platformAdminToken: string;
-  let wineryAdminToken: string;
   let agronomistToken: string;
   let enologistToken: string;
   let winery2AdminToken: string;
@@ -51,155 +45,60 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);
 
-    // 1. Crear Platform Admin directamente en DB (simulando Seeder oficial)
-    const adminEmail = `platform_admin_${timestamp}@doc.bo`;
-    await createPlatformUser(prisma, {
-      email: adminEmail,
-      password: 'Password123!',
-      fullName: 'Platform Admin',
-    });
+    const login = async (email: string) =>
+      (
+        await request(app.getHttpServer())
+          .post('/v1/auth/login')
+          .send({ email, password: 'Password123!' })
+          .expect(200)
+      ).body.data.tokens.accessToken as string;
 
-    const adminLogin = await loginWithMfa(
-      () => request(app.getHttpServer()),
-      prisma,
-      { email: adminEmail, password: 'Password123!' },
-    );
-    platformAdminToken = adminLogin.body.data.tokens.accessToken;
-
-    // 2. Crear Winery Admin para Bodega 1
-    const wAdminRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
+    // 1. Bodega 1 (destilería) activa con su dueño: desde H1, alta +
+    // invitación aceptada (el ERP exige la bodega ACTIVE, SE-05)
+    wineryId = (
+      await wineryWithOwner(app, {
+        name: `Casa Real ${timestamp}`,
+        taxId: `NIT-${timestamp.toString().slice(-8)}`,
         email: `winery_admin_${timestamp}@singani.bo`,
         password: 'Password123!',
         fullName: 'Winery Admin Singani',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      });
-    const initialWineryAdminToken = wAdminRes.body.data.tokens.accessToken;
+        category: WineryCategoryEnum.DISTILLERY,
+        region: 'San Lorenzo, Tarija',
+      })
+    ).wineryId;
 
-    // 3. Crear Bodega 1
-    const wineryRes = await request(app.getHttpServer())
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${initialWineryAdminToken}`)
-      .send({
-        legalName: `Destilería San Lorenzo ${timestamp} S.A.`,
-        commercialName: `Casa Real ${timestamp}`,
-        beverageCategory: WineryCategoryEnum.DISTILLERY,
-        taxIdNit: `NIT-${timestamp.toString().slice(-8)}`,
-        geographicRegion: 'San Lorenzo, Tarija',
-        contactEmail: `contacto_${timestamp}@singani.bo`,
-      });
-    wineryId = wineryRes.body.data.id;
+    // 2. Agrónomo y enólogo de la Bodega 1 (equipo por invitación desde H1)
+    await addWineryMember(app, {
+      wineryId,
+      role: WineryMemberRoleEnum.AGRONOMIST,
+      email: `agronomist_${timestamp}@singani.bo`,
+      password: 'Password123!',
+      fullName: 'Ing. Carlos Mendoza',
+      professionalLicenseNumber: 'AGRO-TAR-2024',
+    });
+    agronomistToken = await login(`agronomist_${timestamp}@singani.bo`);
+    await addWineryMember(app, {
+      wineryId,
+      role: WineryMemberRoleEnum.ENOLOGIST,
+      email: `enologist_${timestamp}@singani.bo`,
+      password: 'Password123!',
+      fullName: 'Lic. Valeria Soliz',
+      professionalLicenseNumber: 'ENOL-TAR-901',
+    });
+    enologistToken = await login(`enologist_${timestamp}@singani.bo`);
 
-    // Aprobar Bodega 1 (activa: el ERP exige la bodega ACTIVE, SE-05)
-    await request(app.getHttpServer())
-      .post(`/v1/wineries/${wineryId}/approve`)
-      .set('Authorization', `Bearer ${platformAdminToken}`)
-      .send({ approvalNotes: `PROD-${timestamp.toString().slice(-6)}` })
-      .expect(200);
-
-    // Login Winery Admin con tenant activo
-    const wAdminLogin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: `winery_admin_${timestamp}@singani.bo`,
-        password: 'Password123!',
-      });
-    wineryAdminToken = wAdminLogin.body.data.tokens.accessToken;
-
-    // 4. Crear Agrónomo (registro inicial como CONSUMER)
-    const agroRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: `agronomist_${timestamp}@singani.bo`,
-        password: 'Password123!',
-        fullName: 'Ing. Carlos Mendoza',
-        userRole: UserRoleEnum.CONSUMER,
-      });
-    const agroUserId = agroRes.body.data.user.id;
-
-    // Asociar Agrónomo a Bodega 1 (sincroniza rol a AGRONOMIST)
-    await request(app.getHttpServer())
-      .post('/v1/wineries/my/members')
-      .set('Authorization', `Bearer ${wineryAdminToken}`)
-      .send({
-        userId: agroUserId,
-        memberRole: WineryMemberRoleEnum.AGRONOMIST,
-        professionalLicenseNumber: 'AGRO-TAR-2024',
-      });
-
-    const agroLogin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: `agronomist_${timestamp}@singani.bo`,
-        password: 'Password123!',
-      });
-    agronomistToken = agroLogin.body.data.tokens.accessToken;
-
-    // 5. Crear Enólogo (registro inicial como CONSUMER)
-    const enolRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: `enologist_${timestamp}@singani.bo`,
-        password: 'Password123!',
-        fullName: 'Lic. Valeria Soliz',
-        userRole: UserRoleEnum.CONSUMER,
-      });
-    const enolUserId = enolRes.body.data.user.id;
-
-    await request(app.getHttpServer())
-      .post('/v1/wineries/my/members')
-      .set('Authorization', `Bearer ${wineryAdminToken}`)
-      .send({
-        userId: enolUserId,
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: 'ENOL-TAR-901',
-      });
-
-    const enolLogin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: `enologist_${timestamp}@singani.bo`,
-        password: 'Password123!',
-      });
-    enologistToken = enolLogin.body.data.tokens.accessToken;
-
-    // 6. Crear Bodega 2 (Para pruebas de aislamiento Multi-Tenant)
-    const w2AdminRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
+    // 3. Bodega 2 (para pruebas de aislamiento multi-tenant)
+    winery2Id = (
+      await wineryWithOwner(app, {
+        name: `Vinos Cinti ${timestamp}`,
+        taxId: `NIT2-${timestamp.toString().slice(-7)}`,
         email: `winery2_admin_${timestamp}@other.bo`,
         password: 'Password123!',
         fullName: 'Winery 2 Admin',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      });
-
-    const winery2Res = await request(app.getHttpServer())
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${w2AdminRes.body.data.tokens.accessToken}`)
-      .send({
-        legalName: `Bodega Cinti ${timestamp} S.A.`,
-        commercialName: `Vinos Cinti ${timestamp}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `NIT2-${timestamp.toString().slice(-7)}`,
-        geographicRegion: 'Camargo, Chuquisaca',
-        contactEmail: `contacto_${timestamp}@other.bo`,
-      });
-    winery2Id = winery2Res.body.data.id;
-
-    await request(app.getHttpServer())
-      .post(`/v1/wineries/${winery2Id}/approve`)
-      .set('Authorization', `Bearer ${platformAdminToken}`)
-      .send({})
-      .expect(200);
-
-    const w2Login = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: `winery2_admin_${timestamp}@other.bo`,
-        password: 'Password123!',
-      });
-    winery2AdminToken = w2Login.body.data.tokens.accessToken;
+        region: 'Camargo, Chuquisaca',
+      })
+    ).wineryId;
+    winery2AdminToken = await login(`winery2_admin_${timestamp}@other.bo`);
   });
 
   afterAll(async () => {

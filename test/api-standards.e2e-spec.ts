@@ -10,7 +10,8 @@ import {
   deleteIdentityData,
   loginWithMfa,
 } from './helpers/identity';
-import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
+import { WineryStatusEnum } from '@prisma/client';
+import { createActiveWinery, wineryWithOwner } from './helpers/staff-session';
 
 /**
  * Estándares de API de la Ola 0 (contrato plan/contratos/o0-… §1–§3):
@@ -27,7 +28,6 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
   const timestamp = Date.now();
   const adminEmail = `std_admin_${timestamp}@doc.bo`;
   const ownerEmail = `std_owner_${timestamp}@bodega.bo`;
-  const pendingOwnerEmail = `std_pending_${timestamp}@bodega.bo`;
   const wineryIds: string[] = [];
   let adminToken: string;
   let ownerToken: string;
@@ -56,34 +56,14 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
       })
     ).body.data.tokens.accessToken;
 
-    // Bodega activa con su dueño
-    const signup = await http()
-      .post('/v1/auth/signup')
-      .send({
-        email: ownerEmail,
-        password: 'Password123!',
-        fullName: 'Dueña Estándares',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const winery = await http()
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${signup.body.data.tokens.accessToken}`)
-      .send({
-        legalName: `Bodega Estándares ${timestamp} S.A.`,
-        commercialName: `Estándares ${timestamp}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `STD-${timestamp.toString().slice(-9)}`,
-        geographicRegion: 'Tarija',
-        contactEmail: ownerEmail,
-      })
-      .expect(201);
-    wineryIds.push(winery.body.data.id);
-    await http()
-      .post(`/v1/wineries/${winery.body.data.id}/approve`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({})
-      .expect(200);
+    // Bodega activa con su dueña (desde H1: alta + invitación aceptada)
+    const owned = await wineryWithOwner(app, {
+      name: `Estándares ${timestamp}`,
+      taxId: `STD-${timestamp.toString().slice(-9)}`,
+      email: ownerEmail,
+      password: 'Password123!',
+    });
+    wineryIds.push(owned.wineryId);
     ownerToken = (
       await http()
         .post('/v1/auth/login')
@@ -91,32 +71,14 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
         .expect(200)
     ).body.data.tokens.accessToken;
 
-    // Una bodega pendiente para GET /wineries/pending
-    const pendingSignup = await http()
-      .post('/v1/auth/signup')
-      .send({
-        email: pendingOwnerEmail,
-        password: 'Password123!',
-        fullName: 'Dueño Pendiente',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const pending = await http()
-      .post('/v1/wineries')
-      .set(
-        'Authorization',
-        `Bearer ${pendingSignup.body.data.tokens.accessToken}`,
-      )
-      .send({
-        legalName: `Bodega Pendiente ${timestamp} S.A.`,
-        commercialName: `Pendiente ${timestamp}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `STP-${timestamp.toString().slice(-9)}`,
-        geographicRegion: 'Chuquisaca',
-        contactEmail: pendingOwnerEmail,
-      })
-      .expect(201);
-    wineryIds.push(pending.body.data.id);
+    // Una bodega invitada (sin activar) para el directorio con ?status=INVITED
+    wineryIds.push(
+      await createActiveWinery(prisma, {
+        name: `Pendiente ${timestamp}`,
+        taxId: `STP-${timestamp.toString().slice(-9)}`,
+        status: WineryStatusEnum.INVITED,
+      }),
+    );
   });
 
   afterAll(async () => {
@@ -153,8 +115,8 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
   // Todas las colecciones del API y quién puede leerlas
   const collections: Array<[string, () => string]> = [
     ['/v1/wineries', () => adminToken],
-    ['/v1/wineries/pending', () => adminToken],
-    ['/v1/wineries/my/members', () => ownerToken],
+    ['/v1/platform/wineries', () => adminToken],
+    ['/v1/organizations/current/members', () => ownerToken],
     ['/v1/terroirs', () => ownerToken],
     ['/v1/harvest-batches', () => ownerToken],
     ['/v1/fermentation-tanks', () => ownerToken],
@@ -220,14 +182,14 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
 
     it('limit=100 es válido y limit/offset recortan la página', async () => {
       const all = await http()
-        .get('/v1/wineries/pending?limit=100')
+        .get('/v1/wineries?status=INVITED&limit=100')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(all.body.data.limit).toBe(100);
       expect(all.body.data.total).toBeGreaterThanOrEqual(1);
 
       const page = await http()
-        .get('/v1/wineries/pending?limit=1&offset=0')
+        .get('/v1/wineries?status=INVITED&limit=1&offset=0')
         .set('Authorization', `Bearer ${adminToken}`)
         .expect(200);
       expect(page.body.data).toMatchObject({
@@ -236,7 +198,7 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
         offset: 0,
       });
       expect(page.body.data.items).toHaveLength(1);
-      // Orden por fecha de alta descendente: la última pendiente va primero
+      // Orden por fecha de alta descendente: la última invitada va primero
       expect(page.body.data.items[0].id).toBe(wineryIds[1]);
     });
   });

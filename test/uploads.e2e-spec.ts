@@ -2,13 +2,13 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as request from 'supertest';
-import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
 import { STORAGE_SERVICE } from '../src/shared/storage/storage.interface';
 import { createObjectStorage } from '../src/shared/storage/storage.module';
 import { deleteIdentityData } from './helpers/identity';
+import { wineryWithOwner } from './helpers/staff-session';
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -60,29 +60,16 @@ describe.each(
     await app.init();
     prisma = app.get(PrismaService);
 
-    const staff = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
+    // Dueña de una bodega (alta + invitación aceptada desde H1)
+    wineryId = (
+      await wineryWithOwner(app, {
+        name: `Bodega ${run}`,
+        taxId: `UP${Date.now().toString().slice(-10)}`,
         email: staffEmail,
         password,
         fullName: 'Personal Bodega',
-        userRole: UserRoleEnum.WINERY_ADMIN,
       })
-      .expect(201);
-    // Alta de la bodega: crea su organización y la membresía de dueño
-    const winery = await request(app.getHttpServer())
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${staff.body.data.tokens.accessToken}`)
-      .send({
-        legalName: `Bodega ${run}`,
-        commercialName: `Bodega ${run}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `UP${Date.now().toString().slice(-10)}`,
-        geographicRegion: 'Tarija',
-        contactEmail: `c_${run}@test.bo`,
-      })
-      .expect(201);
-    wineryId = winery.body.data.id as string;
+    ).wineryId;
     const login = await request(app.getHttpServer())
       .post('/v1/auth/login')
       .send({ email: staffEmail, password })
@@ -95,7 +82,6 @@ describe.each(
         email: consumerEmail,
         password,
         fullName: 'Consumidor',
-        userRole: UserRoleEnum.CONSUMER,
       })
       .expect(201);
     consumerToken = consumer.body.data.tokens.accessToken;

@@ -9,392 +9,298 @@ import {
   deleteIdentityData,
   loginWithMfa,
 } from './helpers/identity';
-import {
-  UserRoleEnum,
-  WineryCategoryEnum,
-  WineryMemberRoleEnum,
-} from '@prisma/client';
+import { wineryWithOwner } from './helpers/staff-session';
 
-describe('Auth & Multi-Tenancy Flow (e2e)', () => {
+type Res = request.Response;
+
+function cookieOf(res: Res): string {
+  const header = res.headers['set-cookie'] as unknown as string[] | undefined;
+  const cookie = (header ?? []).find((c) => c.startsWith('doc_rt='));
+  if (!cookie) throw new Error(`Sin Set-Cookie doc_rt (status ${res.status})`);
+  return cookie.split(';')[0];
+}
+
+/**
+ * Cuenta, sesión y equipo tras la retirada de H1 (contrato O1 §11, O0 §5):
+ * consumidor por `signup`, dueña y equipo por invitación, refresco solo en la
+ * cookie, sin `userRole`/`wineryId`/`memberRole` y sin las rutas de 0.1.
+ */
+describe('Cuenta, sesión y equipo tras H1 (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
   let consumerToken: string;
-  let consumerRefreshToken: string;
-  let wineryAdminToken: string;
+  let consumerCookie: string;
+  let ownerToken: string;
   let platformAdminToken: string;
   let enologistUserId: string;
   let enologistToken: string;
-  let createdWineryId: string;
+  let wineryId: string;
 
   const timestamp = Date.now();
   const consumerEmail = `consumer_${timestamp}@test.bo`;
-  const wineryAdminEmail = `winery_admin_${timestamp}@kohlberg.bo`;
+  const ownerEmail = `winery_admin_${timestamp}@kohlberg.bo`;
   const platformAdminEmail = `platform_admin_${timestamp}@doc.bo`;
   const enologistEmail = `enologist_${timestamp}@kohlberg.bo`;
-  const taxIdNit = `NIT-${timestamp.toString().slice(-8)}`;
+  const PASSWORD = 'Password123!';
+  const STRONG_PASSWORD = 'Vendimia-Tarija-2026';
+
+  const http = () => request(app.getHttpServer());
+  const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
-
     app = moduleFixture.createNestApplication();
-
-    // Misma configuración que main.ts (versionado, validación 422, envoltorio)
     configureApp(app);
-
     await app.init();
     prisma = app.get<PrismaService>(PrismaService);
+
+    const owned = await wineryWithOwner(app, {
+      name: `Bodega Kohlberg ${timestamp}`,
+      taxId: `NIT-${timestamp.toString().slice(-8)}`,
+      email: ownerEmail,
+      password: PASSWORD,
+    });
+    wineryId = owned.wineryId;
+
+    await createPlatformUser(prisma, {
+      email: platformAdminEmail,
+      password: PASSWORD,
+      fullName: 'Admin Plataforma DoC',
+    });
+    platformAdminToken = (
+      await loginWithMfa(http, prisma, {
+        email: platformAdminEmail,
+        password: PASSWORD,
+      })
+    ).body.data.tokens.accessToken;
   });
 
   afterAll(async () => {
     if (prisma) {
-      // Limpieza de datos creados en el test
+      const mails = await prisma.emailMessage.findMany({
+        where: { toAddress: { contains: `${timestamp}` } },
+        select: { id: true },
+      });
+      await prisma.outboxEvent.deleteMany({
+        where: { aggregateId: { in: mails.map((m) => m.id) } },
+      });
+      await prisma.emailMessage.deleteMany({
+        where: { id: { in: mails.map((m) => m.id) } },
+      });
       await deleteIdentityData(prisma, {
         emailContains: `${timestamp}`,
-        wineryIds: [createdWineryId],
+        wineryIds: [wineryId],
       });
       await prisma.userWallet.deleteMany({
         where: { user: { email: { contains: `${timestamp}` } } },
       });
-      await prisma.wineryMember.deleteMany({
-        where: { user: { email: { contains: `${timestamp}` } } },
-      });
-      if (createdWineryId) {
-        await prisma.winery.deleteMany({
-          where: { id: createdWineryId },
-        });
-      }
+      await prisma.wineryMember.deleteMany({ where: { wineryId } });
+      await prisma.winery.deleteMany({ where: { id: wineryId } });
       await prisma.user.deleteMany({
         where: { email: { contains: `${timestamp}` } },
       });
       await prisma.$disconnect();
     }
-    if (app) {
-      await app.close();
+    await app?.close();
+  });
+
+  it('1. signup crea un consumidor con billetera; el refresco solo va en la cookie', async () => {
+    const response = await http()
+      .post('/v1/auth/signup')
+      .send({
+        email: consumerEmail,
+        password: PASSWORD,
+        fullName: 'Consumidor',
+      })
+      .expect(201);
+
+    const { user, memberships, activeOrganizationId, tokens } =
+      response.body.data;
+    expect(user.email).toBe(consumerEmail);
+    expect(user.audience).toBe('CONSUMER');
+    expect(memberships).toEqual([]);
+    expect(activeOrganizationId).toBeNull();
+    // Retirados en H1
+    expect(Object.keys(user)).toEqual(
+      expect.not.arrayContaining(['userRole', 'wineryId', 'memberRole']),
+    );
+    expect(Object.keys(tokens).sort()).toEqual([
+      'accessToken',
+      'expiresIn',
+      'tokenType',
+    ]);
+    expect(tokens.expiresIn).toBe(900);
+    consumerToken = tokens.accessToken;
+    consumerCookie = cookieOf(response);
+
+    // Claims del acceso: sin los de compatibilidad
+    const claims = JSON.parse(
+      Buffer.from(consumerToken.split('.')[1], 'base64url').toString(),
+    ) as Record<string, unknown>;
+    expect(Object.keys(claims)).toEqual(
+      expect.not.arrayContaining([
+        'email',
+        'userRole',
+        'wineryId',
+        'memberRole',
+      ]),
+    );
+    expect(claims).toMatchObject({ sub: user.id, aud: 'CONSUMER', org: null });
+  });
+
+  it('2. signup ya no registra personal: userRole → 422', async () => {
+    for (const userRole of ['WINERY_ADMIN', 'PLATFORM_ADMIN', 'CONSUMER']) {
+      const res = await http()
+        .post('/v1/auth/signup')
+        .send({
+          email: `rol_${userRole}_${timestamp}@test.bo`,
+          password: PASSWORD,
+          fullName: 'Con rol',
+          userRole,
+        })
+        .expect(422);
+      expect(res.body.error.details).toEqual([
+        expect.objectContaining({ field: 'userRole' }),
+      ]);
     }
   });
 
-  // 1. REGISTRO DE CONSUMIDOR
-  it('1. POST /v1/auth/signup - Debe registrar un consumidor y asignar wallet custodial', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: consumerEmail,
-        password: 'Password123!',
-        fullName: 'Consumidor Test',
-        userRole: UserRoleEnum.CONSUMER,
-      })
-      .expect(201);
-
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.user.email).toBe(consumerEmail);
-    expect(response.body.data.user.userRole).toBe(UserRoleEnum.CONSUMER);
-    // Contrato O0 §5: consumidor sin membresías ni organización activa
-    expect(response.body.data.user.audience).toBe('CONSUMER');
-    expect(response.body.data.memberships).toEqual([]);
-    expect(response.body.data.activeOrganizationId).toBeNull();
-    expect(response.body.data.tokens.expiresIn).toBe(900);
-    expect(response.body.data.tokens).toHaveProperty('accessToken');
-    expect(response.body.data.tokens).toHaveProperty('refreshToken');
-
-    consumerToken = response.body.data.tokens.accessToken;
-    consumerRefreshToken = response.body.data.tokens.refreshToken;
-  });
-
-  // 2. LOGIN DE CONSUMIDOR
-  it('2. POST /v1/auth/login - Debe autenticar al consumidor', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: consumerEmail,
-        password: 'Password123!',
-      })
-      .expect(200);
-
-    expect(response.body.success).toBe(true);
-    expect(response.body.data.tokens).toHaveProperty('accessToken');
-  });
-
-  // 3. CONSULTA DE PERFIL Y WALLET
-  it('3. GET /v1/users/me - Debe retornar el perfil del consumidor con su wallet', async () => {
-    const response = await request(app.getHttpServer())
+  it('3. GET y PATCH /v1/users/me sin userRole', async () => {
+    const me = await http()
       .get('/v1/users/me')
-      .set('Authorization', `Bearer ${consumerToken}`)
+      .set(auth(consumerToken))
       .expect(200);
-
-    expect(response.body.success).toBe(true);
-    // { user, memberships, activeOrganizationId } (contrato O0 §5)
-    expect(response.body.data.user.email).toBe(consumerEmail);
-    expect(response.body.data.user.audience).toBe('CONSUMER');
-    expect(response.body.data.memberships).toEqual([]);
-    expect(response.body.data.activeOrganizationId).toBeNull();
-    expect(response.body.data.user.primaryWallet).toBeDefined();
-    expect(response.body.data.user.primaryWallet.stellarPublicAddress).toMatch(
+    expect(me.body.data.user.email).toBe(consumerEmail);
+    expect(me.body.data.user.audience).toBe('CONSUMER');
+    expect(me.body.data.user).not.toHaveProperty('userRole');
+    expect(me.body.data.user.primaryWallet.stellarPublicAddress).toMatch(
       /^G[A-Z0-9]{55}$/,
     );
-  });
 
-  // 4. ACTUALIZACIÓN DE PERFIL
-  it('4. PATCH /v1/users/me - Debe actualizar el nombre del consumidor', async () => {
-    const response = await request(app.getHttpServer())
+    const patched = await http()
       .patch('/v1/users/me')
-      .set('Authorization', `Bearer ${consumerToken}`)
-      .send({
-        fullName: 'Consumidor Modificado',
-        preferredLocale: 'en',
-      })
+      .set(auth(consumerToken))
+      .send({ fullName: 'Consumidor Modificado', preferredLocale: 'en' })
       .expect(200);
-
-    expect(response.body.success).toBe(true);
-    // Contrato O1 §1 / §11 bis: responde como GET /users/me
-    expect(response.body.data.user.fullName).toBe('Consumidor Modificado');
-    expect(response.body.data.user.preferredLocale).toBe('en');
-    expect(response.body.data.memberships).toEqual([]);
+    expect(patched.body.data.user.fullName).toBe('Consumidor Modificado');
+    expect(patched.body.data.user.preferredLocale).toBe('en');
+    expect(patched.body.data.memberships).toEqual([]);
   });
 
-  // 5. REGISTRO DE WINERY_ADMIN Y ONBOARDING DE BODEGA
-  it('5. POST /v1/wineries - Debe permitir a un WINERY_ADMIN solicitar alta de bodega en estado INVITED', async () => {
-    // 5.1 Registro de WINERY_ADMIN
-    const signupRes = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: wineryAdminEmail,
-        password: 'Password123!',
-        fullName: 'Admin Bodega Kohlberg',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-
-    wineryAdminToken = signupRes.body.data.tokens.accessToken;
-
-    // 5.2 Creación de Bodega
-    const wineryRes = await request(app.getHttpServer())
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${wineryAdminToken}`)
-      .send({
-        legalName: 'Sociedad Agroindustrial Kohlberg S.A.',
-        commercialName: 'Bodega Kohlberg',
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: taxIdNit,
-        senasagSanitaryReg: `SENASAG-${timestamp}`,
-        geographicRegion: 'Tarija',
-        contactEmail: wineryAdminEmail,
-      })
-      .expect(201);
-
-    expect(wineryRes.body.success).toBe(true);
-    expect(wineryRes.body.data.commercialName).toBe('Bodega Kohlberg');
-    expect(wineryRes.body.data.certificationStatus).toBe('INVITED');
-    expect(wineryRes.body.data.stellarPublicKey).toMatch(/^G[A-Z0-9]{55}$/);
-
-    createdWineryId = wineryRes.body.data.id;
-  });
-
-  // 6. INTENTO DE AUTO-APROBACIÓN DENEGADO
-  it('6. POST /v1/wineries/:id/approve - Debe denegar aprobación a un WINERY_ADMIN (403 Forbidden)', async () => {
-    await request(app.getHttpServer())
-      .post(`/v1/wineries/${createdWineryId}/approve`)
-      .set('Authorization', `Bearer ${wineryAdminToken}`)
-      .expect(403);
-  });
-
-  // 7. REGISTRO Y APROBACIÓN POR PLATFORM_ADMIN
-  it('7. POST /v1/wineries/:id/approve - Debe permitir a PLATFORM_ADMIN aprobar la bodega (cambia a ACTIVE)', async () => {
-    // 7.1 Probar que signup público rechaza PLATFORM_ADMIN con 403 Forbidden
-    await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: platformAdminEmail,
-        password: 'Password123!',
-        fullName: 'Admin Plataforma DoC',
-        userRole: UserRoleEnum.PLATFORM_ADMIN,
-      })
-      .expect(403);
-
-    // 7.2 Personal de plataforma como lo deja el seeder (membresía SUPERADMIN)
-    await createPlatformUser(prisma, {
-      email: platformAdminEmail,
-      password: 'Password123!',
-      fullName: 'Admin Plataforma DoC',
-    });
-
-    const loginAdmin = await loginWithMfa(
-      () => request(app.getHttpServer()),
-      prisma,
-      { email: platformAdminEmail, password: 'Password123!' },
-    );
-    expect(loginAdmin.status).toBe(200);
-
-    platformAdminToken = loginAdmin.body.data.tokens.accessToken;
-    expect(loginAdmin.body.data.memberships).toEqual([
-      expect.objectContaining({
-        organizationType: 'PLATFORM',
-        role: 'SUPERADMIN',
-      }),
-    ]);
-
-    // 7.3 Listar pendientes
-    const pendingRes = await request(app.getHttpServer())
-      .get('/v1/wineries/pending')
-      .set('Authorization', `Bearer ${platformAdminToken}`)
-      .expect(200);
-
-    expect(pendingRes.body.success).toBe(true);
-    // Página { items, total, limit, offset } (contrato O0 §2)
-    expect(Object.keys(pendingRes.body.data).sort()).toEqual([
-      'items',
-      'limit',
-      'offset',
-      'total',
-    ]);
-    expect(pendingRes.body.data.limit).toBe(20);
-    expect(pendingRes.body.data.offset).toBe(0);
-    expect(pendingRes.body.data.total).toBeGreaterThanOrEqual(1);
-    expect(
-      pendingRes.body.data.items.some(
-        (w: { id: string }) => w.id === createdWineryId,
-      ),
-    ).toBe(true);
-
-    // 7.4 Aprobar bodega
-    const approveRes = await request(app.getHttpServer())
-      .post(`/v1/wineries/${createdWineryId}/approve`)
-      .set('Authorization', `Bearer ${platformAdminToken}`)
-      .send({ approvalNotes: 'Verificación SENASAG aprobada' })
-      .expect(200);
-
-    expect(approveRes.body.success).toBe(true);
-    expect(approveRes.body.data.certificationStatus).toBe('ACTIVE');
-    expect(approveRes.body.data.onchainProducerId).toContain('PROD_BO_');
-    expect(approveRes.body.data.onchainRegisterTxHash).toBeDefined();
-  });
-
-  // 8. GESTIÓN DE MIEMBROS Y MULTI-TENANCY
-  it('8. POST /v1/wineries/my/members - WINERY_ADMIN incorpora un Enólogo a su bodega', async () => {
-    // 8.1 Probar que signup público rechaza rol operativo directo (403 Forbidden)
-    await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: enologistEmail,
-        password: 'Password123!',
-        fullName: 'Valeria Soliz Enóloga',
-        userRole: UserRoleEnum.ENOLOGIST,
-      })
-      .expect(403);
-
-    // 8.2 Registrar usuario inicialmente como CONSUMER
-    const enologistSignup = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email: enologistEmail,
-        password: 'Password123!',
-        fullName: 'Valeria Soliz Enóloga',
-        userRole: UserRoleEnum.CONSUMER,
-      })
-      .expect(201);
-
-    enologistUserId = enologistSignup.body.data.user.id;
-
-    // 8.3 Login como WINERY_ADMIN para refrescar token con wineryId
-    const loginWineryAdmin = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: wineryAdminEmail,
-        password: 'Password123!',
-      })
-      .expect(200);
-
-    wineryAdminToken = loginWineryAdmin.body.data.tokens.accessToken;
-
-    // 8.4 Incorporar Enólogo como miembro (solo la membresía de la bodega)
-    const addMemberRes = await request(app.getHttpServer())
-      .post('/v1/wineries/my/members')
-      .set('Authorization', `Bearer ${wineryAdminToken}`)
-      .send({
-        userId: enologistUserId,
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: 'ENOL-BOL-2026-991',
-      })
-      .expect(201);
-
-    expect(addMemberRes.body.success).toBe(true);
-    expect(addMemberRes.body.data.memberRole).toBe(
-      WineryMemberRoleEnum.ENOLOGIST,
-    );
-    // SE-01: el rol global de la persona no cambia
-    const enologist = await prisma.user.findUniqueOrThrow({
-      where: { id: enologistUserId },
-    });
-    expect(enologist.userRole).toBe(UserRoleEnum.CONSUMER);
-  });
-
-  // 9. ACCESO DE ENÓLOGO Y AISLAMIENTO DE TENANT
-  it('9. GET /v1/wineries/my - Enólogo autenticado accede a los datos de su bodega', async () => {
-    // 9.1 Login de Enólogo
-    const loginRes = await request(app.getHttpServer())
-      .post('/v1/auth/login')
-      .send({
-        email: enologistEmail,
-        password: 'Password123!',
-      })
-      .expect(200);
-
-    enologistToken = loginRes.body.data.tokens.accessToken;
-    expect(loginRes.body.data.user.wineryId).toBe(createdWineryId);
-
-    // 9.2 Consulta de su bodega
-    const wineryRes = await request(app.getHttpServer())
-      .get('/v1/wineries/my')
-      .set('Authorization', `Bearer ${enologistToken}`)
-      .expect(200);
-
-    expect(wineryRes.body.success).toBe(true);
-    expect(wineryRes.body.data.commercialName).toBe('Bodega Kohlberg');
-  });
-
-  // 9b. MIEMBROS PAGINADOS
-  it('9b. GET /v1/wineries/my/members - Devuelve la página de miembros de su bodega', async () => {
-    const res = await request(app.getHttpServer())
-      .get('/v1/wineries/my/members?limit=1')
-      .set('Authorization', `Bearer ${enologistToken}`)
-      .expect(200);
-
-    // Dueño + enóloga = 2 miembros activos; limit=1 → uno por página
-    expect(res.body.data).toEqual({
-      items: [expect.objectContaining({ memberRole: 'OWNER' })],
-      total: 2,
-      limit: 1,
-      offset: 0,
-    });
-
-    const second = await request(app.getHttpServer())
-      .get('/v1/wineries/my/members?limit=1&offset=1')
-      .set('Authorization', `Bearer ${enologistToken}`)
-      .expect(200);
-    expect(second.body.data.items).toEqual([
-      expect.objectContaining({
-        userId: enologistUserId,
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-      }),
-    ]);
-  });
-
-  // 10. RENOVACIÓN DE TOKEN
-  it('10. POST /v1/auth/refresh - Renueva con el refresco en el cuerpo (compatibilidad hasta H1)', async () => {
-    const refreshRes = await request(app.getHttpServer())
+  it('4. refresh: con la cookie rota; el refresco en el cuerpo ya no se lee', async () => {
+    const refreshed = await http()
       .post('/v1/auth/refresh')
-      .send({ refreshToken: consumerRefreshToken })
+      .set('Cookie', consumerCookie)
       .expect(200);
+    expect(refreshed.body.data.user.email).toBe(consumerEmail);
+    expect(refreshed.body.data.tokens).not.toHaveProperty('refreshToken');
+    const rotated = cookieOf(refreshed);
+    expect(rotated).not.toBe(consumerCookie);
 
-    expect(refreshRes.body.success).toBe(true);
-    // Misma forma que el login (contrato O0 §5) y refresco rotado
-    expect(refreshRes.body.data.user.email).toBe(consumerEmail);
-    expect(refreshRes.body.data.tokens).toHaveProperty('accessToken');
-    expect(refreshRes.body.data.tokens.refreshToken).not.toBe(
-      consumerRefreshToken,
+    const bodyOnly = await http()
+      .post('/v1/auth/refresh')
+      .send({ refreshToken: rotated.slice('doc_rt='.length) })
+      .expect(401);
+    expect(bodyOnly.body.error.code).toBe('AUTH_REFRESH_INVALID');
+    consumerCookie = rotated;
+  });
+
+  it('5. la dueña invita a una enóloga, que acepta con cuenta nueva', async () => {
+    const login = await http()
+      .post('/v1/auth/login')
+      .send({ email: ownerEmail, password: PASSWORD })
+      .expect(200);
+    ownerToken = login.body.data.tokens.accessToken;
+    expect(login.body.data.activeOrganizationId).toBe(wineryId);
+    expect(login.body.data.memberships).toEqual([
+      expect.objectContaining({ organizationId: wineryId, role: 'OWNER' }),
+    ]);
+
+    await http()
+      .post('/v1/organizations/current/invitations')
+      .set(auth(ownerToken))
+      .send({ email: enologistEmail, role: 'ENOLOGIST' })
+      .expect(201);
+    const mail = await prisma.emailMessage.findFirstOrThrow({
+      where: { toAddress: enologistEmail, template: 'invitacion' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const link = (mail.variables as { enlace: string }).enlace;
+    const token = decodeURIComponent(
+      /invitacion\/([A-Za-z0-9_-]+)/.exec(link)![1],
     );
-    expect(String(refreshRes.headers['set-cookie'])).toContain('doc_rt=');
+
+    const accepted = await http()
+      .post(`/v1/invitations/${token}/accept`)
+      .send({ fullName: 'Valeria Soliz', password: STRONG_PASSWORD })
+      .expect(200);
+    expect(accepted.body.data.activeOrganizationId).toBe(wineryId);
+    expect(accepted.body.data.tokens).not.toHaveProperty('refreshToken');
+    enologistUserId = accepted.body.data.user.id;
+    enologistToken = accepted.body.data.tokens.accessToken;
+  });
+
+  it('6. la enóloga lee su bodega y el equipo paginado', async () => {
+    const winery = await http()
+      .get('/v1/wineries/my')
+      .set(auth(enologistToken))
+      .expect(200);
+    expect(winery.body.data.id).toBe(wineryId);
+
+    const first = await http()
+      .get('/v1/organizations/current/members?limit=1')
+      .set(auth(ownerToken))
+      .expect(200);
+    expect(first.body.data).toMatchObject({ total: 2, limit: 1, offset: 0 });
+    expect(first.body.data.items).toHaveLength(1);
+
+    const all = await http()
+      .get('/v1/organizations/current/members')
+      .set(auth(ownerToken))
+      .expect(200);
+    expect(all.body.data.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ userId: enologistUserId, role: 'ENOLOGIST' }),
+        expect.objectContaining({ role: 'OWNER' }),
+      ]),
+    );
+  });
+
+  it('7. las rutas de 0.1 retiradas en H1 ya no existen (404)', async () => {
+    const retired: Array<[string, string, string]> = [
+      ['post', '/v1/wineries', ownerToken],
+      ['get', '/v1/wineries/pending', platformAdminToken],
+      ['post', `/v1/wineries/${wineryId}/approve`, platformAdminToken],
+      ['post', `/v1/wineries/${wineryId}/reject`, platformAdminToken],
+      ['get', '/v1/wineries/my/members', ownerToken],
+      ['post', '/v1/wineries/my/members', ownerToken],
+      ['post', '/v1/wineries/my/members/create', ownerToken],
+    ];
+    for (const [method, path, token] of retired) {
+      const res = await (
+        http() as unknown as Record<string, (url: string) => request.Test>
+      )
+        [method](path)
+        .set(auth(token))
+        .send({});
+      expect({ method, path, status: res.status }).toEqual({
+        method,
+        path,
+        status: 404,
+      });
+    }
+  });
+
+  it('8. el directorio de plataforma sigue disponible', async () => {
+    const res = await http()
+      .get('/v1/wineries?status=ACTIVE&limit=100')
+      .set(auth(platformAdminToken))
+      .expect(200);
+    expect(res.body.data.items.map((w: { id: string }) => w.id)).toContain(
+      wineryId,
+    );
   });
 });

@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
 import { randomInt } from 'crypto';
-import { MembershipBlockedByEnum, UserRoleEnum } from '@prisma/client';
+import { MembershipBlockedByEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
@@ -13,6 +13,7 @@ import {
   deleteIdentityData,
   loginWithMfa,
 } from './helpers/identity';
+import { addWineryMember, wineryWithOwner } from './helpers/staff-session';
 
 /**
  * Sesiones seguras y organizaciones con membresías (O0-BE-4; contrato O0
@@ -98,41 +99,20 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
     return res;
   }
 
-  async function signupOwnerWithWinery(name: string, ip: string) {
-    const signup = await http()
-      .post('/v1/auth/signup')
-      .set('X-Forwarded-For', ip)
-      .send({
-        email: email(name),
-        password: PASSWORD,
-        fullName: `Dueño ${name}`,
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const winery = await http()
-      .post('/v1/wineries')
-      .set('X-Forwarded-For', ip)
-      .set('Authorization', `Bearer ${signup.body.data.tokens.accessToken}`)
-      .send({
-        legalName: `Bodega ${name} ${run} S.A.`,
-        commercialName: `Bodega ${name} ${run}`,
-        beverageCategory: 'WINERY',
-        taxIdNit: `SES${name.toUpperCase()}${run.slice(-8)}`.slice(0, 20),
-        geographicRegion: 'Tarija',
-        contactEmail: email(name),
-      })
-      .expect(201);
-    wineryIds.push(winery.body.data.id);
-    await http()
-      .post(`/v1/wineries/${winery.body.data.id}/approve`)
-      .set('X-Forwarded-For', adminIp)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({})
-      .expect(200);
+  /** Dueña de una bodega activa (desde H1: alta + invitación aceptada). */
+  async function ownerWithWinery(name: string, ip: string) {
+    const owned = await wineryWithOwner(app, {
+      name: `Bodega ${name} ${run}`,
+      taxId: `SES${name.toUpperCase()}${run.slice(-8)}`.slice(0, 20),
+      email: email(name),
+      password: PASSWORD,
+      fullName: `Dueño ${name}`,
+    });
+    wineryIds.push(owned.wineryId);
     const logged = await login(email(name), ip).expect(200);
     return {
-      userId: signup.body.data.user.id as string,
-      wineryId: winery.body.data.id as string,
+      userId: owned.ownerId,
+      wineryId: owned.wineryId,
       token: logged.body.data.tokens.accessToken as string,
     };
   }
@@ -173,12 +153,12 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       .accessToken;
 
     aliceIp = nextIp();
-    const alice = await signupOwnerWithWinery('alice', aliceIp);
+    const alice = await ownerWithWinery('alice', aliceIp);
     aliceToken = alice.token;
     wineryA = alice.wineryId;
 
     bobIp = nextIp();
-    const bob = await signupOwnerWithWinery('bob', bobIp);
+    const bob = await ownerWithWinery('bob', bobIp);
     bobToken = bob.token;
     bobId = bob.userId;
     wineryB = bob.wineryId;
@@ -186,25 +166,21 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
     terroirA = await createTerroir(aliceToken, aliceIp, 'Parcela A');
     terroirB = await createTerroir(bobToken, bobIp, 'Parcela B');
 
-    // Paula: agrónoma en A y en B (primero A)
-    const paula = await http()
-      .post('/v1/auth/signup')
-      .set('X-Forwarded-For', nextIp())
-      .send({ email: email('paula'), password: PASSWORD, fullName: 'Paula' })
-      .expect(201);
-    paulaId = paula.body.data.user.id;
-    await http()
-      .post('/v1/wineries/my/members')
-      .set('X-Forwarded-For', aliceIp)
-      .set('Authorization', `Bearer ${aliceToken}`)
-      .send({ userId: paulaId, memberRole: 'AGRONOMIST' })
-      .expect(201);
-    await http()
-      .post('/v1/wineries/my/members')
-      .set('X-Forwarded-For', bobIp)
-      .set('Authorization', `Bearer ${bobToken}`)
-      .send({ userId: paulaId, memberRole: 'AGRONOMIST' })
-      .expect(201);
+    // Paula: agrónoma en A y en B (primero A), como tras aceptar dos invitaciones
+    paulaId = (
+      await addWineryMember(app, {
+        wineryId: wineryA,
+        role: 'AGRONOMIST',
+        email: email('paula'),
+        password: PASSWORD,
+        fullName: 'Paula',
+      })
+    ).userId;
+    await addWineryMember(app, {
+      wineryId: wineryB,
+      role: 'AGRONOMIST',
+      userId: paulaId,
+    });
   });
 
   afterAll(async () => {
@@ -239,11 +215,11 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         id: paulaId,
         email: email('paula'),
         audience: 'STAFF',
-        // compatibilidad hasta H1: reflejan la organización activa
-        wineryId: wineryA,
-        memberRole: 'AGRONOMIST',
-        userRole: 'AGRONOMIST',
       });
+      // Retirados en H1: el rol y la bodega van en memberships
+      for (const legacy of ['userRole', 'wineryId', 'memberRole']) {
+        expect(data.user).not.toHaveProperty(legacy);
+      }
       expect(data.memberships).toHaveLength(2);
       expect(data.memberships).toEqual(
         expect.arrayContaining([
@@ -259,7 +235,8 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         ]),
       );
       expect(data.activeOrganizationId).toBe(wineryA);
-      expect(data.tokens).toMatchObject({
+      expect(data.tokens).toEqual({
+        accessToken: expect.any(String),
         tokenType: 'Bearer',
         expiresIn: 900,
       });
@@ -273,10 +250,10 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         role: 'AGRONOMIST',
         sid: expect.any(String),
         jti: expect.any(String),
-        email: email('paula'),
-        wineryId: wineryA,
-        memberRole: 'AGRONOMIST',
       });
+      for (const legacy of ['email', 'userRole', 'wineryId', 'memberRole']) {
+        expect(claims).not.toHaveProperty(legacy);
+      }
       expect(Number(claims.exp) - Number(claims.iat)).toBe(900);
 
       const cookie = refreshCookie(res);
@@ -285,8 +262,6 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       expect(cookie).toMatch(/SameSite=Lax/i);
       expect(cookie).toMatch(/Path=\//);
       expect(cookie).toMatch(/Max-Age=604800/); // 7 días (personal)
-      // El refresco del cuerpo (compatibilidad) es el mismo que el de la cookie
-      expect(data.tokens.refreshToken).toBe(refreshValue(res));
     });
 
     it('los accesos de 0.1 (sin sesión) ya no valen', async () => {
@@ -312,7 +287,7 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
 
       const second = refreshValue(res);
       expect(second).not.toBe(first);
-      expect(res.body.data.tokens.refreshToken).toBe(second);
+      expect(res.body.data.tokens).not.toHaveProperty('refreshToken');
       expect(res.body.data.activeOrganizationId).toBe(wineryA);
       expect(claimsOf(res.body.data.tokens.accessToken).sid).toBe(
         claimsOf(logged.body.data.tokens.accessToken).sid,
@@ -383,6 +358,25 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       expect(me.body.error.code).toBe('AUTH_SESSION_REVOKED');
     });
 
+    it('el refresco en el cuerpo ya no se lee (H1): sin cookie → 401 AUTH_REFRESH_INVALID', async () => {
+      const ip = nextIp();
+      const logged = await login(email('paula'), ip).expect(200);
+
+      const res = await http()
+        .post('/v1/auth/refresh')
+        .set('X-Forwarded-For', ip)
+        .send({ refreshToken: refreshValue(logged) })
+        .expect(401);
+      expect(res.body.error.code).toBe('AUTH_REFRESH_INVALID');
+
+      // La sesión sigue intacta con la cookie
+      await http()
+        .post('/v1/auth/refresh')
+        .set('X-Forwarded-For', ip)
+        .set('Cookie', `doc_rt=${refreshValue(logged)}`)
+        .expect(200);
+    });
+
     it('un refresco inventado no revoca nada (401 AUTH_REFRESH_INVALID)', async () => {
       const ip = nextIp();
       const logged = await login(email('paula'), ip).expect(200);
@@ -433,7 +427,6 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         .expect(200);
       const tokenB = switched.body.data.tokens.accessToken;
       expect(switched.body.data.activeOrganizationId).toBe(wineryB);
-      expect(switched.body.data.user.wineryId).toBe(wineryB);
       expect(claimsOf(tokenB)).toMatchObject({ sid, org: wineryB });
       expect(refreshValue(switched)).not.toBe(refreshValue(logged));
 
@@ -495,6 +488,17 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         .send({ organizationId: wineryA })
         .expect(401);
       expect(noRefresh.body.error.code).toBe('AUTH_REFRESH_INVALID');
+
+      // El refresco en el cuerpo ya no se acepta (H1)
+      const inBody = await http()
+        .post('/v1/auth/switch-organization')
+        .set('X-Forwarded-For', ip)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ organizationId: wineryA, refreshToken: refreshValue(logged) })
+        .expect(422);
+      expect(inBody.body.error.details).toEqual([
+        expect.objectContaining({ field: 'refreshToken' }),
+      ]);
     });
   });
 
@@ -502,17 +506,13 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
     it('bloquear la membresía activa → la siguiente petición da 401 AUTH_SESSION_REVOKED', async () => {
       // Carla, operaria solo en B
       const ip = nextIp();
-      const signup = await http()
-        .post('/v1/auth/signup')
-        .set('X-Forwarded-For', ip)
-        .send({ email: email('carla'), password: PASSWORD, fullName: 'Carla' })
-        .expect(201);
-      const added = await http()
-        .post('/v1/wineries/my/members')
-        .set('X-Forwarded-For', bobIp)
-        .set('Authorization', `Bearer ${bobToken}`)
-        .send({ userId: signup.body.data.user.id, memberRole: 'OPERATOR' })
-        .expect(201);
+      const added = await addWineryMember(app, {
+        wineryId: wineryB,
+        role: 'OPERATOR',
+        email: email('carla'),
+        password: PASSWORD,
+        fullName: 'Carla',
+      });
       const logged = await login(email('carla'), ip).expect(200);
       const token = logged.body.data.tokens.accessToken;
       await http()
@@ -520,7 +520,7 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         .set('Authorization', `Bearer ${token}`)
         .expect(200);
 
-      await memberships.block(added.body.data.id, {
+      await memberships.block(added.membershipId, {
         by: MembershipBlockedByEnum.OWNER,
         reason: 'Fin de temporada',
       });
@@ -595,18 +595,13 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
   });
 
   describe('SE-01 · una bodega solo toca su propia membresía', () => {
-    it('añadir a un SUPERADMIN no cambia su rol global ni su membresía de plataforma', async () => {
-      await http()
-        .post('/v1/wineries/my/members')
-        .set('X-Forwarded-For', aliceIp)
-        .set('Authorization', `Bearer ${aliceToken}`)
-        .send({ userId: superadminId, memberRole: 'ENOLOGIST' })
-        .expect(201);
-
-      const user = await prisma.user.findUniqueOrThrow({
-        where: { id: superadminId },
+    it('unirse a una bodega no cambia la membresía de plataforma de un SUPERADMIN', async () => {
+      await addWineryMember(app, {
+        wineryId: wineryA,
+        role: 'ENOLOGIST',
+        userId: superadminId,
       });
-      expect(user.userRole).toBe(UserRoleEnum.PLATFORM_ADMIN);
+
       const platform = await prisma.membership.findUniqueOrThrow({
         where: {
           userId_organizationId: {
@@ -624,13 +619,12 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
       );
     });
 
-    it('añadir al dueño de otra bodega no toca su rol en esa bodega', async () => {
-      await http()
-        .post('/v1/wineries/my/members')
-        .set('X-Forwarded-For', aliceIp)
-        .set('Authorization', `Bearer ${aliceToken}`)
-        .send({ userId: bobId, memberRole: 'OPERATOR' })
-        .expect(201);
+    it('unirse a otra bodega no toca el rol en la propia', async () => {
+      await addWineryMember(app, {
+        wineryId: wineryA,
+        role: 'OPERATOR',
+        userId: bobId,
+      });
 
       const inB = await prisma.membership.findUniqueOrThrow({
         where: {
@@ -638,31 +632,27 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         },
       });
       expect(inB).toMatchObject({ role: 'OWNER', status: 'ACTIVE' });
-      const bob = await prisma.user.findUniqueOrThrow({ where: { id: bobId } });
-      expect(bob.userRole).toBe(UserRoleEnum.WINERY_ADMIN);
     });
 
     it('no puede apuntar a otra bodega (404) ni usar rutas de plataforma (403)', async () => {
       await http()
-        .post(`/v1/wineries/my/members?wineryId=${wineryB}`)
+        .get(`/v1/wineries/my?wineryId=${wineryB}`)
         .set('X-Forwarded-For', aliceIp)
         .set('Authorization', `Bearer ${aliceToken}`)
-        .send({ userId: paulaId, memberRole: 'ENOLOGIST' })
         .expect(404);
       await http()
-        .post(`/v1/wineries/${wineryB}/approve`)
+        .get('/v1/platform/wineries')
         .set('X-Forwarded-For', aliceIp)
         .set('Authorization', `Bearer ${aliceToken}`)
-        .send({})
         .expect(403);
     });
 
-    it('volver a añadir a quien ya es miembro activo → 409 ORG_ALREADY_MEMBER', async () => {
+    it('invitar a quien ya es miembro activo → 409 ORG_ALREADY_MEMBER', async () => {
       const res = await http()
-        .post('/v1/wineries/my/members')
+        .post('/v1/organizations/current/invitations')
         .set('X-Forwarded-For', aliceIp)
         .set('Authorization', `Bearer ${aliceToken}`)
-        .send({ userId: paulaId, memberRole: 'ENOLOGIST' })
+        .send({ email: email('paula'), role: 'ENOLOGIST' })
         .expect(409);
       expect(res.body.error.code).toBe('ORG_ALREADY_MEMBER');
     });

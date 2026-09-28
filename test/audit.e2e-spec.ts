@@ -1,12 +1,12 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { AuditService } from '../src/shared/audit/audit.service';
 import { deleteIdentityData } from './helpers/identity';
+import { wineryWithOwner } from './helpers/staff-session';
 
 /**
  * Bitácora con Postgres real (AUD-01, AUD-02): misma transacción que la
@@ -177,39 +177,33 @@ describe('Bitácora (e2e)', () => {
   });
 
   it('una escritura por HTTP deja actor, app de origen y correlación', async () => {
-    const signup = await request(app.getHttpServer())
-      .post('/v1/auth/signup')
-      .send({
-        email,
-        password,
-        fullName: 'Auditada E2E',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-      })
-      .expect(201);
-    const token = signup.body.data.tokens.accessToken as string;
-    const userId = signup.body.data.user.id as string;
+    const owned = await wineryWithOwner(app, {
+      name: `Bodega ${run}`,
+      taxId: `AUD${Date.now().toString().slice(-9)}`,
+      email,
+      password,
+      fullName: 'Auditada E2E',
+    });
+    wineryId = owned.wineryId;
+    const login = await request(app.getHttpServer())
+      .post('/v1/auth/login')
+      .send({ email, password })
+      .expect(200);
+    const token = login.body.data.tokens.accessToken as string;
 
-    const created = await request(app.getHttpServer())
-      .post('/v1/wineries')
+    await request(app.getHttpServer())
+      .patch('/v1/organizations/current')
       .set('Authorization', `Bearer ${token}`)
       .set('X-Client-App', 'ERP')
       .set('X-Correlation-ID', `${run}-winery`)
-      .send({
-        legalName: `Bodega ${run} S.R.L.`,
-        commercialName: `Bodega ${run}`,
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: `AUD${Date.now().toString().slice(-9)}`,
-        geographicRegion: 'Tarija',
-        contactEmail: `contacto_${run}@test.bo`,
-      })
-      .expect(201);
-    wineryId = created.body.data.id as string;
+      .send({ publicStory: `Historia ${run}` })
+      .expect(200);
 
     const entry = await prisma.auditEvent.findFirst({
-      where: { action: 'WINERY_CREATED', resourceId: wineryId },
+      where: { action: 'WINERY_UPDATED', resourceId: wineryId },
     });
     expect(entry).toMatchObject({
-      actorUserId: userId,
+      actorUserId: owned.ownerId,
       actorFullName: 'Auditada E2E',
       sourceApp: 'ERP',
       correlationId: `${run}-winery`,
