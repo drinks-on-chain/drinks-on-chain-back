@@ -45,13 +45,6 @@ export interface FixtureUser {
   id: string;
   email: string;
   fullName: string;
-  userRole:
-    | 'PLATFORM_ADMIN'
-    | 'WINERY_ADMIN'
-    | 'ENOLOGIST'
-    | 'AGRONOMIST'
-    | 'CONSUMER'
-    | 'POS_OPERATOR';
   phoneNumber: string | null;
   preferredLocale: string;
   isActive: boolean;

@@ -4,7 +4,6 @@ import {
   OrganizationStatusEnum,
   OrganizationTypeEnum,
   PrismaClient,
-  UserRoleEnum,
   WalletPurposeEnum,
   WalletTypeEnum,
 } from '@prisma/client';
@@ -55,7 +54,6 @@ export async function upsertSuperadmin(
     create: {
       email: superadmin.email,
       fullName: superadmin.fullName,
-      userRole: UserRoleEnum.PLATFORM_ADMIN,
       passwordHash,
       isActive: true,
       preferredLocale: 'es',

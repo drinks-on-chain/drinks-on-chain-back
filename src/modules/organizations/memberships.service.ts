@@ -84,8 +84,8 @@ function toView(m: MembershipWithOrganization): MembershipView {
 
 /**
  * Membresías (EQP-01, EQP-09, SE-01). Una persona puede tener varias; los
- * roles son por organización y ninguna operación de una bodega toca el rol
- * global (`users.user_role`, obsoleto) ni membresías de otra organización.
+ * roles son por organización (no hay rol global desde H1) y ninguna operación
+ * de una bodega toca membresías de otra organización.
  */
 @Injectable()
 export class MembershipsService {

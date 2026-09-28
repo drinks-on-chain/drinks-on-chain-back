@@ -35,7 +35,6 @@ import { MembershipsService } from '@modules/organizations/memberships.service';
 import {
   PLATFORM_ORGANIZATION_ID,
   isRoleValidForType,
-  legacyUserRoleForNewMember,
 } from '@modules/organizations/organization.constants';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { AuthService } from '@modules/auth/auth.service';
@@ -491,14 +490,6 @@ export class InvitationsService {
               email: invitation.email,
               fullName: fullName!,
               passwordHash: passwordHash!,
-              userRole:
-                organization.type === OrganizationTypeEnum.PLATFORM
-                  ? 'PLATFORM_ADMIN'
-                  : isRoleValidForType('WINERY', invitation.role)
-                    ? legacyUserRoleForNewMember(
-                        invitation.role as WineryMemberRoleEnum,
-                      )
-                    : 'CONSUMER',
               // El enlace llegó a ese buzón
               emailVerifiedAt: new Date(),
               isActive: true,

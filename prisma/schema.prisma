@@ -259,20 +259,6 @@ model EmailMessage {
 // -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
-/// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
-/// membresías (`memberships`). Solo se conserva para las respuestas y claims
-/// de compatibilidad.
-enum UserRoleEnum {
-  PLATFORM_ADMIN
-  WINERY_ADMIN
-  ENOLOGIST
-  AGRONOMIST
-  CONSUMER
-  POS_OPERATOR
-
-  @@map("user_role_enum")
-}
-
 enum WineryCategoryEnum {
   WINERY
   BREWERY
@@ -469,36 +455,34 @@ enum BeverageTypeEnum {
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
-  id                  String       @id @default(uuid()) @db.Uuid
-  email               String       @unique @db.VarChar(255)
-  phoneNumber         String?      @unique @map("phone_number") @db.VarChar(20)
-  passwordHash        String       @map("password_hash") @db.VarChar(255)
-  fullName            String       @map("full_name") @db.VarChar(200)
-  /// Obsoleto (H1): rol global de 0.1; ya no autoriza nada.
-  userRole            UserRoleEnum @map("user_role")
-  dynamicUserId       String?      @unique @map("dynamic_user_id") @db.VarChar(200)
-  preferredLocale     String       @default("es") @map("preferred_locale") @db.Char(2)
-  isActive            Boolean      @default(true) @map("is_active")
-  lastLoginAt         DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique @db.VarChar(255)
+  phoneNumber         String?   @unique @map("phone_number") @db.VarChar(20)
+  passwordHash        String    @map("password_hash") @db.VarChar(255)
+  fullName            String    @map("full_name") @db.VarChar(200)
+  dynamicUserId       String?   @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale     String    @default("es") @map("preferred_locale") @db.Char(2)
+  isActive            Boolean   @default(true) @map("is_active")
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(6)
   /// Última organización activa elegida (la de por defecto al iniciar sesión).
-  lastOrganizationId  String?      @map("last_organization_id") @db.Uuid
+  lastOrganizationId  String?   @map("last_organization_id") @db.Uuid
   /// Correo comprobado (enlace de verificación, invitación o recuperación).
-  emailVerifiedAt     DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  emailVerifiedAt     DateTime? @map("email_verified_at") @db.Timestamptz(6)
   /// Preferencias de comunicación (IAM-09): `{ lotProgress, redemptionReminders }`.
-  notificationPrefs   Json         @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
+  notificationPrefs   Json      @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
   /// Consentimiento de promociones con su fecha (null = no aceptado).
-  promotionsConsentAt DateTime?    @map("promotions_consent_at") @db.Timestamptz(6)
+  promotionsConsentAt DateTime? @map("promotions_consent_at") @db.Timestamptz(6)
   /// Bloqueo de la cuenta completa por la plataforma (`is_active = false`).
-  blockedReason       String?      @map("blocked_reason") @db.VarChar(500)
-  blockedAt           DateTime?    @map("blocked_at") @db.Timestamptz(6)
-  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  blockedReason       String?   @map("blocked_reason") @db.VarChar(500)
+  blockedAt           DateTime? @map("blocked_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
   lastOrganization         Organization?       @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
   memberships              Membership[]
   sessions                 Session[]
-  /// Obsoleto (H1): perfil del miembro en la bodega; la autorización usa `memberships`.
+  /// Perfil del miembro en cada bodega (matrícula, autoría); la autorización usa `memberships`.
   wineryMemberships        WineryMember[]
   wallets                  UserWallet[]
   approvedWineries         Winery[]            @relation("ApprovedByUser")
@@ -589,7 +573,7 @@ model Organization {
 
 /// Membresía de una persona en una organización con su rol (EQP-01, EQP-09).
 /// En las bodegas, el id coincide con el de `winery_members` (autoría de la
-/// trazabilidad), que se mantiene en paralelo hasta H1.
+/// trazabilidad y matrícula), que se mantiene en paralelo.
 model Membership {
   id             String                   @id @default(uuid()) @db.Uuid
   userId         String                   @map("user_id") @db.Uuid
@@ -873,9 +857,11 @@ model WineryStatusChange {
   @@map("winery_status_changes")
 }
 
-/// Obsoleto (H1): perfil del miembro en la bodega (matrícula) y autoría de la
-/// trazabilidad. La autorización usa `memberships` (mismo id); `is_active` se
-/// mantiene sincronizado con `memberships.status`.
+/// Perfil del miembro en la bodega (matrícula) y autoría de la trazabilidad
+/// (claves foráneas de vendimia, tratamientos, embotellado y laboratorio). No
+/// autoriza nada: la autorización usa `memberships` (mismo id); `member_role` e
+/// `is_active` se mantienen sincronizados con ella. Se conservó en la retirada
+/// de H1 por esas claves foráneas.
 model WineryMember {
   id                        String               @id @default(uuid()) @db.Uuid
   userId                    String               @map("user_id") @db.Uuid
