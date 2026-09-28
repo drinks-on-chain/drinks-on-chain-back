@@ -6,6 +6,7 @@ import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { configureApp } from '../src/app.setup';
 import { deleteIdentityData } from './helpers/identity';
 import { addWineryMember, wineryWithOwner } from './helpers/staff-session';
+import { deleteTraceabilityData } from './helpers/traceability-cleanup';
 import {
   WineryCategoryEnum,
   WineryMemberRoleEnum,
@@ -14,6 +15,13 @@ import {
   DestinationTypeEnum,
   TreatmentTypeEnum,
 } from '@prisma/client';
+
+/** Día de calendario de hace `n` días (fechas pasadas: ninguna puede ser futura). */
+function daysAgo(n: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
 
 describe('Traceability ERP & Strategy Pattern (e2e)', () => {
   let app: INestApplication;
@@ -109,33 +117,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         wineryIds: activeWineryIds,
       });
       if (activeWineryIds.length > 0) {
-        await prisma.batchLabAnalysis.deleteMany({
-          where: { bottlingBatch: { wineryId: { in: activeWineryIds } } },
-        });
-        await prisma.bottlingBatch.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
-        await prisma.wineAgingBatch.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
-        await prisma.productionBatch.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
-        await prisma.enologicalTreatment.deleteMany({
-          where: { fermentationTank: { wineryId: { in: activeWineryIds } } },
-        });
-        await prisma.fermentationLog.deleteMany({
-          where: { fermentationTank: { wineryId: { in: activeWineryIds } } },
-        });
-        await prisma.fermentationTank.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
-        await prisma.harvestBatch.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
-        await prisma.terroir.deleteMany({
-          where: { wineryId: { in: activeWineryIds } },
-        });
+        await deleteTraceabilityData(prisma, activeWineryIds);
         await prisma.wineryMember.deleteMany({
           where: { wineryId: { in: activeWineryIds } },
         });
@@ -172,7 +154,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           latitude: -21.48512,
           longitude: -64.78921,
           rawMaterialType: 'uva',
-          varietyName: '100% Moscatel de Alejandría',
+          varietyName: 'Moscatel de Alejandría',
           isDoEligible: true,
           doType: 'D.O. Singani',
         });
@@ -312,15 +294,19 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
 
       expect(res.status).toBe(422);
       expect(res.body.error.message).toContain('180 días');
+      const codes = res.body.error.details.map((d: { code: string }) => d.code);
+      expect(codes).toContain('TRC_LOCK_NOT_RELEASED');
     });
 
     it('Paso 8 & 9: [POST /v1/bottling] Embotella exitosamente tras cumplir reposo inerte', async () => {
-      // Simular cumplimiento de 180 días actualizando processEndDate en la BD
-      const oldEndDate = new Date();
-      oldEndDate.setDate(oldEndDate.getDate() - 190);
+      // Simular cumplimiento de 180 días moviendo la destilación al pasado
       await prisma.productionBatch.update({
         where: { id: distillationBatchId },
-        data: { processEndDate: oldEndDate },
+        data: {
+          processStartDate: new Date(`${daysAgo(192)}T00:00:00Z`),
+          processEndDate: new Date(`${daysAgo(190)}T00:00:00Z`),
+          mandatoryRestUntil: new Date(`${daysAgo(10)}T00:00:00Z`),
+        },
       });
 
       const res = await request(app.getHttpServer())
@@ -336,10 +322,16 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           bottleType: 'Vidrio Extra-Flint 750ml',
           labelDesignUrl:
             'https://storage.drinksonchain.com/labels/singani-anniversary.png',
-          bottlingDate: '2026-10-01',
+          bottlingDate: daysAgo(2),
         });
 
       expect(res.status).toBe(201);
+      expect(res.body.data.lotId).toBeDefined();
+      expect(res.body.data.bottleCodes).toMatchObject({
+        total: 4080,
+        active: 4080,
+      });
+      expect(res.body.data.balance).toMatchObject({ bottledLiters: 3060 });
       expect(res.body.data.id).toBeDefined();
       expect(res.body.data.internationalLotCode).toContain('SINGANI');
       expect(res.body.data.qrBatchUrl).toBeDefined();
@@ -356,8 +348,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           certifiedLaboratoryName:
             'Laboratorio de Servicios Analíticos ISO 17025',
           accreditedLabCertificationCode: 'LAB-SENASAG-2026-991',
-          analysisRequestDate: '2026-10-02',
-          testPerformedAt: '2026-10-04',
+          analysisRequestDate: daysAgo(2),
+          testPerformedAt: daysAgo(1),
           actualAlcoholAbv: 40.05,
           totalAcidityTartaricGl: 4.8,
           volatileAcidityAceticGl: 0.22,
@@ -394,7 +386,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
       expect(distNode.parents).toContain(vinifNode.batchId);
       expect(bottleNode.stageName).toBe('Bottling');
       expect(bottleNode.parents).toContain(distNode.batchId);
-      expect(bottleNode.isCertified).toBe(true);
+      // EA-05: certificado = expediente cerrado (aún no); sin métricas inventadas
+      expect(bottleNode.isCertified).toBe(false);
+      expect(vinifNode.metrics).toEqual([]);
+      expect(distNode.metrics).toEqual([7020]);
     });
   });
 
@@ -509,15 +504,18 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         });
 
       expect(res.status).toBe(422);
-      expect(res.body.error.message).toContain('bloqueado');
+      const codes = res.body.error.details.map((d: { code: string }) => d.code);
+      expect(codes).toContain('TRC_LOCK_NOT_RELEASED');
     });
 
     it('Paso 6: Embotella exitosamente tras liberar guarda de crianza', async () => {
-      const pastLockDate = new Date();
-      pastLockDate.setMonth(pastLockDate.getMonth() - 1);
+      // Simular 13 meses de crianza: inicio y candado en el pasado
       await prisma.wineAgingBatch.update({
         where: { id: agingBatchId },
-        data: { lockUntilDate: pastLockDate },
+        data: {
+          startDate: new Date(`${daysAgo(400)}T00:00:00Z`),
+          lockUntilDate: new Date(`${daysAgo(30)}T00:00:00Z`),
+        },
       });
 
       const res = await request(app.getHttpServer())
@@ -530,7 +528,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           totalBottlesPackaged: 300,
           packagingFormatCl: 75,
           bottleType: 'Bordelesa Cónica Verde Antiguo',
-          bottlingDate: '2027-04-15',
+          bottlingDate: daysAgo(1),
         });
 
       expect(res.status).toBe(201);
@@ -622,7 +620,13 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         });
 
       expect(res.status).toBe(422);
-      expect(res.body.error.message).toContain('1,600');
+      expect(res.body.error.code).toBe('TRC_DO_NOT_ELIGIBLE');
+      expect(res.body.error.details[0]).toMatchObject({
+        code: 'TRC_DO_NOT_ELIGIBLE',
+        rule: 'trazabilidad.singani.altitudMinimaMsnm',
+        expected: 1600,
+        actual: 400,
+      });
     });
 
     it('Bodega 2 no puede crear vendimia usando una parcela de Bodega 1', async () => {

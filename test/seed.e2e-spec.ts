@@ -8,6 +8,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
 import { loadMockFixtures } from '../src/seed/fixtures';
+import { applySeedCorrections } from '../src/seed/corrections';
 import { mockId } from '../src/seed/ids';
 import { runSeed } from '../src/seed/run-seed';
 import { SeedOptions } from '../src/seed/seed.options';
@@ -49,6 +50,8 @@ const options: SeedOptions = {
 };
 
 const fx = loadMockFixtures();
+/** Lo que siembra: los fixtures con las correcciones de realismo de la Ola 2. */
+const seeded = applySeedCorrections(fx);
 const ALTOS = mockId('winery:altos');
 const CINTI_VIEJO = mockId('winery:cintiviejo');
 
@@ -72,6 +75,10 @@ async function countAll(prisma: PrismaClient) {
     applications,
     applicationNotes,
     statusChanges,
+    lots,
+    bottleUnits,
+    complianceIssues,
+    lotEvents,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.organization.count(),
@@ -91,6 +98,10 @@ async function countAll(prisma: PrismaClient) {
     prisma.wineryApplication.count(),
     prisma.wineryApplicationNote.count(),
     prisma.wineryStatusChange.count(),
+    prisma.lot.count(),
+    prisma.bottleUnit.count(),
+    prisma.lotComplianceIssue.count(),
+    prisma.lotEvent.count(),
   ]);
   return {
     users,
@@ -111,6 +122,10 @@ async function countAll(prisma: PrismaClient) {
     applications,
     applicationNotes,
     statusChanges,
+    lots,
+    bottleUnits,
+    complianceIssues,
+    lotEvents,
   };
 }
 
@@ -170,14 +185,22 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
       wallets: demo.wallets + 1,
       terroirs: fx.terroirs.length,
       harvestBatches: fx.harvestBatches.length,
-      tanks: fx.fermentationTanks.length,
-      logs: fx.fermentationLogs.length,
-      treatments: fx.enologicalTreatments.length,
-      agings: fx.wineAgings.length,
-      productions: fx.productionBatches.length,
+      tanks: seeded.fermentationTanks.length,
+      logs: seeded.fermentationLogs.length,
+      treatments: seeded.enologicalTreatments.length,
+      agings: seeded.wineAgings.length,
+      productions: seeded.productionBatches.length,
       bottlings: fx.bottlingBatches.length,
       labs: fx.labAnalyses.length,
       applications: fx.applications.length,
+      // Ola 2: un lote por pesaje, un código por botella y la semilla sin
+      // incidencias de cumplimiento (sus datos cumplen las reglas)
+      lots: fx.harvestBatches.length,
+      bottleUnits: seeded.bottlingBatches.reduce(
+        (n, b) => n + b.totalBottlesPackaged,
+        0,
+      ),
+      complianceIssues: 0,
       statusChanges: fx.wineryProfiles.reduce(
         (n, p) => n + p.statusHistory.length,
         0,
@@ -255,12 +278,20 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
     // Trazabilidad con los códigos y fechas de los fixtures
     const lot = await prisma.bottlingBatch.findUniqueOrThrow({
       where: { internationalLotCode: 'CVJ-2026-SINGANI-001' },
-      include: { labAnalysis: true, productionBatch: true },
+      include: { labAnalyses: true, productionBatch: true, lot: true },
     });
     expect(lot.id).toBe(mockId('bottling:b01'));
     expect(lot.bottlingDate.toISOString()).toBe('2026-03-01T00:00:00.000Z');
-    expect(lot.labAnalysis?.id).toBe(mockId('lab:l01'));
+    expect(lot.labAnalyses.map((l) => l.id)).toEqual([mockId('lab:l01')]);
+    expect(lot.labAnalyses[0].conformityStatus).toBe('CONFORMING');
     expect(lot.productionBatch?.restStatus).toBe('BOTTLED');
+    // El lote migrado: UUID v5 del pesaje, etapa y código de lote
+    expect(lot.lot).toMatchObject({
+      stage: 'BOTTLED',
+      productType: 'SINGANI',
+      lotCode: 'CVJ-2026-SINGANI-001',
+      rulesOrigin: 'MIGRATION',
+    });
   });
 
   it('invitaciones de demostración con token secreto y TOTP del personal interno', async () => {
