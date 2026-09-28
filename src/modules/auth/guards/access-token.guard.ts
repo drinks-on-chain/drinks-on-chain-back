@@ -212,16 +212,12 @@ export class AccessTokenGuard implements CanActivate {
     const user: AuthenticatedUser = {
       id: claims.sub,
       userId: claims.sub,
-      email: claims.email,
       sessionId: claims.sid,
       audience: claims.aud === 'STAFF' ? 'STAFF' : 'CONSUMER',
       organizationId,
       organizationType: organizationId ? claims.orgType : null,
       organizationStatus,
       role: organizationId ? claims.role : null,
-      userRole: claims.userRole,
-      wineryId: claims.wineryId ?? null,
-      memberRole: claims.memberRole ?? null,
     };
     (request as Request & { user: AuthenticatedUser }).user = user;
     setRequestContext({

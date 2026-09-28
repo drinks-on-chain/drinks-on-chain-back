@@ -208,7 +208,6 @@ export class UsersService {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
-      userRole: user.userRole,
       phoneNumber: user.phoneNumber,
       preferredLocale: user.preferredLocale,
       isActive: user.isActive,

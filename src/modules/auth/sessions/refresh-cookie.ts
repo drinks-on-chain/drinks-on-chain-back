@@ -80,12 +80,9 @@ export function readCookie(req: Request, name: string): string | null {
 }
 
 /**
- * Refresco de la petición: la cookie `doc_rt` y, por compatibilidad hasta H1,
- * el cuerpo `{ refreshToken }`.
+ * Refresco de la petición: solo la cookie `doc_rt` (contrato O0 §5). El
+ * cuerpo `{ refreshToken }` dejó de aceptarse al cerrar la Ola 1 (H1).
  */
-export function readRefreshToken(
-  req: Request,
-  bodyToken?: string | null,
-): string | null {
-  return readCookie(req, REFRESH_COOKIE) ?? (bodyToken?.trim() || null);
+export function readRefreshToken(req: Request): string | null {
+  return readCookie(req, REFRESH_COOKIE);
 }

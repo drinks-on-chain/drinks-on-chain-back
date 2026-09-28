@@ -122,9 +122,9 @@ function str(value: unknown): string | null {
  * Identidad a partir de `request.user` (lo que deja la validación del token).
  *
  * Acepta los claims del contrato O0 §5 (`org`, `orgType`, `role`, `sid`,
- * `aud`, o sus nombres largos) y, mientras existan, los actuales
- * (`wineryId`, `memberRole`, `userRole`). Solo devuelve los campos que puede
- * deducir: no pisa lo que otro ya haya puesto en el contexto.
+ * `aud`, o sus nombres largos); los de compatibilidad de 0.1 (`wineryId`,
+ * `memberRole`, `userRole`) se retiraron en H1. Solo devuelve los campos que
+ * puede deducir: no pisa lo que otro ya haya puesto en el contexto.
  */
 export function identityFromUser(
   user: unknown,
@@ -134,35 +134,27 @@ export function identityFromUser(
   const userId = str(u.id) ?? str(u.userId) ?? str(u.sub);
   if (!userId) return null;
 
-  const userRole = str(u.userRole);
-  const wineryId = str(u.wineryId);
-  const organizationId =
-    str(u.organizationId) ?? str(u.org) ?? wineryId ?? null;
-
+  const organizationId = str(u.organizationId) ?? str(u.org) ?? null;
   const rawOrgType = str(u.organizationType) ?? str(u.orgType);
-  let organizationType: OrganizationType | null =
+  const organizationType: OrganizationType | null =
     rawOrgType && ORGANIZATION_TYPES.includes(rawOrgType)
       ? (rawOrgType as OrganizationType)
       : null;
-  if (!organizationType) {
-    if (wineryId && organizationId === wineryId) organizationType = 'WINERY';
-    else if (userRole === 'PLATFORM_ADMIN') organizationType = 'PLATFORM';
-  }
 
   const rawAudience = str(u.audience) ?? str(u.aud);
   const audience: Audience =
     rawAudience === 'STAFF' || rawAudience === 'CONSUMER'
       ? rawAudience
-      : userRole === 'CONSUMER' && !organizationId
-        ? 'CONSUMER'
-        : 'STAFF';
+      : organizationId
+        ? 'STAFF'
+        : 'CONSUMER';
 
   return {
     userId,
     userFullName: str(u.fullName),
     organizationId,
     organizationType,
-    role: str(u.role) ?? str(u.memberRole) ?? userRole,
+    role: str(u.role),
     sessionId: str(u.sessionId) ?? str(u.sid),
     audience,
   };

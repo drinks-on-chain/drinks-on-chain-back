@@ -1,9 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  AudienceEnum,
-  UserRoleEnum,
-  WineryMemberRoleEnum,
-} from '@prisma/client';
+import { AudienceEnum, WineryMemberRoleEnum } from '@prisma/client';
 import { MembershipDto } from '@modules/organizations/dto/membership.dto';
 import { WalletResponseDto } from '@modules/wallets/dto/wallet-response.dto';
 
@@ -43,15 +39,6 @@ export class UserProfileResponseDto {
 
   @ApiProperty({ example: 'Juan Pérez' })
   fullName!: string;
-
-  @ApiProperty({
-    enum: UserRoleEnum,
-    example: UserRoleEnum.CONSUMER,
-    deprecated: true,
-    description:
-      'Obsoleto (H1): rol global de 0.1; los permisos van por membresía',
-  })
-  userRole!: UserRoleEnum;
 
   @ApiPropertyOptional({
     type: String,

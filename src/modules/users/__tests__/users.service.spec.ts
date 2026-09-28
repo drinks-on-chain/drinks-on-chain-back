@@ -9,7 +9,6 @@ import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AuditService } from '@shared/audit/audit.service';
 import {
-  UserRoleEnum,
   WineryMemberRoleEnum,
   WalletTypeEnum,
   WalletPurposeEnum,
@@ -71,7 +70,6 @@ describe('UsersService', () => {
         id: 'user-uuid-1',
         email: 'enologo@kohlberg.bo',
         fullName: 'Valeria Soliz',
-        userRole: UserRoleEnum.ENOLOGIST,
         phoneNumber: '+59170012345',
         preferredLocale: 'es',
         isActive: true,
@@ -128,7 +126,6 @@ describe('UsersService', () => {
       id: 'user-uuid-1',
       email: 'valeria@kohlberg.bo',
       fullName: 'Valeria',
-      userRole: UserRoleEnum.ENOLOGIST,
       phoneNumber: null,
       preferredLocale: 'es',
       isActive: true,

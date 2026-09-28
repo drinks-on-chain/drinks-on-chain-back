@@ -35,14 +35,17 @@ describe('RequestContext', () => {
     expect(parseClientApp(undefined)).toBeNull();
   });
 
-  it('identidad con los claims actuales (wineryId, memberRole, userRole)', () => {
+  it('ignora los claims de compatibilidad retirados en H1 (wineryId, memberRole, userRole)', () => {
     expect(
       identityFromUser({
         id: 'u-1',
         fullName: 'Ana',
-        userRole: 'WINERY_ADMIN',
-        wineryId: 'w-1',
-        memberRole: 'OWNER',
+        organizationId: 'w-1',
+        organizationType: 'WINERY',
+        role: 'OWNER',
+        userRole: 'PLATFORM_ADMIN',
+        wineryId: 'w-2',
+        memberRole: 'ENOLOGIST',
       }),
     ).toEqual({
       userId: 'u-1',
@@ -54,15 +57,13 @@ describe('RequestContext', () => {
       audience: 'STAFF',
     });
     expect(
-      identityFromUser({ id: 'u-2', userRole: 'CONSUMER', wineryId: null }),
+      identityFromUser({ id: 'u-2', userRole: 'CONSUMER', wineryId: 'w-1' }),
     ).toMatchObject({
       audience: 'CONSUMER',
       organizationId: null,
-      role: 'CONSUMER',
+      organizationType: null,
+      role: null,
     });
-    expect(
-      identityFromUser({ id: 'u-3', userRole: 'PLATFORM_ADMIN' }),
-    ).toMatchObject({ organizationType: 'PLATFORM', audience: 'STAFF' });
   });
 
   it('identidad con los claims nuevos del contrato O0 (org, orgType, role, sid, aud)', () => {

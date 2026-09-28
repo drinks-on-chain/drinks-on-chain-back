@@ -1,15 +1,9 @@
-import {
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  Logger,
-} from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import {
   AudienceEnum,
   MembershipStatusEnum,
   OrganizationStatusEnum,
   User,
-  UserRoleEnum,
   WalletPurposeEnum,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -28,7 +22,6 @@ import {
   pickActiveOrganizationId,
   requiresMfa,
 } from '@modules/organizations/memberships.service';
-import { legacyUserRoleFor } from '@modules/organizations/organization.constants';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
@@ -89,7 +82,6 @@ type SessionUser = Pick<
   | 'fullName'
   | 'phoneNumber'
   | 'preferredLocale'
-  | 'userRole'
   | 'isActive'
   | 'lastOrganizationId'
 >;
@@ -119,7 +111,11 @@ export class AuthService {
     private readonly mfa: MfaService,
   ) {}
 
-  /** Registro público (consumidores; `WINERY_ADMIN` hasta H1). Abre sesión. */
+  /**
+   * Registro público de consumidores (sin membresías: `audience: CONSUMER`).
+   * El registro de personal se retiró en H1; la Ola 4 añade captcha y
+   * verificación del correo. Abre sesión.
+   */
   async signup(dto: SignupDto, client: ClientInfo): Promise<IssuedSession> {
     const email = dto.email.toLowerCase().trim();
     const existingUser = await this.prisma.user.findUnique({
@@ -142,30 +138,12 @@ export class AuthService {
       }
     }
 
-    const allowedPublicRoles: UserRoleEnum[] = [
-      UserRoleEnum.CONSUMER,
-      UserRoleEnum.WINERY_ADMIN,
-    ];
-    const targetRole = dto.userRole ?? UserRoleEnum.CONSUMER;
-    if (!allowedPublicRoles.includes(targetRole)) {
-      throw new ForbiddenException(
-        `El rol '${targetRole}' no puede ser asignado mediante registro público. Los administradores globales se inicializan mediante Seeder y el personal operativo es incorporado por la bodega.`,
-      );
-    }
-
-    if (targetRole !== UserRoleEnum.CONSUMER) {
-      this.logger.warn(
-        `Ruta obsoleta (se retira en H1): POST /v1/auth/signup con userRole ${targetRole} (registro de personal); usar la solicitud de alta o la invitación`,
-      );
-    }
-
     const passwordHash = await bcrypt.hash(dto.password, this.bcryptRounds);
     const user = await this.prisma.user.create({
       data: {
         email,
         passwordHash,
         fullName: dto.fullName.trim(),
-        userRole: targetRole,
         phoneNumber: dto.phoneNumber?.trim() ?? null,
         preferredLocale: dto.preferredLocale ?? 'es',
         isActive: true,
@@ -176,7 +154,7 @@ export class AuthService {
       user.id,
       WalletPurposeEnum.CONSUMER_NFT,
     );
-    this.logger.log(`Usuario registrado: ${user.id}`);
+    this.logger.log(`Consumidor registrado: ${user.id}`);
 
     return this.openSession(user, [], client);
   }
@@ -288,8 +266,8 @@ export class AuthService {
   }
 
   /**
-   * Renovación rotativa (contrato O0 §5): el refresco llega en la cookie o en
-   * el cuerpo; se rota siempre y se responde como el login.
+   * Renovación rotativa (contrato O0 §5): el refresco llega en la cookie
+   * `doc_rt`; se rota siempre y se responde como el login.
    */
   async refresh(rawRefreshToken: string | null): Promise<IssuedSession> {
     const validated = await this.sessions.validateRefresh(rawRefreshToken);
@@ -315,7 +293,7 @@ export class AuthService {
 
   /**
    * Cambia la organización activa (IAM-08): misma sesión (`sid`), tokens
-   * nuevos. Exige el refresco vigente de esa misma sesión (cookie o cuerpo),
+   * nuevos. Exige el refresco vigente de esa misma sesión (cookie `doc_rt`),
    * que se rota: con un acceso robado no se obtiene una renovación.
    */
   async switchOrganization(
@@ -476,7 +454,6 @@ export class AuthService {
         memberships,
         activeOrganizationId,
         accessToken,
-        refreshToken,
       ),
       refreshToken,
       cookieMaxAgeSeconds: this.sessions.ttlSecondsFor(audience),
@@ -571,7 +548,6 @@ export class AuthService {
         memberships,
         activeOrganizationId,
         accessToken,
-        refreshToken,
       ),
       refreshToken,
       cookieMaxAgeSeconds: this.sessions.ttlSecondsFor(audience),
@@ -587,7 +563,6 @@ export class AuthService {
     const active = memberships.find(
       (m) => m.organizationId === activeOrganizationId,
     );
-    const compat = this.compatFields(user, active);
     return this.accessTokens.sign({
       sub: user.id,
       aud: audienceFor(memberships),
@@ -595,22 +570,7 @@ export class AuthService {
       orgType: active?.organizationType ?? null,
       role: active?.role ?? null,
       sid: sessionId,
-      email: user.email,
-      ...compat,
     });
-  }
-
-  private compatFields(user: SessionUser, active: MembershipView | undefined) {
-    const winery = active?.organizationType === 'WINERY' ? active : undefined;
-    return {
-      userRole: legacyUserRoleFor(
-        active?.organizationType ?? null,
-        active?.role ?? null,
-        user.userRole,
-      ),
-      wineryId: winery?.organizationId ?? null,
-      memberRole: winery?.role ?? null,
-    };
   }
 
   private buildBody(
@@ -618,7 +578,6 @@ export class AuthService {
     memberships: MembershipView[],
     activeOrganizationId: string | null,
     accessToken: string,
-    refreshToken: string,
   ): AuthResponseDto {
     const active = memberships.find(
       (m) => m.organizationId === activeOrganizationId,
@@ -631,7 +590,6 @@ export class AuthService {
         phoneNumber: user.phoneNumber,
         preferredLocale: user.preferredLocale,
         audience: audienceFor(memberships),
-        ...this.compatFields(user, active),
       },
       memberships,
       activeOrganizationId: active?.organizationId ?? null,
@@ -639,7 +597,6 @@ export class AuthService {
         accessToken,
         tokenType: 'Bearer',
         expiresIn: this.accessTokens.ttlSeconds,
-        refreshToken,
       },
     };
   }
