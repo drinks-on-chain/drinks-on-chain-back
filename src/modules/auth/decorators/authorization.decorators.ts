@@ -9,6 +9,7 @@ export const AUDIENCE_KEY = 'auth:audience';
 export const ORG_TYPES_KEY = 'auth:orgTypes';
 export const ROLES_KEY = 'auth:roles';
 export const REQUIRE_ACTIVE_ORG_KEY = 'auth:requireActiveOrg';
+export const PLATFORM_READ_ONLY_KEY = 'auth:platformReadOnly';
 
 /**
  * Audiencia exigida (claim `aud`): `STAFF` (con alguna membresía) o
@@ -43,3 +44,12 @@ export const Roles = (...roles: MembershipRole[]) =>
 export const RequireActiveOrg = (
   options: { allow?: readonly ('INVITED' | 'SUSPENDED')[] } = {},
 ) => SetMetadata(REQUIRE_ACTIVE_ORG_KEY, { allow: options.allow ?? [] });
+
+/**
+ * Trazabilidad: la plataforma solo lee (S-25, contrato O2 §20; docs-back/05
+ * §3). En una ruta o controlador con este decorador, una escritura (`POST`,
+ * `PATCH`, `PUT`, `DELETE`) con la organización de plataforma activa responde
+ * 403 `TRC_PLATFORM_READ_ONLY`, aunque indique `?wineryId=`. Las lecturas
+ * siguen el régimen de `@OrgType('WINERY')` (plataforma con `?wineryId=`).
+ */
+export const PlatformReadOnly = () => SetMetadata(PLATFORM_READ_ONLY_KEY, true);

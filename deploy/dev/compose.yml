@@ -76,6 +76,8 @@ services:
       APP_URL_BACKOFFICE: ${APP_URL_BACKOFFICE:-https://drinks-on-chain-backoffice.vercel.app}
       APP_URL_POS: ${APP_URL_POS:-}
       APP_URL_MARKETPLACE: ${APP_URL_MARKETPLACE:-}
+      # QR del lote y de las botellas: {PASSPORT_BASE_URL}/b/{código} (Ola 2, OP-06)
+      PASSPORT_BASE_URL: ${PASSPORT_BASE_URL:-}
     ports:
       - '127.0.0.1:${API_HOST_PORT:-3000}:4000'
     volumes:
