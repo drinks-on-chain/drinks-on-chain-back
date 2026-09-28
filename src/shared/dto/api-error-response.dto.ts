@@ -1,4 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { JSON_VALUE_SCHEMA } from './json-value.schema';
 
 /** Detalle de un error (contrato O0 §1). */
 export class ErrorDetailDto {
@@ -13,6 +14,42 @@ export class ErrorDetailDto {
 
   @ApiProperty({ example: 'grossWeightKg must be a positive number' })
   message!: string;
+
+  @ApiPropertyOptional({
+    example: 'TRC_LOCK_NOT_RELEASED',
+    description:
+      'Código `TRC_…` de esta violación (reglas de la trazabilidad, contrato O2 §0 y §13)',
+  })
+  code?: string;
+
+  @ApiPropertyOptional({
+    example: 'trazabilidad.singani.reposoMinimoDias',
+    description: 'Clave del parámetro de la instantánea de reglas del lote',
+  })
+  rule?: string;
+
+  @ApiPropertyOptional({
+    ...JSON_VALUE_SCHEMA,
+    description: 'Valor exigido por la regla (número, texto, lista…)',
+    example: '2026-10-12',
+  })
+  expected?: unknown;
+
+  @ApiPropertyOptional({
+    ...JSON_VALUE_SCHEMA,
+    description: 'Valor registrado (`null` = no registrado)',
+    example: '2026-09-27',
+  })
+  actual?: unknown;
+
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'Datos para que la UI arme su explicación (`daysRemaining`, `sourceId`, `unit`…)',
+    example: { daysRemaining: 15 },
+  })
+  meta?: Record<string, unknown>;
 }
 
 export class ErrorBodyDto {
