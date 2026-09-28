@@ -137,3 +137,28 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `/v1/health/ready` con `worker: up | down` (latido del worker en Redis con caducidad); sin worker, 200 y `degraded` · 2026-09-27
   - [x] `null` en campos opcionales del cuerpo = omitido (antes 500 en altas y ediciones del ERP y en `PATCH /users/me`); `@NullableFields` para borrar en PATCH; 422 en obligatorios; 422 declarado en toda operación con cuerpo · 2026-09-27
   - [x] Esquema de respuesta declarado en toda respuesta 2xx en JSON (DAG, pasaporte, reposo, 202 con `data: null`), comprobado en la prueba del contrato · 2026-09-27
+
+## Etapa 2 · ERP completo y trazabilidad confiable (Ola 2)
+
+**Objetivo**: un ERP cuyas reglas no se pueden eludir, con el lote como entidad, códigos por botella, expediente con hash y pasaporte público real (docs-back/08 §5; contrato `plan/contratos/o2-erp-confiable.md`).
+**Terminado cuando**: el caso "Singani Gran Reserva 2026" se recorre de la parcela a los códigos de botella; las pruebas de elusión fallan con 422/409; el pasaporte público muestra solo datos registrados; el ERP funciona contra el backend real.
+
+- [x] **Apertura (O2-BE-1)** — modelo del lote, migración *expand* con relleno, OpenAPI con todas las rutas del contrato (501 donde falta lógica) y cierres de seguridad en las rutas actuales. · 2026-09-28 ([`docs/arquitectura/trazabilidad.md`](arquitectura/trazabilidad.md))
+  - [x] Tablas `lots`, `lot_events`, `lot_sequences`, `phyto_decisions`, `maturity_analyses`, `fermentation_tank_inputs`, `bottle_units`, `bottle_code_exports`, `trace_corrections`, `lot_compliance_issues`, `lot_attachments`, `lot_dossiers` y `lot_id` (y autoría por membresía) en la cadena actual; migración aditiva · 2026-09-28
+  - [x] Relleno §2.6 (un lote por pesaje con UUID v5, instantánea `MIGRATION`, dictámenes, análisis, entradas, conformidad, códigos de botella, línea de tiempo e incidencias) al arrancar la API; probado sobre una copia con la semilla anterior · 2026-09-28
+  - [x] Semilla con lotes y correcciones de realismo documentadas (sin incidencias) · 2026-09-28
+  - [x] `details` ampliado (`code`, `rule`, `expected`, `actual`, `meta`) y códigos `TRC_…`/`PUB_…`/`NOT_IMPLEMENTED` · 2026-09-28
+  - [x] OpenAPI con las 140 rutas: implementadas `GET/POST /v1/lots`, `GET/PATCH /v1/lots/{id}`, `POST …/discard`, `POST /v1/lots/{id}/bottling[/preview]`, dictámenes y análisis de madurez, `GET /v1/public/wineries`; el resto de rutas del contrato con 501 y su esquema · 2026-09-28
+  - [x] Cierres de seguridad en las rutas actuales: EA-04, EA-01, EA-02, EA-03, EA-07, EA-08, SE-07, EA-05 en el grafo legado y plataforma de solo lectura (S-25) · 2026-09-28
+  - [x] e2e `traceability-o2` (migración, elusión, secuencias, SE-07, plataforma, 501) validadas contra `openapi.json`; unitarias del dominio · 2026-09-28
+  - [ ] Contraer en H2: `lot_id NOT NULL`, `Restrict` en las claves antiguas, retirar rutas y campos legados (§16.2), usuario de base sin `DELETE` en la trazabilidad
+- [ ] **2.1 Lote** (ERP-01, CFG-06) — parcial: entidad, instantánea, estimación con historial, descarte y migración en la apertura
+- [ ] **2.2 Origen y vendimia** (ERP-02…05, EA-03, EA-04) — parcial: D.O. calculada, análisis separable, dictamen que bloquea la fermentación y sin autoaprobación en la apertura; correcciones de parcela (2.7)
+- [ ] **2.3 Vinificación** (ERP-06…09) — parcial: entradas, capacidad, código físico, bifurcación predeclarada coherente; transiciones `start`/`complete`/`clean` (501)
+- [ ] **2.4 Crianza, destilación y reposo** (ERP-10…12) — parcial: candados con la instantánea, balance de masa; cierre con cortes, descartes y tarea diaria `trace.locks.release` (501 / pendiente)
+- [ ] **2.5 Embotellado seguro** (ERP-13, 14, 16; EA-01, EA-02, EA-07, OP-06) — parcial: reglas en `POST /v1/bottling` y en `POST /v1/lots/{id}/bottling[/preview]`, `PASSPORT_BASE_URL`; queda el recorrido H2 completo (con la tarea diaria de candados, 2.4)
+- [ ] **2.6 Códigos de botella** (ERP-15) — parcial: generación al embotellar; listado, CSV, ZIP y anulación (501)
+- [ ] **2.7 Laboratorio y correcciones** (ERP-17, 18; EA-06, EA-08) — parcial: conformidad calculada con unidades y reanálisis; correcciones (501)
+- [ ] **2.8 Expediente** (ERP-19)
+- [ ] **2.9 Vistas del lote** (ERP-20…24, EA-05) — parcial: eventos registrados desde la apertura y grafo legado con datos reales; rutas nuevas (501)
+- [ ] **2.10 Pasaporte público** (PUB-01, 02, 05)

@@ -67,7 +67,8 @@ drinks-on-chain-backend/
 │   ├── modules/                        # Módulos de dominio de la aplicación
 │   │   ├── auth/                       # Sesiones (acceso + doc_rt), guards globales, límites
 │   │   ├── organizations/              # Organizaciones y membresías (roles por organización)
-│   │   ├── harvest-batches/            # Lotes de vendimia, pesaje neto y fitosanitario
+│   │   ├── harvest-batches/            # Pesaje, análisis de madurez y dictámenes
+│   │   ├── lots/                       # Lote del servidor (Ola 2): reglas, relleno, embotellado seguro
 │   │   ├── health/                     # Healthcheck y diagnóstico de base de datos / Redis
 │   │   ├── terroirs/                   # Parcelas agrícolas, GeoJSON y altitud msnm
 │   │   ├── traceability/               # Núcleo ERP: Fermentación, Crianza, Destilación,
@@ -119,8 +120,9 @@ drinks-on-chain-backend/
    - Sin rol global desde H1: `users.user_role` y los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`, `tokens.refreshToken`) se retiraron al cerrar la Ola 1. `winery_members` sigue como autoría de la trazabilidad y matrícula (mismo id que la membresía).
    > 🔒 El endpoint público `POST /v1/auth/signup` solo crea **consumidores**; el superadministrador sale de la semilla (`SUPERADMIN_*`, membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega entra por invitación. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
    - **Alta de bodegas y equipo** (Ola 1 · 1.3–1.6, detalle en [`docs/arquitectura/organizaciones.md`](docs/arquitectura/organizaciones.md)): solicitud pública con captcha y verificación del correo (`/v1/public/winery-applications`) o alta directa (`/v1/platform/wineries`); la bodega nace `INVITED` con la invitación del dueño y pasa a `ACTIVE` —con su **prefijo de lote único**— cuando él acepta. Suspender, reactivar, revocar y transferir la titularidad desde el back office. **SE-05 activo**: el ERP responde 403 `ORG_NOT_ACTIVE` a una bodega no `ACTIVE` (el perfil y la bitácora propia se leen suspendida). Equipo del dueño y del back office con bloqueos que cierran las sesiones al instante.
-5. **Grafo DAG de Trazabilidad:** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
-6. **Formato Estándar de Respuesta API:**
+5. **Trazabilidad confiable con el lote del servidor** (Ola 2 · apertura, detalle en [`docs/arquitectura/trazabilidad.md`](docs/arquitectura/trazabilidad.md)): el **lote** (`/v1/lots`) agrupa la cadena y guarda la **instantánea de reglas** con la que se valida siempre; los datos anteriores se migran con un lote por pesaje (UUID v5) y lo que no cumple queda como incidencia. Reglas en el servidor con el reloj de la base, sin elusión posible: dictamen fuera del alta y exigido para fermentar (EA-04), tipo del embotellado derivado del origen y candados de la instantánea (EA-01), un embotellado por lote con balance de volumen y alcohol y un código por botella (EA-02), D.O. calculada (EA-03), secuencias sin carreras (EA-07), conformidad de laboratorio con unidades (EA-08), grafo solo para la bodega dueña y la plataforma (SE-07) y **plataforma de solo lectura** (403 `TRC_PLATFORM_READ_ONLY`). Errores `TRC_…` con `details` ampliado (`code`, `rule`, `expected`, `actual`, `meta`); las rutas del contrato sin lógica todavía responden 501 `NOT_IMPLEMENTED`.
+6. **Grafo DAG de Trazabilidad (legado hasta H2):** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
+7. **Formato Estándar de Respuesta API:**
    ```json
    // Respuesta Exitosa
    {
@@ -203,6 +205,13 @@ Variables nuevas de la Ola 1 · 1.1–1.2 (cuenta, segundo factor e invitaciones
 | `RATE_LIMIT_APPLICATION_PER_MINUTE` | api | Envíos del formulario público de solicitud por IP y minuto (5); además, como mucho 3 por correo y 10 por IP en una hora (el resto, 202 sin crear nada) |
 | `FEATURE_ENFORCE_ACTIVE_ORG` | api | SE-05. **Activo por defecto** desde la Ola 1 (403 `ORG_NOT_ACTIVE`); `false` lo deja solo en aviso en los logs |
 | `SEED_DEMO_TOTP_SECRET` | semilla | Secreto TOTP (base32) del personal interno de demostración (`DRINKSONCHAINDEMOTOTPKEY` = el de los mocks). Sin él, lo inscriben al entrar |
+
+Variables nuevas de la Ola 2 (trazabilidad confiable; ver [`docs/arquitectura/trazabilidad.md`](docs/arquitectura/trazabilidad.md)):
+
+| Variable | Proceso | Uso |
+|---|---|---|
+| `PASSPORT_BASE_URL` | api, semilla | Base del QR del lote y de cada botella: `{PASSPORT_BASE_URL}/b/{código}` (OP-06). Por defecto `APP_URL_MARKETPLACE`; si tampoco, `http://localhost:3005`. En desarrollo, la URL del Marketplace de desarrollo |
+| `LOT_BACKFILL_ON_BOOT` | api | Relleno de lotes de la migración de la Ola 2 al arrancar (por defecto activo; `false` lo desactiva) |
 
 **CORS**: `CORS_ALLOWED_ORIGINS` es una lista de orígenes exactos separada por comas (`https://erp.ejemplo.com,http://localhost:3002`). No se admiten comodines ni se refleja el origen de la petición; vacía fuera de producción equivale a `http://localhost:3002,http://localhost:3009`. Cabeceras permitidas: `Authorization`, `Content-Type`, `X-Correlation-ID`, `Idempotency-Key`, `Accept-Language`, `X-Client-App`; expuestas: `X-Correlation-ID`, `Retry-After`.
 
@@ -295,6 +304,8 @@ La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se p
 | `SEED_DEMO` | `true`: personal interno, bodegas y trazabilidad de los mocks. Por defecto `false` (solo plataforma y superusuario). Nunca en producción |
 | `SEED_DEMO_PASSWORD` | Contraseña de **todas** las personas de demostración; obligatoria con `SEED_DEMO=true` |
 | `SEED_DEMO_TOTP_SECRET` | Secreto TOTP (base32) del personal interno inscrito en los mocks (administración, operaciones, soporte); se cifra como en la API (necesita `JWT_SECRET` y, si la API la usa, `MFA_ENCRYPTION_KEY`). Sin él quedan sin inscribir y lo inscriben en su primer inicio de sesión |
+
+Desde la Ola 2 la semilla también crea los **lotes** de la trazabilidad sembrada con la misma función que la migración (un lote por pesaje, UUID v5 de `lot:{harvestBatchId}`, códigos de botella, instantánea `MIGRATION`) y aplica **correcciones de realismo** documentadas en `src/seed/corrections.ts` a cuatro registros de los fixtures que incumplían las reglas nuevas (sin ellas quedarían como incidencias de cumplimiento).
 
 Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `change-me` de los `.env.example`. En el servidor, las variables pasan al contenedor `api` desde `~/doc-dev/.env` (`deploy/dev/compose.yml`; la API no las lee): tras editarlas, `docker compose … up -d api` (o el siguiente despliegue) antes del `exec`.
 
@@ -402,6 +413,7 @@ sequenceDiagram
 - ⚙️ **[Configuración en dos niveles](docs/arquitectura/configuracion.md):** catálogo de parámetros, valor efectivo con caché, mínimos legales e instantánea del lote; edición desde el back office (`/v1/platform/settings/*`).
 - ✉️ **[Correo, archivos y operación](docs/arquitectura/correo-y-archivos.md):** correo por la cola, almacenamiento privado con URL firmadas, salud, logs y Swagger.
 - 🔐 **[Identidad, sesiones y membresías](docs/arquitectura/identidad.md):** modelo, cookie `doc_rt`, rotación y reutilización, organización activa, revocación, matriz de roles y límites.
+- 🍇 **[Trazabilidad confiable](docs/arquitectura/trazabilidad.md):** lote del servidor, instantánea de reglas, migración de los datos anteriores, reglas que ya no se pueden eludir (EA-01…EA-08, SE-07, plataforma de solo lectura), códigos `TRC_…` y rutas con 501.
 - 🏷️ **[Solicitudes, bodegas y equipo](docs/arquitectura/organizaciones.md):** formulario público y bandeja de solicitudes, alta directa, activación con prefijo de lote, suspender/reactivar/revocar/transferir, SE-05, equipo del dueño y del back office, correos y rutas que se retiran en H1.
 - 📋 **[Catálogo de Endpoints de la API](docs/endpoints/endpoints.md):** Referencia detallada de todos los endpoints, DTOs y respuestas.
 - 🗄️ **[Registro de Base de Datos](docs/bd/base_de_datos.md):** Estructura de tablas, atributos y relaciones Prisma.
