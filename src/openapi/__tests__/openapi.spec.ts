@@ -327,7 +327,18 @@ describe('Contrato OpenAPI (OPS-12)', () => {
         'POST /v1/wineries/my/members/create',
       ];
       expect(ops.map(key).filter((k) => retired.includes(k))).toEqual([]);
-      expect(ops.filter((op) => op.deprecated).map(key)).toEqual([]);
+      // Solo quedan marcadas las rutas legadas de la Ola 2, que se retiran en
+      // H2 (contrato O2 §16.2)
+      expect(
+        ops
+          .filter((op) => op.deprecated)
+          .map(key)
+          .sort(),
+      ).toEqual([
+        'GET /v1/traceability/dag/{bottlingBatchId}',
+        'GET /v1/traceability/public/{lotCode}',
+        'PATCH /v1/harvest-batches/{id}/phyto-status',
+      ]);
     });
 
     it('la sesión no lleva el refresco en el cuerpo ni los campos de compatibilidad', () => {
