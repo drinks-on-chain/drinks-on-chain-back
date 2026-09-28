@@ -2,10 +2,17 @@ import { ApiProperty } from '@nestjs/swagger';
 
 /** Operador que firma una etapa del grafo. */
 export class DagOperatorDto {
-  @ApiProperty({ example: 'Maestro Destilador' })
+  @ApiProperty({
+    example: 'Lic. Valeria Soliz',
+    description:
+      'Persona de la membresía que registró la etapa; "No registrado" si no consta',
+  })
   name!: string;
 
-  @ApiProperty({ example: 'Distiller' })
+  @ApiProperty({
+    example: 'ENOLOGIST',
+    description: 'Rol en la bodega; `NOT_RECORDED` si no consta',
+  })
   role!: string;
 
   @ApiProperty({ example: 'Destilería Cinti Viejo' })
@@ -55,14 +62,18 @@ export class DagNodeDto {
   @ApiProperty({
     type: [Number],
     example: [7020],
-    description: 'Métricas escaladas ×100 (enteros) para el contrato',
+    description:
+      'Métricas registradas escaladas ×100 (enteros); vacía si la etapa no tiene datos (sin valores de relleno, EA-05)',
   })
   metrics!: number[];
 
   @ApiProperty({ example: '0x9a0b…' })
   metadataHash!: string;
 
-  @ApiProperty({ example: true })
+  @ApiProperty({
+    example: false,
+    description: 'Expediente del lote cerrado (§10); ya no es un valor fijo',
+  })
   isCertified!: boolean;
 
   @ApiProperty({ type: DagOperatorDto })

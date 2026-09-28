@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsString,
   IsOptional,
+  Min,
   IsNumber,
   IsPositive,
   IsDateString,
@@ -139,15 +140,25 @@ export class CreateBatchLabAnalysisDto {
   @ApiPropertyOptional({
     example: 48.0,
     description:
-      'Contenido de metanol en mg/100 ml de alcohol anhidro (límite legal < 200)',
+      'Metanol en **mg/L de producto** (EA-08). Si no llega `methanolMg100mlAa`, el servidor lo convierte: 10 × mgL / grado',
   })
   @IsOptional()
   @IsNumber()
   methanolContentMgL?: number;
 
   @ApiPropertyOptional({
+    example: 12.0,
+    description:
+      'Metanol en mg/100 mL de alcohol anhidro (la unidad del límite). Si llegan ambos y difieren > 1 % → 422 VALIDATION_ERROR',
+  })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  methanolMg100mlAa?: number;
+
+  @ApiPropertyOptional({
     example: 0.02,
-    description: 'Contenido de cobre en mg/L (límite legal < 0.05)',
+    description: 'Cobre en mg/L (límite de la instantánea del lote)',
   })
   @IsOptional()
   @IsNumber()
@@ -171,8 +182,9 @@ export class CreateBatchLabAnalysisDto {
 
   @ApiPropertyOptional({
     example: true,
+    deprecated: true,
     description:
-      'Dictamen de conformidad con normas SENASAG / Norma Boliviana NB 324001',
+      'Se ignora: la conformidad la calcula el servidor con los límites y unidades de la instantánea del lote (EA-08). Sale de la entrada en H2',
   })
   @IsOptional()
   @IsBoolean()
@@ -180,7 +192,8 @@ export class CreateBatchLabAnalysisDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Dictamen de conformidad con regulaciones de la Unión Europea',
+    description:
+      'Declarado por el laboratorio (sin verificar; fuera del pasaporte)',
   })
   @IsOptional()
   @IsBoolean()
@@ -189,7 +202,7 @@ export class CreateBatchLabAnalysisDto {
   @ApiPropertyOptional({
     example: true,
     description:
-      'Dictamen de conformidad con regulaciones TTB (Estados Unidos)',
+      'Declarado por el laboratorio (sin verificar; fuera del pasaporte)',
   })
   @IsOptional()
   @IsBoolean()

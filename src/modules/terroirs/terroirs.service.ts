@@ -8,6 +8,20 @@ import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
+import { ErrorCode } from '@shared/exceptions/error-codes';
+import {
+  effectiveDoRules,
+  terroirDo,
+  TerroirDoFields,
+} from '@modules/lots/do-rules';
+import { stateError, violation } from '@modules/lots/domain/trace-errors';
+
+/** Campos con efecto normativo: no se cambian por `PATCH` en una parcela usada (§3.1). */
+const NORMATIVE_FIELDS = [
+  'altitudeMasl',
+  'varietyName',
+  'rawMaterialType',
+] as const;
 
 @Injectable()
 export class TerroirsService {
@@ -18,9 +32,46 @@ export class TerroirsService {
     private readonly audit: AuditService,
   ) {}
 
-  async create(wineryId: string, dto: CreateTerroirDto): Promise<Terroir> {
+  /**
+   * Añade la aptitud D.O. calculada con los valores efectivos de la bodega
+   * (EA-03): `isDoEligible` ya no es un dato declarado.
+   */
+  private async withDo<T extends Terroir>(
+    terroirs: T[],
+  ): Promise<(T & TerroirDoFields)[]> {
+    const rulesByWinery = new Map<
+      string,
+      Awaited<ReturnType<typeof effectiveDoRules>>
+    >();
+    const now = new Date();
+    const out: (T & TerroirDoFields)[] = [];
+    for (const t of terroirs) {
+      let rules = rulesByWinery.get(t.wineryId);
+      if (!rules) {
+        rules = await effectiveDoRules(this.prisma, t.wineryId);
+        rulesByWinery.set(t.wineryId, rules);
+      }
+      out.push({ ...t, ...terroirDo(t, rules, now) });
+    }
+    return out;
+  }
+
+  async create(
+    wineryId: string,
+    dto: CreateTerroirDto,
+  ): Promise<Terroir & TerroirDoFields> {
     this.logger.log(
       `Registrando parcela "${dto.parcelName}" para la bodega ${wineryId}`,
+    );
+    // `isDoEligible` de la entrada se ignora (§3.1): se calcula en el servidor
+    const rules = await effectiveDoRules(this.prisma, wineryId);
+    const computed = terroirDo(
+      {
+        id: 'nueva',
+        altitudeMasl: dto.altitudeMasl,
+        varietyName: dto.varietyName,
+      },
+      rules,
     );
 
     const terroir = await this.audit.transaction(
@@ -46,7 +97,7 @@ export class TerroirsService {
             varietyName: dto.varietyName,
             soilType: dto.soilType,
             irrigationSystem: dto.irrigationSystem,
-            isDoEligible: dto.isDoEligible ?? false,
+            isDoEligible: computed.isDoEligible,
             doType: dto.doType,
             doCertificateUrl: dto.doCertificateUrl,
           },
@@ -59,13 +110,13 @@ export class TerroirsService {
       }),
     );
 
-    return terroir;
+    return (await this.withDo([terroir]))[0];
   }
 
   async findAll(
     wineryId: string | undefined,
     query: QueryTerroirsDto,
-  ): Promise<Paginated<Terroir>> {
+  ): Promise<Paginated<Terroir & TerroirDoFields>> {
     const where: Prisma.TerroirWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.isDoEligible !== undefined && {
@@ -89,10 +140,15 @@ export class TerroirsService {
       this.prisma.terroir.count({ where }),
     ]);
 
-    return toPage(items, total, query);
+    return toPage(await this.withDo(items), total, query);
   }
 
   async findById(wineryId: string | undefined, id: string) {
+    const terroir = await this.findRow(wineryId, id);
+    return (await this.withDo([terroir]))[0];
+  }
+
+  private async findRow(wineryId: string | undefined, id: string) {
     const terroir = await this.prisma.terroir.findFirst({
       where: {
         id,
@@ -118,8 +174,47 @@ export class TerroirsService {
     wineryId: string,
     id: string,
     dto: UpdateTerroirDto,
-  ): Promise<Terroir> {
-    const before = await this.findById(wineryId, id);
+  ): Promise<Terroir & TerroirDoFields> {
+    const before = await this.findRow(wineryId, id);
+
+    // Parcela usada: sus campos normativos se corrigen con un registro
+    // compensatorio (§3.1, §9), no con PATCH
+    const changed = NORMATIVE_FIELDS.filter((field) => {
+      const next = dto[field];
+      if (next === undefined || next === null) return false;
+      const current = before[field];
+      return field === 'altitudeMasl'
+        ? Number(current) !== Number(next)
+        : String(current) !== String(next);
+    });
+    if (changed.length > 0 && before.harvestBatches.length > 0) {
+      throw stateError(
+        ErrorCode.TRC_TERROIR_IN_USE,
+        'La parcela ya tiene pesajes: altitud, cepa y materia prima se corrigen con una corrección (POST /v1/terroirs/{id}/corrections)',
+        changed.map((field) =>
+          violation(
+            ErrorCode.TRC_TERROIR_IN_USE,
+            `Campo normativo de una parcela usada: ${field}`,
+            {
+              field,
+              meta: {
+                fields: changed,
+                harvestBatches: before.harvestBatches.length,
+              },
+            },
+          ),
+        ),
+      );
+    }
+    const rules = await effectiveDoRules(this.prisma, before.wineryId);
+    const computed = terroirDo(
+      {
+        id,
+        altitudeMasl: dto.altitudeMasl ?? before.altitudeMasl,
+        varietyName: dto.varietyName ?? before.varietyName,
+      },
+      rules,
+    );
 
     const updateData: Prisma.TerroirUpdateInput = {
       ...(dto.parcelName && { parcelName: dto.parcelName }),
@@ -147,7 +242,8 @@ export class TerroirsService {
       ...(dto.irrigationSystem !== undefined && {
         irrigationSystem: dto.irrigationSystem,
       }),
-      ...(dto.isDoEligible !== undefined && { isDoEligible: dto.isDoEligible }),
+      // `isDoEligible` de la entrada se ignora: se recalcula (EA-03)
+      isDoEligible: computed.isDoEligible,
       ...(dto.doType !== undefined && { doType: dto.doType }),
       ...(dto.doCertificateUrl !== undefined && {
         doCertificateUrl: dto.doCertificateUrl,
@@ -155,15 +251,18 @@ export class TerroirsService {
       ...(dto.isActive !== undefined && { isActive: dto.isActive }),
     };
 
-    return this.audit.transaction(
+    const { harvestBatches: _used, ...beforeRow } = before;
+    void _used;
+    const updated = await this.audit.transaction(
       (tx) => tx.terroir.update({ where: { id }, data: updateData }),
       (updated) => ({
         action: AuditAction.TERROIR_UPDATED,
         resource: { type: 'terroir', id },
         organizationId: updated.wineryId,
-        before,
+        before: beforeRow,
         after: updated,
       }),
     );
+    return (await this.withDo([updated]))[0];
   }
 }

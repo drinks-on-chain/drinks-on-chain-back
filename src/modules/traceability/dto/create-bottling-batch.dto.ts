@@ -35,7 +35,8 @@ export class CreateBottlingBatchDto {
   @ApiProperty({
     enum: BeverageTypeEnum,
     example: BeverageTypeEnum.SINGANI,
-    description: 'Tipo de bebida final embotellada',
+    description:
+      'Se deriva del origen (crianza → WINE, destilación → SINGANI, EA-01): si no coincide → 422 `TRC_PRODUCT_TYPE_MISMATCH`',
   })
   @IsEnum(BeverageTypeEnum)
   @IsNotEmpty()

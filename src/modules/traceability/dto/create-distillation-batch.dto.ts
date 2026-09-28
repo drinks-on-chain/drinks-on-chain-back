@@ -83,7 +83,9 @@ export class CreateDistillationBatchDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Elegible para Denominación de Origen Singani',
+    deprecated: true,
+    description:
+      'Se ignora: la D.O. del lote se calcula en el servidor con su instantánea (EA-03). Sale de la entrada en H2',
   })
   @IsOptional()
   @IsBoolean()

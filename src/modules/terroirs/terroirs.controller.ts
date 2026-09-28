@@ -29,12 +29,14 @@ import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Terroirs y Parcelas')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('terroirs')

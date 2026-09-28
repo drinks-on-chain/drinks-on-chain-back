@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { LotLockDto } from '@modules/lots/dto/lot.dto';
 import { AgingStatusEnum } from '@prisma/client';
 import { FermentationTankResponseDto } from './fermentation-tank-response.dto';
 import { BottlingBatchResponseDto } from './bottling-batch-response.dto';
@@ -54,6 +55,47 @@ export class WineAgingResponseDto {
 
   @ApiProperty({ example: '2026-03-15T14:30:00.000Z' })
   createdAt!: Date;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Lote (Ola 2)',
+  })
+  lotId!: string | null;
+
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    example: '2025-11-03',
+    description: 'Inicio de la crianza (el candado se cuenta desde aquí)',
+  })
+  startDate!: Date | null;
+
+  @ApiProperty({ type: Number, nullable: true, example: 12 })
+  containerCount!: number | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    example: '2026-11-03',
+    description:
+      'Fin del candado con la instantánea del lote (rutas de crianza)',
+  })
+  unlockDate?: string;
+
+  @ApiPropertyOptional({
+    type: () => LotLockDto,
+    nullable: true,
+    description: 'Candado evaluado con el reloj de la base (rutas de crianza)',
+  })
+  lock?: LotLockDto | null;
+
+  @ApiPropertyOptional({
+    type: Number,
+    nullable: true,
+    description: 'Litros de la crianza aún sin embotellar (rutas de crianza)',
+  })
+  availableLiters?: number | null;
 
   @ApiPropertyOptional({
     type: () => FermentationTankResponseDto,

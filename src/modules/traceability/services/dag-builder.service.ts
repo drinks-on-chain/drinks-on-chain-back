@@ -1,6 +1,12 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import * as crypto from 'crypto';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { AppException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
+import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
+import { PLATFORM_WINERY_READERS } from '@modules/organizations/organization.constants';
+import { resolveTraceActors, TraceActor } from '@modules/lots/trace-actors';
+import { distillationHeart, num } from '@modules/lots/domain/sources';
 
 export interface DagNode {
   batchId: string;
@@ -27,6 +33,54 @@ export interface DagGraphResult {
   nodes: DagNode[];
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Operador sin registrar (datos anteriores a la Ola 2): nada inventado (EA-05). */
+const NOT_RECORDED = 'No registrado';
+
+const DAG_INCLUDE = {
+  winery: true,
+  lot: { select: { dossier: { select: { status: true } } } },
+  labAnalyses: { orderBy: { createdAt: 'desc' as const } },
+  wineAgingBatch: {
+    include: {
+      fermentationTank: {
+        include: {
+          harvestBatch: {
+            include: {
+              terroir: true,
+              maturityAnalyses: {
+                where: { voidedAt: null },
+                orderBy: { measuredAt: 'desc' as const },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+  productionBatch: {
+    include: {
+      fermentationTank: {
+        include: {
+          harvestBatch: {
+            include: {
+              terroir: true,
+              maturityAnalyses: {
+                where: { voidedAt: null },
+                orderBy: { measuredAt: 'desc' as const },
+                take: 1,
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+};
+
 @Injectable()
 export class DagBuilderService {
   private readonly logger = new Logger(DagBuilderService.name);
@@ -42,64 +96,105 @@ export class DagBuilderService {
     return '0x' + crypto.createHash('sha256').update(canonical).digest('hex');
   }
 
-  async buildDagForBottlingBatch(identifier: string): Promise<DagGraphResult> {
-    const isUuid =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-        identifier,
+  /**
+   * Grafo del embotellado para una sesión (SE-07): solo los miembros de la
+   * bodega dueña y el personal de plataforma que lee bodegas; cualquier otra
+   * sesión → 404 (nunca 403: no se revela que existe).
+   */
+  async buildDagForUser(
+    user: AuthenticatedUser,
+    bottlingBatchId: string,
+  ): Promise<DagGraphResult> {
+    const owner = await this.prisma.bottlingBatch.findUnique({
+      where: { id: bottlingBatchId },
+      select: { wineryId: true },
+    });
+    const isOwnerMember =
+      user.organizationType === 'WINERY' &&
+      owner !== null &&
+      user.organizationId === owner.wineryId;
+    const isPlatformReader =
+      user.organizationType === 'PLATFORM' &&
+      (PLATFORM_WINERY_READERS as readonly string[]).includes(user.role ?? '');
+    if (!owner || !(isOwnerMember || isPlatformReader)) {
+      throw new AppException(
+        404,
+        ErrorCode.NOT_FOUND,
+        `Lote de embotellado con identificador "${bottlingBatchId}" no encontrado`,
       );
+    }
+    return this.buildDag({ id: bottlingBatchId });
+  }
 
+  /**
+   * Pasaporte legado por código de lote (`/traceability/public/{lotCode}`,
+   * hasta H2): solo por código de lote, nunca por id (que se saltaba SE-07).
+   */
+  async buildPublicDag(lotCode: string): Promise<DagGraphResult> {
+    if (UUID_RE.test(lotCode)) {
+      throw new NotFoundException(
+        `Lote de embotellado con código "${lotCode}" no encontrado`,
+      );
+    }
+    return this.buildDag({ internationalLotCode: lotCode });
+  }
+
+  /**
+   * Grafo con datos reales (EA-05): sin métricas de relleno, operador desde
+   * la membresía que registró cada etapa ("No registrado" si falta) e
+   * `isCertified` = expediente del lote cerrado.
+   */
+  private async buildDag(
+    where: { id: string } | { internationalLotCode: string },
+  ): Promise<DagGraphResult> {
     const batch = await this.prisma.bottlingBatch.findFirst({
-      where: isUuid ? { id: identifier } : { internationalLotCode: identifier },
-      include: {
-        winery: true,
-        labAnalysis: true,
-        wineAgingBatch: {
-          include: {
-            fermentationTank: {
-              include: {
-                harvestBatch: {
-                  include: { terroir: true },
-                },
-              },
-            },
-          },
-        },
-        productionBatch: {
-          include: {
-            fermentationTank: {
-              include: {
-                harvestBatch: {
-                  include: { terroir: true },
-                },
-              },
-            },
-          },
-        },
-      },
+      where,
+      include: DAG_INCLUDE,
     });
 
     if (!batch) {
       throw new NotFoundException(
-        `Lote de embotellado con identificador "${identifier}" no encontrado`,
+        `Lote de embotellado con identificador "${'id' in where ? where.id : where.internationalLotCode}" no encontrado`,
       );
     }
 
     const wineryName = batch.winery.commercialName;
+    const certified = batch.lot?.dossier?.status === 'CLOSED';
     const nodes: DagNode[] = [];
 
-    // Resolver cadena hacia atrás
     const intermediate = batch.wineAgingBatch ?? batch.productionBatch;
     const tank = intermediate?.fermentationTank;
     const harvest = tank?.harvestBatch;
     const terroir = harvest?.terroir;
+    const maturity = harvest?.maturityAnalyses[0];
+    const lab =
+      batch.labAnalyses.find((l) => l.supersededAt === null) ??
+      batch.labAnalyses[0] ??
+      null;
+
+    const actors = await resolveTraceActors(this.prisma, [
+      harvest?.createdByMembershipId,
+      tank?.createdByMembershipId,
+      batch.wineAgingBatch?.createdByMembershipId,
+      batch.productionBatch?.createdByMembershipId,
+      batch.createdByMembershipId,
+      batch.releasedByMemberId,
+    ]);
+    const operator = (...ids: (string | null | undefined)[]) => {
+      const actor = ids
+        .map((id) => (id ? actors.get(id) : undefined))
+        .find((a): a is TraceActor => !!a);
+      return actor
+        ? { name: actor.fullName, role: actor.role, wineryName }
+        : { name: NOT_RECORDED, role: 'NOT_RECORDED', wineryName };
+    };
 
     let plotHash = '';
     let harvestHash = '';
     let vinificationHash = '';
     let intermediateHash = '';
-    let bottlingHash = '';
 
-    // 0. Nodo Parcela (Stage::Plot = 0)
+    // 0. Parcela
     if (terroir) {
       plotHash = this.computeHash(`TERROIR-${terroir.id}`);
       const plotDetails = {
@@ -118,17 +213,13 @@ export class DagBuilderService {
         volumeOrUnits: Number(terroir.surfaceHectares),
         metrics: [Math.round(Number(terroir.altitudeMasl) * 100)],
         metadataHash: this.computeMetadataHash(plotDetails),
-        isCertified: terroir.isDoEligible,
-        operator: {
-          name: 'Ingeniero Agrónomo',
-          role: 'Agronomist',
-          wineryName,
-        },
+        isCertified: certified,
+        operator: operator(),
         details: plotDetails,
       });
     }
 
-    // 1. Nodo Vendimia (Stage::Harvest = 1)
+    // 1. Vendimia (madurez del último análisis; sin análisis, sin métricas)
     if (harvest) {
       harvestHash = this.computeHash(`HARVEST-${harvest.id}`);
       const harvestDetails = {
@@ -136,9 +227,9 @@ export class DagBuilderService {
         grossWeightKg: Number(harvest.grossWeightKg),
         tareWeightKg: Number(harvest.tareWeightKg),
         netWeightKg: Number(harvest.netWeightKg),
-        brixDegrees: Number(harvest.brixDegrees),
-        initialPh: Number(harvest.initialPh),
-        initialAcidityGl: Number(harvest.initialAcidityGl),
+        brixDegrees: maturity ? maturity.brixDegrees.toNumber() : null,
+        initialPh: maturity ? maturity.ph.toNumber() : null,
+        initialAcidityGl: maturity ? maturity.acidityGl.toNumber() : null,
         phytosanitaryStatus: harvest.phytosanitaryStatus,
       };
       nodes.push({
@@ -148,29 +239,30 @@ export class DagBuilderService {
         parents: plotHash ? [plotHash] : [],
         timestamp: harvest.intakeDate.toISOString(),
         volumeOrUnits: Number(harvest.netWeightKg),
-        metrics: [
-          Math.round(Number(harvest.brixDegrees) * 100),
-          Math.round(Number(harvest.initialPh) * 100),
-          Math.round(Number(harvest.initialAcidityGl) * 100),
-        ],
+        metrics: maturity
+          ? [
+              Math.round(maturity.brixDegrees.toNumber() * 100),
+              Math.round(maturity.ph.toNumber() * 100),
+              Math.round(maturity.acidityGl.toNumber() * 100),
+            ]
+          : [],
         metadataHash: this.computeMetadataHash(harvestDetails),
-        isCertified: harvest.phytosanitaryStatus === 'APPROVED',
-        operator: {
-          name: 'Jefe de Báscula',
-          role: 'Weigher',
-          wineryName,
-        },
+        isCertified: certified,
+        operator: operator(
+          harvest.createdByMembershipId,
+          harvest.certifiedByMemberId,
+        ),
         details: harvestDetails,
       });
     }
 
-    // 2. Nodo Vinificación (Stage::Vinification = 2)
+    // 2. Vinificación (no hay grado ni acidez registrados en el tanque: sin métricas)
     if (tank) {
       vinificationHash = this.computeHash(`TANK-${tank.id}`);
       const tankDetails = {
         tankCode: tank.tankCode,
         material: tank.material,
-        volumeFilledLiters: Number(tank.volumeFilledLiters ?? 0),
+        volumeFilledLiters: num(tank.volumeFilledLiters),
         destinationType: tank.destinationType,
       };
       nodes.push({
@@ -180,19 +272,15 @@ export class DagBuilderService {
         parents: harvestHash ? [harvestHash] : [],
         timestamp: tank.startDate.toISOString(),
         volumeOrUnits: Number(tank.volumeFilledLiters ?? 0),
-        metrics: [1280, 28], // Estimado vino base estándar (12.80% ABV, 0.28 g/L acidez)
+        metrics: [],
         metadataHash: this.computeMetadataHash(tankDetails),
-        isCertified: true,
-        operator: {
-          name: 'Enólogo de Planta',
-          role: 'Oenologist',
-          wineryName,
-        },
+        isCertified: certified,
+        operator: operator(tank.createdByMembershipId),
         details: tankDetails,
       });
     }
 
-    // 3 o 4. Nodo Crianza (Stage::Aging = 3) o Destilación (Stage::Distillation = 4)
+    // 3 o 4. Crianza o destilación
     if (batch.wineAgingBatch) {
       const aging = batch.wineAgingBatch;
       intermediateHash = this.computeHash(`AGING-${aging.id}`);
@@ -207,27 +295,24 @@ export class DagBuilderService {
         stage: 3,
         stageName: 'Aging',
         parents: vinificationHash ? [vinificationHash] : [],
-        timestamp: aging.createdAt.toISOString(),
+        timestamp: (aging.startDate ?? aging.createdAt).toISOString(),
         volumeOrUnits: Number(aging.volumeLiters ?? 0),
         metrics: [aging.plannedMonths * 100],
         metadataHash: this.computeMetadataHash(agingDetails),
-        isCertified: true,
-        operator: {
-          name: 'Maestro de Cava',
-          role: 'Oenologist',
-          wineryName,
-        },
+        isCertified: certified,
+        operator: operator(aging.createdByMembershipId),
         details: agingDetails,
       });
     } else if (batch.productionBatch) {
       const prod = batch.productionBatch;
+      const heart = distillationHeart(prod);
       intermediateHash = this.computeHash(`DISTILLATION-${prod.id}`);
       const distDetails = {
         equipmentIdentifier: prod.equipmentIdentifier,
-        inputVolumeLiters: Number(prod.inputVolumeLiters ?? 0),
-        outputVolumeLiters: Number(prod.outputVolumeLiters ?? 0),
-        wasteVolumeLiters: Number(prod.wasteVolumeLiters ?? 0),
-        initialAlcoholPercentage: Number(prod.initialAlcoholPercentage ?? 0),
+        inputVolumeLiters: num(prod.inputVolumeLiters),
+        outputVolumeLiters: num(prod.outputVolumeLiters),
+        wasteVolumeLiters: num(prod.wasteVolumeLiters),
+        initialAlcoholPercentage: num(prod.initialAlcoholPercentage),
         restStatus: prod.restStatus,
       };
       nodes.push({
@@ -236,37 +321,26 @@ export class DagBuilderService {
         stageName: 'Distillation',
         parents: vinificationHash ? [vinificationHash] : [],
         timestamp: prod.processStartDate.toISOString(),
-        volumeOrUnits: Number(prod.outputVolumeLiters ?? 0),
-        metrics: [
-          Math.round(Number(prod.initialAlcoholPercentage ?? 70.2) * 100),
-        ],
+        volumeOrUnits: Number(heart.liters ?? 0),
+        metrics: heart.abv !== null ? [Math.round(heart.abv * 100)] : [],
         metadataHash: this.computeMetadataHash(distDetails),
-        isCertified: prod.isDoEligible,
-        operator: {
-          name: 'Maestro Destilador',
-          role: 'Distiller',
-          wineryName,
-        },
+        isCertified: certified,
+        operator: operator(prod.createdByMembershipId),
         details: distDetails,
       });
     }
 
-    // 5. Nodo Embotellado (Stage::Bottling = 5)
-    bottlingHash = this.computeHash(`BOTTLING-${batch.id}`);
+    // 5. Embotellado
+    const bottlingHash = this.computeHash(`BOTTLING-${batch.id}`);
     const bottlingDetails = {
       internationalLotCode: batch.internationalLotCode,
       productType: batch.productType,
       finalAlcoholAbv: Number(batch.finalAlcoholAbv),
-      waterDilutionLiters: Number(batch.waterDilutionLiters ?? 0),
+      waterDilutionLiters: num(batch.waterDilutionLiters),
       totalBottlesPackaged: batch.totalBottlesPackaged,
       packagingFormatCl: batch.packagingFormatCl,
       qrBatchUrl: batch.qrBatchUrl,
     };
-
-    const isCertified = Boolean(
-      batch.labAnalysis && batch.labAnalysis.conformsToSenasagStandards,
-    );
-
     nodes.push({
       batchId: bottlingHash,
       stage: 5,
@@ -279,33 +353,27 @@ export class DagBuilderService {
         batch.packagingFormatCl * 10,
       ],
       metadataHash: this.computeMetadataHash(bottlingDetails),
-      isCertified,
-      operator: {
-        name: 'Supervisor de Envasado',
-        role: 'Packer',
-        wineryName,
-      },
+      isCertified: certified,
+      operator: operator(batch.createdByMembershipId, batch.releasedByMemberId),
       details: {
         ...bottlingDetails,
-        labAnalysis: batch.labAnalysis
+        labAnalysis: lab
           ? {
-              certifiedLaboratoryName:
-                batch.labAnalysis.certifiedLaboratoryName,
+              certifiedLaboratoryName: lab.certifiedLaboratoryName,
               accreditedLabCertificationCode:
-                batch.labAnalysis.accreditedLabCertificationCode,
-              actualAlcoholAbv: Number(batch.labAnalysis.actualAlcoholAbv),
-              methanolContentMgL: Number(
-                batch.labAnalysis.methanolContentMgL ?? 0,
-              ),
-              conformsToSenasagStandards:
-                batch.labAnalysis.conformsToSenasagStandards,
+                lab.accreditedLabCertificationCode,
+              actualAlcoholAbv: Number(lab.actualAlcoholAbv),
+              methanolContentMgL: num(lab.methanolContentMgL),
+              methanolMg100mlAa: num(lab.methanolMg100mlAa),
+              conformityStatus: lab.conformityStatus,
+              conformsToSenasagStandards: lab.conformsToSenasagStandards,
             }
           : null,
       },
     });
 
     this.logger.log(
-      `Grafo DAG reconstruido exitosamente para el lote ${batch.internationalLotCode} (${nodes.length} nodos)`,
+      `Grafo DAG reconstruido para el lote ${batch.internationalLotCode} (${nodes.length} nodos)`,
     );
 
     return {

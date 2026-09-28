@@ -12,7 +12,8 @@ export class UpdatePhytoStatusDto {
   @ApiProperty({
     enum: PhytoStatusEnum,
     example: PhytoStatusEnum.APPROVED,
-    description: 'Nuevo dictamen fitosanitario',
+    description:
+      'Nuevo dictamen (`APPROVED`, `REJECTED`, `QUARANTINE`). Ruta legada: alias de `POST …/phyto-decisions` hasta H2',
   })
   @IsEnum(PhytoStatusEnum)
   @IsNotEmpty()
@@ -29,7 +30,8 @@ export class UpdatePhytoStatusDto {
   @ApiPropertyOptional({
     example:
       'Lote aprobado sin presencia de botritis ni plagas cuarentenarias.',
-    description: 'Notas o justificación del dictamen enológico/agronómico',
+    description:
+      'Motivo del dictamen (obligatorio en `REJECTED` y `QUARANTINE`); queda en el dictamen y ya no pisa las notas del pesaje',
   })
   @IsOptional()
   @IsString()

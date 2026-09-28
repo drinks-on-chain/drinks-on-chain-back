@@ -53,18 +53,28 @@ export class CreateWineAgingBatchDto {
   @Min(1)
   barrelUseCycle?: number;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 225.0,
-    description: 'Volumen transferido a crianza en litros',
+    description:
+      'Volumen transferido a crianza en litros: **obligatorio** (Ola 2) y ≤ lo disponible del tanque; la diferencia queda como merma de trasiego',
   })
-  @IsOptional()
   @IsNumber()
   @IsPositive()
-  volumeLiters?: number;
+  volumeLiters!: number;
+
+  @ApiPropertyOptional({
+    example: 12,
+    description: 'Barricas o contenedores que agrupa la crianza',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  containerCount?: number;
 
   @ApiProperty({
     example: 12,
-    description: 'Meses planificados de crianza en madera',
+    description:
+      'Meses planificados de crianza (≥ mínimo de la instantánea del lote, `trazabilidad.vino.crianzaMinimaMeses`); el candado es inicio + meses de calendario',
   })
   @IsInt()
   @Min(1)
@@ -72,7 +82,8 @@ export class CreateWineAgingBatchDto {
 
   @ApiPropertyOptional({
     example: '2025-01-15T00:00:00Z',
-    description: 'Fecha de ingreso a barrica (por defecto fecha actual)',
+    description:
+      'Fecha de ingreso a barrica (por defecto hoy en La Paz); no futura ni anterior al inicio del tanque',
   })
   @IsOptional()
   @IsDateString()

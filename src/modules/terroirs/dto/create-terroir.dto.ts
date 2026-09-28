@@ -114,7 +114,9 @@ export class CreateTerroirDto {
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Indica si cumple criterios para Denominación de Origen',
+    deprecated: true,
+    description:
+      'Se ignora: la aptitud D.O. la calcula el servidor (EA-03, contrato O2 §3.1). Sale de la entrada en H2',
   })
   @IsOptional()
   @IsBoolean()

@@ -3,6 +3,28 @@ import { BeverageTypeEnum } from '@prisma/client';
 import { BatchLabAnalysisResponseDto } from './batch-lab-analysis-response.dto';
 import { WineAgingResponseDto } from './wine-aging-response.dto';
 import { ProductionBatchResponseDto } from './production-batch-response.dto';
+import { BottlingBalanceDto } from '@modules/lots/contract/dto/lot-bottling.dto';
+
+export class BottlingLeftoverResponseDto {
+  @ApiProperty({ example: 12.5 }) liters!: number;
+  @ApiProperty({ enum: ['RETAINED', 'DISCARDED'] }) disposition!: string;
+  @ApiProperty({ type: String, nullable: true }) notes!: string | null;
+}
+
+export class BottleCodesSummaryDto {
+  @ApiProperty({ example: 2950 }) total!: number;
+  @ApiProperty({ example: 2950 }) active!: number;
+  @ApiProperty({ example: 0 }) voided!: number;
+  @ApiProperty({ type: Number, nullable: true, example: 1 }) firstSerial!:
+    number | null;
+  @ApiProperty({ type: Number, nullable: true, example: 2950 }) lastSerial!:
+    number | null;
+}
+
+export class LabelDesignDto {
+  @ApiProperty() key!: string;
+  @ApiProperty({ type: String, nullable: true }) url!: string | null;
+}
 
 export class BottlingBatchResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
@@ -77,7 +99,9 @@ export class BottlingBatchResponseDto {
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    example: 'a1b2c3d4e5f6...',
+    example: null,
+    description:
+      'Obsoleto: `null` en los embotellados de la Ola 2 (el hash válido es el del expediente, §10)',
   })
   blockchainDataHash?: string | null;
 
@@ -95,17 +119,57 @@ export class BottlingBatchResponseDto {
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    example: 'https://drinksonchain.com/trace/batch/KHL-2026-SINGANI-001',
+    example: 'https://app.drinksonchain.bo/b/CVJ-2026-SINGANI-004',
+    description: '`{PASSPORT_BASE_URL}/b/{lotCode}` (OP-06)',
   })
   qrBatchUrl?: string | null;
 
   @ApiProperty({ example: '2026-10-01T12:00:00.000Z' })
   createdAt!: Date;
 
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Lote (Ola 2)',
+  })
+  lotId!: string | null;
+
+  @ApiPropertyOptional({
+    example: 'CVJ-2026-SINGANI-004',
+    description:
+      'Código de lote (= `internationalLotCode`; rutas de embotellado)',
+  })
+  lotCode?: string;
+
+  @ApiPropertyOptional({
+    type: () => BottlingBalanceDto,
+    nullable: true,
+    description:
+      'Balance con la merma de la instantánea (rutas de embotellado)',
+  })
+  balance?: BottlingBalanceDto | null;
+
+  @ApiPropertyOptional({
+    type: () => BottlingLeftoverResponseDto,
+    nullable: true,
+  })
+  leftover?: BottlingLeftoverResponseDto | null;
+
+  @ApiPropertyOptional({
+    type: () => BottleCodesSummaryDto,
+    description: 'Códigos de botella (rutas de embotellado)',
+  })
+  bottleCodes?: BottleCodesSummaryDto;
+
+  @ApiPropertyOptional({ type: () => LabelDesignDto, nullable: true })
+  labelDesign?: LabelDesignDto | null;
+
   @ApiPropertyOptional({
     type: () => BatchLabAnalysisResponseDto,
     nullable: true,
-    description: 'En la lista y el detalle',
+    description:
+      'Análisis vigente (reanálisis: el último); en la lista y el detalle',
   })
   labAnalysis?: BatchLabAnalysisResponseDto | null;
 

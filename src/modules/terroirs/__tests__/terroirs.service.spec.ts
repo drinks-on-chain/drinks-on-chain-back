@@ -36,6 +36,9 @@ describe('TerroirsService', () => {
   };
 
   const mockPrismaService = {
+    // Valores efectivos de la configuración (D.O. calculada, EA-03): el catálogo
+    settingGlobalValue: { findMany: jest.fn().mockResolvedValue([]) },
+    settingOverride: { findMany: jest.fn().mockResolvedValue([]) },
     terroir: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -64,6 +67,8 @@ describe('TerroirsService', () => {
     service = module.get<TerroirsService>(TerroirsService);
     prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
+    mockPrismaService.settingGlobalValue.findMany.mockResolvedValue([]);
+    mockPrismaService.settingOverride.findMany.mockResolvedValue([]);
   });
 
   describe('create', () => {
@@ -87,9 +92,37 @@ describe('TerroirsService', () => {
           parcelName: dto.parcelName,
           surfaceHectares: new Prisma.Decimal(4.5),
           altitudeMasl: new Prisma.Decimal(1850.0),
+          isDoEligible: true,
         }),
       });
-      expect(result).toEqual(mockTerroir);
+      expect(result).toMatchObject(mockTerroir);
+      expect(result.doEvaluation.status).toBe('ELIGIBLE');
+    });
+
+    it('ignora isDoEligible de la entrada: la D.O. se calcula (EA-03)', async () => {
+      mockPrismaService.terroir.create.mockImplementation(
+        ({ data }: { data: Record<string, unknown> }) =>
+          Promise.resolve({ ...mockTerroir, ...data }),
+      );
+
+      const result = await service.create(mockWineryId, {
+        parcelName: 'El Portillo',
+        surfaceHectares: 2,
+        altitudeMasl: 1540,
+        rawMaterialType: 'uva',
+        varietyName: 'Moscatel de Alejandria',
+        isDoEligible: true,
+      });
+
+      expect(prisma.terroir.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ isDoEligible: false }),
+      });
+      expect(result.isDoEligible).toBe(false);
+      expect(result.doEvaluation.status).toBe('NOT_ELIGIBLE');
+      expect(result.doEvaluation.checks.map((c) => [c.rule, c.pass])).toEqual([
+        ['ALTITUDE', false],
+        ['VARIETY', true],
+      ]);
     });
 
     it('registra TERROIR_CREATED en la bitácora dentro de la misma transacción', async () => {
@@ -125,12 +158,15 @@ describe('TerroirsService', () => {
         offset: 0,
       });
 
-      expect(result).toEqual({
+      expect(result).toMatchObject({
         items: [mockTerroir],
         total: 1,
         limit: 10,
         offset: 0,
       });
+      expect(result.items[0].doEvaluation.rulesSource).toBe(
+        'EFFECTIVE_SETTINGS',
+      );
       expect(prisma.terroir.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ take: 10, skip: 0 }),
       );
@@ -161,7 +197,10 @@ describe('TerroirsService', () => {
 
   describe('update', () => {
     it('debe actualizar una parcela existente', async () => {
-      mockPrismaService.terroir.findFirst.mockResolvedValue(mockTerroir);
+      mockPrismaService.terroir.findFirst.mockResolvedValue({
+        ...mockTerroir,
+        harvestBatches: [],
+      });
       mockPrismaService.terroir.update.mockResolvedValue({
         ...mockTerroir,
         altitudeMasl: new Prisma.Decimal(1900.0),
@@ -173,6 +212,38 @@ describe('TerroirsService', () => {
 
       expect(result.altitudeMasl).toEqual(new Prisma.Decimal(1900.0));
       expect(prisma.terroir.update).toHaveBeenCalled();
+    });
+
+    it('una parcela usada no cambia sus campos normativos: 409 TRC_TERROIR_IN_USE', async () => {
+      mockPrismaService.terroir.findFirst.mockResolvedValue({
+        ...mockTerroir,
+        harvestBatches: [{ id: 'h1' }],
+      });
+
+      await expect(
+        service.update(mockWineryId, mockTerroirId, { altitudeMasl: 1500 }),
+      ).rejects.toMatchObject({
+        statusCode: 409,
+        errorCode: 'TRC_TERROIR_IN_USE',
+      });
+      expect(prisma.terroir.update).not.toHaveBeenCalled();
+    });
+
+    it('una parcela usada sí cambia sus campos no normativos', async () => {
+      mockPrismaService.terroir.findFirst.mockResolvedValue({
+        ...mockTerroir,
+        harvestBatches: [{ id: 'h1' }],
+      });
+      mockPrismaService.terroir.update.mockResolvedValue({
+        ...mockTerroir,
+        soilType: 'Arenoso',
+      });
+
+      const result = await service.update(mockWineryId, mockTerroirId, {
+        soilType: 'Arenoso',
+        altitudeMasl: 1850,
+      });
+      expect(result.soilType).toBe('Arenoso');
     });
   });
 });

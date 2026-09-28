@@ -24,15 +24,18 @@ import {
   AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Laboratorio Físico-Químico')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('lab-analyses')
@@ -44,9 +47,9 @@ export class LabAnalysesController {
   @Idempotent()
   @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
-    summary: 'Registrar informe analítico oficial de laboratorio',
+    summary: 'Registrar informe analítico oficial de laboratorio (legado)',
     description:
-      'Registra los parámetros físico-químicos (ABV, acidez, SO2, metanol, cobre) y dictamina conformidad SENASAG.',
+      'Alias hasta H2 de `POST /v1/lots/{id}/lab-analyses` (contrato O2 §8): la conformidad la calcula el servidor con los límites y las unidades de la instantánea del lote (EA-08; `conformsToSenasagStandards` de la entrada se ignora y falta un parámetro exigido → no conforme). Un análisis nuevo sustituye al anterior (reanálisis, sin 409).',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -54,7 +57,14 @@ export class LabAnalysesController {
     type: BatchLabAnalysisResponseDto,
   })
   @ApiConflictResponse({
-    description: 'El lote ya tiene un informe oficial registrado',
+    type: ApiErrorResponseDto,
+    description: 'TRC_LOT_TERMINAL',
+  })
+  @ApiResponse({
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    type: ApiErrorResponseDto,
+    description:
+      'VALIDATION_ERROR (p. ej. metanol en mg/L y en mg/100 mL a.a. que no coinciden) · TRC_DATE_IN_FUTURE',
   })
   async create(
     @TenantId() wineryId: string,

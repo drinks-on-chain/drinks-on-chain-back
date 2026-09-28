@@ -99,6 +99,9 @@ describe('Traceability Strategies & Factory', () => {
       certifiedByMemberId: null,
       notes: null,
       createdAt: new Date(),
+      lotId: null,
+      terroirSnapshot: null,
+      createdByMembershipId: null,
     };
 
     it('debe aprobar parcela y vendimia que cumplan requisitos D.O. Singani (>1600m y Moscatel)', () => {

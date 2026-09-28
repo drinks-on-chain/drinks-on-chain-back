@@ -6,6 +6,15 @@ import {
   FermentationLogResponseDto,
 } from './fermentation-records-response.dto';
 
+/** Entrada de uva al tanque (§4.1). */
+export class TankInputResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  harvestBatchId!: string;
+
+  @ApiProperty({ example: 12100 })
+  kg!: number;
+}
+
 export class FermentationTankResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
@@ -55,6 +64,29 @@ export class FermentationTankResponseDto {
 
   @ApiProperty({ example: '2026-03-15T14:30:00.000Z' })
   createdAt!: Date;
+
+  @ApiProperty({
+    type: String,
+    format: 'uuid',
+    nullable: true,
+    description: 'Lote (Ola 2)',
+  })
+  lotId!: string | null;
+
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Volumen al completar la fermentación (Ola 2)',
+  })
+  finalVolumeLiters!: number | null;
+
+  @ApiPropertyOptional({
+    type: () => TankInputResponseDto,
+    isArray: true,
+    description:
+      'Pesajes que entraron al tanque, con sus kilos (lista y detalle)',
+  })
+  inputs?: TankInputResponseDto[];
 
   @ApiPropertyOptional({
     type: () => HarvestBatchResponseDto,

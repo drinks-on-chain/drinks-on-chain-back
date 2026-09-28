@@ -24,16 +24,23 @@ import {
   RestStatusResponseDto,
 } from '../dto/production-batch-response.dto';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
+import {
+  CurrentUser,
+  AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Destilación y Procesos Especiales (Singani)')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('production-batches')
@@ -56,11 +63,27 @@ export class ProductionBatchesController {
     description: 'Destilación registrada',
     type: ProductionBatchResponseDto,
   })
+  @ApiResponse({
+    status: HttpStatus.UNPROCESSABLE_ENTITY,
+    type: ApiErrorResponseDto,
+    description:
+      'VALIDATION_ERROR · TRC_DO_NOT_ELIGIBLE (D.O. calculada sobre los pesajes del lote con su instantánea; `isDoEligible` se ignora) · TRC_DESTINATION_MISMATCH · TRC_VOLUME_EXCEEDS_AVAILABLE · TRC_MASS_BALANCE_EXCEEDED · TRC_DATE_IN_FUTURE · TRC_DATE_BEFORE_PREVIOUS_STAGE',
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    type: ApiErrorResponseDto,
+    description: 'TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
+  })
   async createDistillationBatch(
     @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() dto: CreateDistillationBatchDto,
   ) {
-    return this.productionBatchesService.createDistillationBatch(wineryId, dto);
+    return this.productionBatchesService.createDistillationBatch(
+      wineryId,
+      user.id,
+      dto,
+    );
   }
 
   @Get(':id/rest-status')

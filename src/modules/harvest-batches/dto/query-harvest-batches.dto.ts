@@ -1,4 +1,4 @@
-import { IsOptional, IsInt, IsUUID, IsEnum } from 'class-validator';
+import { IsOptional, IsInt, IsUUID, IsEnum, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
@@ -28,4 +28,18 @@ export class QueryHarvestBatchesDto extends WineryScopedPaginationQueryDto {
   @IsOptional()
   @IsEnum(PhytoStatusEnum)
   phytosanitaryStatus?: PhytoStatusEnum;
+
+  @ApiPropertyOptional({
+    description:
+      'Filtrar por lote (`none` = uva recibida sin lote, contrato O2 §2.5)',
+    example: 'none',
+  })
+  @IsOptional()
+  @Matches(
+    /^(none|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i,
+    {
+      message: 'lotId debe ser un UUID o none',
+    },
+  )
+  lotId?: string;
 }

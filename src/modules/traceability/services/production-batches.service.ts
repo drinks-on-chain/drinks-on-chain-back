@@ -1,13 +1,8 @@
-import {
-  Injectable,
-  NotFoundException,
-  UnprocessableEntityException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { AuditService } from '@shared/audit/audit.service';
+import { AUDIT_TX_OPTIONS, AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
-import { TraceabilityStrategyFactory } from '../strategies/traceability-strategy.factory';
+import { ErrorCode } from '@shared/exceptions/error-codes';
 import { CreateDistillationBatchDto } from '../dto/create-distillation-batch.dto';
 import { QueryProductionBatchesDto } from '../dto/query-production-batches.dto';
 import {
@@ -15,11 +10,38 @@ import {
   ProductionBatch,
   ProductionProcessEnum,
   RestStatusEnum,
-  BeverageTypeEnum,
 } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
-import { ValidationException } from '@shared/exceptions/validation.exception';
+import { lockLot, refreshLotStage } from '@modules/lots/lot-records';
+import { appendLotEvent, formatQuantity } from '@modules/lots/lot-events';
+import { actorMembership, dbClock } from '@modules/lots/trace-db';
+import {
+  assertDestination,
+  assertLotDo,
+  assertStage,
+  decideProductType,
+  ensureHarvestLot,
+  tankAvailableLiters,
+} from '@modules/lots/chain';
+import {
+  addDays,
+  calendarDay,
+  dateOnly,
+  daysBetween,
+  laPazDate,
+  toDbDate,
+} from '@modules/lots/domain/dates';
+import { LotLock, restLock } from '@modules/lots/domain/locks';
+import { parseLotRules } from '@modules/lots/domain/lot-rules';
+import { distillationHeart, legacyCuts } from '@modules/lots/domain/sources';
+import { ruleError, violation } from '@modules/lots/domain/trace-errors';
+
+type DistillationView<T> = T & {
+  lock: LotLock | null;
+  pureAlcoholLiters: number | null;
+  availableLiters: number | null;
+};
 
 @Injectable()
 export class ProductionBatchesService {
@@ -27,115 +49,249 @@ export class ProductionBatchesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly strategyFactory: TraceabilityStrategyFactory,
     private readonly audit: AuditService,
   ) {}
 
+  /**
+   * Destilación del singani (contrato O2 §5.2): la D.O. se calcula en el
+   * servidor sobre todos los pesajes del lote con su instantánea (EA-03;
+   * `isDoEligible` de la entrada se ignora), el destino del tanque debe ser
+   * singani, la entrada ≤ lo disponible del tanque y los cortes ≤ la entrada
+   * (balance de masa). El reposo se cuenta con el mínimo de la instantánea.
+   */
   async createDistillationBatch(
     wineryId: string,
+    userId: string,
     dto: CreateDistillationBatchDto,
-  ): Promise<ProductionBatch> {
-    const tank = await this.prisma.fermentationTank.findFirst({
-      where: { id: dto.fermentationTankId, wineryId },
-      include: { harvestBatch: { include: { terroir: true } } },
-    });
-
-    if (!tank) {
-      throw new NotFoundException(
-        `Cuba de fermentación con ID ${dto.fermentationTankId} no encontrada en esta bodega`,
-      );
-    }
-
-    // Validación D.O. si corresponde
-    if (dto.isDoEligible && tank.harvestBatch?.terroir) {
-      const strategy = this.strategyFactory.getStrategy(
-        BeverageTypeEnum.SINGANI,
-      );
-      const validation = strategy.validatePlotAndHarvest(
-        tank.harvestBatch.terroir,
-        tank.harvestBatch,
-      );
-      if (!validation.isValid) {
-        throw new UnprocessableEntityException(
-          validation.errors.join('; ') ||
-            'El lote no cumple con los requisitos D.O. para destilación',
+  ) {
+    const id = await this.prisma.$transaction(async (tx) => {
+      const tank = await tx.fermentationTank.findFirst({
+        where: { id: dto.fermentationTankId, wineryId },
+      });
+      if (!tank) {
+        throw new NotFoundException(
+          `Cuba de fermentación con ID ${dto.fermentationTankId} no encontrada en esta bodega`,
         );
       }
-    }
+      const lotId =
+        tank.lotId ?? (await ensureHarvestLot(tx, tank.harvestBatchId));
+      if (!lotId) {
+        throw new NotFoundException('El tanque no pertenece a ningún lote');
+      }
+      const lot = await lockLot(tx, lotId, wineryId, { writable: true });
+      assertStage(
+        lot,
+        ['FERMENTING', 'DISTILLING', 'RESTING'],
+        'destilaciones',
+      );
+      assertDestination(
+        lot,
+        tank.destinationType ?? 'SINGANI_DIST',
+        'fermentationTankId',
+      );
+      const membership = await actorMembership(tx, userId, wineryId);
+      const clock = await dbClock(tx);
 
-    // Validación de balance de masa si se proveen datos
-    if (
-      dto.inputVolumeLiters &&
-      dto.outputVolumeLiters &&
-      dto.wasteVolumeLiters
-    ) {
-      const sum = dto.outputVolumeLiters + dto.wasteVolumeLiters;
-      if (sum > dto.inputVolumeLiters * 1.05) {
-        throw ValidationException.forField(
-          'outputVolumeLiters',
-          `Balance de masa inconsistente: La suma de corazón (${dto.outputVolumeLiters} L) y descarte (${dto.wasteVolumeLiters} L) excede el volumen de entrada (${dto.inputVolumeLiters} L)`,
+      // D.O. del lote con la instantánea antes que nada (EA-03)
+      const startDay = calendarDay(dto.processStartDate);
+      await decideProductType(
+        tx,
+        lot,
+        'SINGANI',
+        membership?.id ?? null,
+        toDbDate(startDay),
+        {
+          type: 'fermentation_tank',
+          id: tank.id,
+        },
+      );
+      await assertLotDo(tx, lot);
+
+      // Fechas: inicio no futuro ni anterior al tanque; fin ≥ inicio
+      const endDay = dto.processEndDate
+        ? calendarDay(dto.processEndDate)
+        : null;
+      for (const [field, day] of [
+        ['processStartDate', startDay],
+        ['processEndDate', endDay],
+      ] as const) {
+        if (day && day > clock.today) {
+          throw ruleError(
+            ErrorCode.TRC_DATE_IN_FUTURE,
+            'La fecha no puede ser futura',
+            [
+              violation(ErrorCode.TRC_DATE_IN_FUTURE, 'Fecha futura', {
+                field,
+                expected: clock.today,
+                actual: day,
+              }),
+            ],
+          );
+        }
+      }
+      const tankStart = laPazDate(tank.startDate);
+      if (startDay < tankStart || (endDay && endDay < startDay)) {
+        const field =
+          startDay < tankStart ? 'processStartDate' : 'processEndDate';
+        const minimum = startDay < tankStart ? tankStart : startDay;
+        throw ruleError(
+          ErrorCode.TRC_DATE_BEFORE_PREVIOUS_STAGE,
+          'Fecha anterior a la etapa previa',
+          [
+            violation(
+              ErrorCode.TRC_DATE_BEFORE_PREVIOUS_STAGE,
+              'Fecha anterior a la etapa previa',
+              {
+                field,
+                expected: minimum,
+                actual: field === 'processStartDate' ? startDay : endDay,
+                meta: { minimum },
+              },
+            ),
+          ],
         );
       }
-    }
 
-    const startDate = new Date(dto.processStartDate);
-    const endDate = dto.processEndDate ? new Date(dto.processEndDate) : null;
+      // Entrada ≤ disponible del tanque
+      if (dto.inputVolumeLiters !== undefined) {
+        const available = await tankAvailableLiters(tx, tank.id);
+        if (available !== null && dto.inputVolumeLiters > available + 1e-6) {
+          throw ruleError(
+            ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+            `Del tanque ${tank.tankCode} quedan ${available} L`,
+            [
+              violation(
+                ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+                'Litros por encima de lo disponible',
+                {
+                  field: 'inputVolumeLiters',
+                  expected: available,
+                  actual: dto.inputVolumeLiters,
+                  meta: {
+                    available,
+                    requested: dto.inputVolumeLiters,
+                    unit: 'L',
+                    tankId: tank.id,
+                  },
+                },
+              ),
+            ],
+          );
+        }
+      }
 
-    let mandatoryRestUntil: Date | null = null;
-    let restStatus: RestStatusEnum = RestStatusEnum.NOT_REQUIRED;
+      // Cortes (compatibilidad: additionalParams.{headDiscardLiters, heartYieldLiters, tailDiscardLiters})
+      const cuts = legacyCuts(dto.additionalParams);
+      const heart = cuts.heart ?? dto.outputVolumeLiters ?? null;
+      const cutsTotal =
+        cuts.heads !== null || cuts.tails !== null
+          ? (cuts.heads ?? 0) + (heart ?? 0) + (cuts.tails ?? 0)
+          : (dto.outputVolumeLiters ?? 0) + (dto.wasteVolumeLiters ?? 0);
+      if (
+        endDay &&
+        dto.inputVolumeLiters !== undefined &&
+        cutsTotal > dto.inputVolumeLiters + 1e-6
+      ) {
+        throw ruleError(
+          ErrorCode.TRC_MASS_BALANCE_EXCEEDED,
+          `Los cortes suman ${cutsTotal} L y la entrada fue de ${dto.inputVolumeLiters} L`,
+          [
+            violation(
+              ErrorCode.TRC_MASS_BALANCE_EXCEEDED,
+              'Cortes mayores que la entrada',
+              {
+                field: 'outputVolumeLiters',
+                expected: dto.inputVolumeLiters,
+                actual: cutsTotal,
+                meta: {
+                  inputLiters: dto.inputVolumeLiters,
+                  outputLiters: cutsTotal,
+                },
+              },
+            ),
+          ],
+        );
+      }
 
-    if (endDate) {
-      mandatoryRestUntil = new Date(endDate);
-      mandatoryRestUntil.setDate(mandatoryRestUntil.getDate() + 180); // 180 días obligatorios
-      restStatus = RestStatusEnum.RESTING;
-    }
-
-    this.logger.log(
-      `Registrando lote de destilación en ${dto.equipmentIdentifier} para bodega ${wineryId}`,
-    );
-
-    return this.audit.transaction(
-      (tx) =>
-        tx.productionBatch.create({
+      // Reposo con la instantánea (no más 180 días fijos)
+      const mandatoryRestUntil = endDay
+        ? addDays(endDay, lot.rules.singani.minRestDays)
+        : null;
+      this.logger.log(
+        `Registrando lote de destilación en ${dto.equipmentIdentifier} para bodega ${wineryId}`,
+      );
+      const decimal = (v: number | null | undefined) =>
+        v !== undefined && v !== null ? new Prisma.Decimal(v) : null;
+      const created = await tx.productionBatch.create({
+        data: {
+          wineryId,
+          fermentationTankId: dto.fermentationTankId,
+          processType: ProductionProcessEnum.SINGANI_DISTILLATION,
+          equipmentIdentifier: dto.equipmentIdentifier,
+          processStartDate: toDbDate(startDay),
+          processEndDate: endDay ? toDbDate(endDay) : null,
+          inputVolumeLiters: decimal(dto.inputVolumeLiters),
+          outputVolumeLiters: decimal(dto.outputVolumeLiters),
+          wasteVolumeLiters: decimal(dto.wasteVolumeLiters),
+          initialAlcoholPercentage: decimal(dto.initialAlcoholPercentage),
+          // D.O. calculada (el valor enviado se ignora)
+          isDoEligible: true,
+          mandatoryRestUntil: mandatoryRestUntil
+            ? toDbDate(mandatoryRestUntil)
+            : null,
+          restStatus: endDay
+            ? RestStatusEnum.RESTING
+            : RestStatusEnum.NOT_REQUIRED,
+          additionalParams: dto.additionalParams ?? Prisma.DbNull,
+          notes: dto.notes,
+          lotId: lot.id,
+          ...(endDay && {
+            headsLiters: decimal(cuts.heads),
+            heartLiters: decimal(heart),
+            tailsLiters: decimal(cuts.tails),
+            heartAbvPercent: decimal(dto.initialAlcoholPercentage),
+          }),
+          createdByMembershipId: membership?.id ?? null,
+        },
+      });
+      await appendLotEvent(tx, lot.id, {
+        type: 'DISTILLATION_STARTED',
+        occurredAt: toDbDate(startDay),
+        stage: 'DISTILLING',
+        actorMembershipId: membership?.id ?? null,
+        summary: `Destilación en ${dto.equipmentIdentifier}${dto.inputVolumeLiters ? ` de ${formatQuantity(dto.inputVolumeLiters, 3)} L` : ''}`,
+        data: { inputVolumeLiters: dto.inputVolumeLiters ?? null, unit: 'L' },
+        resource: { type: 'production_batch', id: created.id },
+      });
+      if (endDay) {
+        await appendLotEvent(tx, lot.id, {
+          type: 'DISTILLATION_CLOSED',
+          occurredAt: toDbDate(endDay),
+          stage: 'RESTING',
+          actorMembershipId: membership?.id ?? null,
+          summary: `Destilación cerrada: corazón de ${formatQuantity(heart ?? 0, 3)} L; reposo hasta ${mandatoryRestUntil}`,
           data: {
-            wineryId,
-            fermentationTankId: dto.fermentationTankId,
-            processType: ProductionProcessEnum.SINGANI_DISTILLATION,
-            equipmentIdentifier: dto.equipmentIdentifier,
-            processStartDate: startDate,
-            processEndDate: endDate,
-            inputVolumeLiters:
-              dto.inputVolumeLiters !== undefined
-                ? new Prisma.Decimal(dto.inputVolumeLiters)
-                : null,
-            outputVolumeLiters:
-              dto.outputVolumeLiters !== undefined
-                ? new Prisma.Decimal(dto.outputVolumeLiters)
-                : null,
-            wasteVolumeLiters:
-              dto.wasteVolumeLiters !== undefined
-                ? new Prisma.Decimal(dto.wasteVolumeLiters)
-                : null,
-            initialAlcoholPercentage:
-              dto.initialAlcoholPercentage !== undefined
-                ? new Prisma.Decimal(dto.initialAlcoholPercentage)
-                : null,
-            isDoEligible: dto.isDoEligible ?? true,
-            mandatoryRestUntil,
-            restStatus,
-            additionalParams: dto.additionalParams ?? Prisma.DbNull,
-            notes: dto.notes,
+            heartLiters: heart,
+            heartAbvPercent: dto.initialAlcoholPercentage ?? null,
+            restUntil: mandatoryRestUntil,
+            unit: 'L',
           },
-        }),
-      (created) => ({
+          resource: { type: 'production_batch', id: created.id },
+        });
+      }
+      await refreshLotStage(tx, lot.id, clock.now);
+      await this.audit.record(tx, {
         action: AuditAction.PRODUCTION_BATCH_CREATED,
         resource: { type: 'production_batch', id: created.id },
         organizationId: wineryId,
         after: created,
-      }),
-    );
+      });
+      return created.id;
+    }, AUDIT_TX_OPTIONS);
+    return this.findProductionBatchById(wineryId, id);
   }
 
+  /** Reposo (§5.2) con la instantánea del lote y el reloj de la base. */
   async getRestStatus(
     wineryId: string | undefined,
     id: string,
@@ -149,45 +305,34 @@ export class ProductionBatchesService {
     isRestCompleted: boolean;
   }> {
     const batch = await this.findProductionBatchById(wineryId, id);
-
-    if (!batch.processEndDate || !batch.mandatoryRestUntil) {
+    if (!batch.processEndDate || !batch.lock) {
       return {
         id: batch.id,
         restStatus: batch.restStatus,
         processEndDate: batch.processEndDate,
-        mandatoryRestUntil: null,
+        mandatoryRestUntil: batch.mandatoryRestUntil,
         daysElapsed: 0,
         daysRemaining: 0,
         isRestCompleted: false,
       };
     }
-
-    const now = new Date();
-    const end = new Date(batch.processEndDate);
-    const restTarget = new Date(batch.mandatoryRestUntil);
-
-    const elapsedMs = now.getTime() - end.getTime();
+    const { today } = await dbClock(this.prisma);
     const daysElapsed = Math.max(
       0,
-      Math.floor(elapsedMs / (1000 * 60 * 60 * 24)),
+      daysBetween(dateOnly(batch.processEndDate), today),
     );
-
-    const remainingMs = restTarget.getTime() - now.getTime();
-    const daysRemaining = Math.max(
-      0,
-      Math.ceil(remainingMs / (1000 * 60 * 60 * 24)),
-    );
-
-    const isRestCompleted = daysRemaining === 0;
-
+    const released = batch.lock.released;
     return {
       id: batch.id,
-      restStatus: isRestCompleted ? RestStatusEnum.READY : batch.restStatus,
+      restStatus:
+        released && batch.restStatus === RestStatusEnum.RESTING
+          ? RestStatusEnum.READY
+          : batch.restStatus,
       processEndDate: batch.processEndDate,
-      mandatoryRestUntil: batch.mandatoryRestUntil,
+      mandatoryRestUntil: toDbDate(batch.lock.unlockDate),
       daysElapsed,
-      daysRemaining,
-      isRestCompleted,
+      daysRemaining: batch.lock.daysRemaining,
+      isRestCompleted: released,
     };
   }
 
@@ -198,6 +343,7 @@ export class ProductionBatchesService {
         ...(wineryId && { wineryId }),
       },
       include: {
+        lot: { select: { rules: true } },
         fermentationTank: {
           include: {
             harvestBatch: {
@@ -214,14 +360,16 @@ export class ProductionBatchesService {
         `Lote de producción con ID ${id} no encontrado en esta bodega`,
       );
     }
-
-    return batch;
+    const { today } = await dbClock(this.prisma);
+    return withLock(batch, today);
   }
 
   async findAll(
     wineryId: string | undefined,
     query: QueryProductionBatchesDto,
-  ): Promise<Paginated<ProductionBatch>> {
+  ): Promise<
+    Paginated<Omit<DistillationView<ProductionBatch>, 'bottlingBatches'>>
+  > {
     const where: Prisma.ProductionBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.processType && { processType: query.processType }),
@@ -235,14 +383,64 @@ export class ProductionBatchesService {
       this.prisma.productionBatch.findMany({
         where,
         ...toPrismaPage(query),
-        orderBy: { processStartDate: 'desc' },
+        orderBy: [{ processStartDate: 'desc' }, { id: 'asc' }],
         include: {
+          lot: { select: { rules: true } },
           fermentationTank: true,
+          bottlingBatches: { select: { id: true } },
         },
       }),
       this.prisma.productionBatch.count({ where }),
     ]);
-
-    return toPage(items, total, query);
+    const { today } = await dbClock(this.prisma);
+    return toPage(
+      items.map((i) => {
+        // La lista no trae los embotellados (solo se usan para el cálculo)
+        const { bottlingBatches: _b, ...view } = withLock(i, today);
+        void _b;
+        return view;
+      }),
+      total,
+      query,
+    );
   }
+}
+
+function withLock<
+  T extends ProductionBatch & {
+    lot: { rules: Prisma.JsonValue } | null;
+    bottlingBatches: { id: string }[];
+  },
+>(batch: T, today: string): DistillationView<Omit<T, 'lot'>> {
+  const { lot, ...rest } = batch;
+  const lock = lot
+    ? restLock(
+        {
+          id: batch.id,
+          processEndDate: batch.processEndDate
+            ? dateOnly(batch.processEndDate)
+            : null,
+          storedUnlockDate: batch.mandatoryRestUntil
+            ? dateOnly(batch.mandatoryRestUntil)
+            : null,
+        },
+        parseLotRules(lot.rules),
+        today,
+      )
+    : null;
+  const heart = distillationHeart(batch);
+  return {
+    ...rest,
+    lock,
+    pureAlcoholLiters:
+      heart.liters !== null && heart.abv !== null
+        ? Math.round(heart.liters * heart.abv * 10) / 1000
+        : null,
+    availableLiters:
+      batch.bottlingBatches.length > 0 || batch.discardedAt
+        ? 0
+        : batch.processEndDate
+          ? heart.liters
+          : null,
+  };
 }
