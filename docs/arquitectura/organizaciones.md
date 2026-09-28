@@ -91,7 +91,7 @@ Prefijo (`src/modules/wineries/winery-identity.ts`, mismo criterio que los mocks
 
 ## Bodega no activa en el ERP (SE-05)
 
-`FEATURE_ENFORCE_ACTIVE_ORG` pasa a **activo por defecto** (`false` lo deja en aviso). Toda ruta con `@RequireActiveOrg()` y la bodega activa en otro estado → 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: 'SUSPENDED' | 'REVOKED' | 'INVITED' }]`. Admiten `SUSPENDED`: `GET /v1/organizations/current`, `GET /v1/organizations/current/audit` y `GET /v1/wineries/my` (obsoleta). El personal de plataforma no se ve afectado. Se aplica a todo el ERP (parcelas, vendimia, cubas, crianza, destilación, embotellado, laboratorio, configuración efectiva, equipo e invitaciones de la bodega y `wineries/my*`).
+`FEATURE_ENFORCE_ACTIVE_ORG` pasa a **activo por defecto** (`false` lo deja en aviso). Toda ruta con `@RequireActiveOrg()` y la bodega activa en otro estado → 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: 'SUSPENDED' | 'REVOKED' | 'INVITED' }]`. Admiten `SUSPENDED`: `GET /v1/organizations/current`, `GET /v1/organizations/current/audit` y `GET /v1/wineries/my`. El personal de plataforma no se ve afectado. Se aplica a todo el ERP (parcelas, vendimia, cubas, crianza, destilación, embotellado, laboratorio, configuración efectiva, equipo e invitaciones de la bodega y `PATCH /v1/wineries/my`).
 
 ## Equipo (§5)
 
@@ -122,20 +122,20 @@ Plantillas en `src/modules/mail/templates/organizations.ts` (marco común de `la
 | `bodega-estado` | Dueño | Suspender, reactivar, revocar (con el motivo) |
 | `aviso-equipo` | Dueño | Cambio de rol, bloqueo o desbloqueo hecho por la plataforma |
 
-## Rutas que se retiran en H1 (§11)
+## Rutas retiradas en H1 (§11)
 
-Siguen funcionando, marcadas `deprecated` en el OpenAPI (con `x-replaced-by`), y cada uso deja un aviso en los logs (`DeprecatedRoute`, con la persona y la app) y responde `Deprecation: true` y `Link: <sustituta>; rel="successor-version"`:
+Se marcaron `deprecated` durante la Ola 1 (con `Deprecation: true`, `Link` y aviso en los logs) y se **borraron al cerrarla**: ahora responden 404. Ni el ERP ni el Backoffice en `dev` las usaban.
 
-| Ruta | Sustituta |
+| Ruta retirada | Sustituta |
 |---|---|
-| `POST /v1/auth/signup` con `userRole: WINERY_ADMIN` (el campo, `deprecated`) | Solicitud de alta o invitación (la ruta queda para consumidores, Ola 4) |
-| `POST /v1/wineries` | `POST /v1/public/winery-applications`, `POST /v1/platform/wineries` |
+| `POST /v1/auth/signup` con `userRole` (registro de personal) | Solicitud de alta o invitación; `signup` queda para consumidores (`userRole` → 422) |
+| `POST /v1/wineries` (autoinscripción) | `POST /v1/public/winery-applications`, `POST /v1/platform/wineries` |
 | `GET /v1/wineries/pending`, `POST /v1/wineries/{id}/approve` · `/reject` | `/v1/platform/winery-applications/*`, `/v1/platform/wineries/{id}/revoke` |
 | `GET /v1/wineries/my/members`, `POST /v1/wineries/my/members` · `/create` | `/v1/organizations/current/members`, `/v1/organizations/current/invitations` |
 
-La aprobación antigua también asigna el prefijo de lote y escribe el historial (una bodega `ACTIVE` siempre tiene prefijo).
+Siguen `GET /v1/wineries` (directorio de plataforma) y `GET`/`PATCH /v1/wineries/my` (perfil de 0.1 que el ERP aún lee). Con las rutas se fueron su código (DTOs, `OnchainProducerHook` simulado, `WineryMemberRepository`) y el código de error `WINERY_NOT_PENDING`. Los procesadores de `winery.created` y `member.added` del worker se conservan para vaciar eventos antiguos del outbox, aunque ya nada los emite. `DeprecatedRoute` queda disponible para próximas retiradas.
 
 ## Pruebas
 
 - Unitarias: `src/modules/wineries/__tests__/winery-identity.spec.ts` (slug y prefijo), `src/modules/winery-applications/__tests__/application-transitions.spec.ts`, `src/modules/winery-management/__tests__/winery-management.service.spec.ts` (activación, transferencia, transiciones), `src/modules/team/__tests__/team.service.spec.ts` (reglas del equipo), `src/shared/decorators/__tests__/deprecated-route.spec.ts`, tablero con Prisma.
-- e2e (`test/organizations-o1.e2e-spec.ts`, Postgres, Redis y Mailpit): formulario → verificación con el enlace leído de Mailpit → tomar → reunión → aprobar → el dueño acepta con cuenta nueva → `ACTIVE` con prefijo y `winery.activated` → ERP y perfil público; rechazo con motivo; campo trampa y NIT repetido; alta directa; editar con motivo; suspender (sesión revocada, 403 `ORG_NOT_ACTIVE`, perfil y bitácora legibles), reactivar, revocar; transferir con `ENOLOGIST` y `BLOCKED`; equipo del dueño y del back office con todas las reglas, límite al desbloquear y aviso al dueño; 403 por rol y 404 entre organizaciones; el operario lee parcelas pero no las crea; bodega `INVITED` → 403 y rutas obsoletas con `Deprecation`. `test/seed.e2e-spec.ts` comprueba las solicitudes y los perfiles de la semilla.
+- e2e (`test/organizations-o1.e2e-spec.ts`, Postgres, Redis y Mailpit): formulario → verificación con el enlace leído de Mailpit → tomar → reunión → aprobar → el dueño acepta con cuenta nueva → `ACTIVE` con prefijo y `winery.activated` → ERP y perfil público; rechazo con motivo; campo trampa y NIT repetido; alta directa; editar con motivo; suspender (sesión revocada, 403 `ORG_NOT_ACTIVE`, perfil y bitácora legibles), reactivar, revocar; transferir con `ENOLOGIST` y `BLOCKED`; equipo del dueño y del back office con todas las reglas, límite al desbloquear y aviso al dueño; 403 por rol y 404 entre organizaciones; el operario lee parcelas pero no las crea; bodega `INVITED` → 403. `test/seed.e2e-spec.ts` comprueba las solicitudes y los perfiles de la semilla.

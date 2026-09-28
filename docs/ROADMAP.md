@@ -47,7 +47,7 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Organización activa por defecto (última usada; si no, la primera activa, plataforma antes que bodega), `POST /auth/switch-organization`, `GET /users/me` con `{ user, memberships, activeOrganizationId }` · 2026-09-27
   - [x] Guards globales y `@Audience`/`@OrgType`/`@Roles`/`@RequireActiveOrg` por membresía; matriz de roles del ERP de docs-back/05 §3; plataforma con `?wineryId=` obligatorio en escrituras (OP-07); SE-05 como aviso (`FEATURE_ENFORCE_ACTIVE_ORG`) · 2026-09-27
   - [x] SE-01: las rutas de una bodega solo crean o reactivan su propia membresía; nada escribe ya `users.user_role` · 2026-09-27
-  - [ ] Retirar `users.user_role`, `winery_members` y los campos de compatibilidad (cierre de la Ola 1, H1)
+  - [x] Retirada en H1: `users.user_role` borrado (migración *contract* `20260927190000_o1_retirada_h1`) y fuera los campos y claims de compatibilidad (`userRole`, `wineryId`, `memberRole`, `email`) y `tokens.refreshToken`; `winery_members` se conserva como autoría de la trazabilidad hasta que la Ola 2 la mueva a las membresías · 2026-09-27
 - [x] **0.7 Bitácora base** (AUD-01, AUD-02) — registro en la misma transacción, solo inserción, encadenada por hash. · 2026-09-27 ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md))
   - [x] Tabla `audit_events` con la forma del contrato O1 §7, `seq` monotónico, `hash` SHA-256 del evento canónico y `prevHash` · 2026-09-27
   - [x] Inmutabilidad en la base: trigger que rechaza `UPDATE`, `DELETE` y `TRUNCATE` · 2026-09-27
@@ -115,7 +115,7 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Bloquear y cambiar el rol revocan las sesiones afectadas; desbloquear respeta el límite de colaboradores · 2026-09-27
   - [x] `OPERATOR` lee `GET /v1/terroirs` (lista y detalle) sin editarlas (§11 bis) · 2026-09-27
   - [x] Rutas que se retiran en H1 marcadas `deprecated` con aviso en los logs (`signup` de personal, `POST /wineries`, `wineries/pending|approve|reject`, `wineries/my/members*`) · 2026-09-27
-  - [ ] Retirarlas al cerrar la ola, cuando los frontends hayan migrado (H1)
+  - [x] Retiradas al cerrar la ola (H1), comprobado que ERP y Backoffice en `dev` no las usan: `POST /wineries`, `wineries/pending|approve|reject`, `wineries/my/members*`; `signup` solo de consumidores (`userRole` → 422); refresco solo en la cookie · 2026-09-27
   - [x] Pruebas unitarias y e2e (Postgres, Redis, Mailpit) del recorrido completo, alta directa, SE-05, transferencia, equipo, permisos por rol y entre organizaciones · 2026-09-27
 - [x] **1.7 Configuración en el back office** (CFG-02, CFG-03, CFG-04, CFG-07) — estándar general, ajustes por bodega (selección o todas), volver al estándar, historial y mínimo legal como piso con excepción de administración. · 2026-09-27 ([`docs/arquitectura/configuracion.md`](arquitectura/configuracion.md#back-office-ola-1))
   - [x] `GET/PUT /v1/platform/settings[/{key}]`, `GET/PUT …/{key}/overrides`, `POST …/overrides/reset`, `GET …/{key}/history` con permisos por rol (§9) · 2026-09-27

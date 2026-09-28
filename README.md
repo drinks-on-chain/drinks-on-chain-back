@@ -116,8 +116,8 @@ drinks-on-chain-backend/
    - **Sesión**: acceso JWT de 15 min con `sid` y organización activa (`org`, `orgType`, `role`); renovación **rotativa** en la cookie `HttpOnly` `doc_rt` (7 días el personal, 30 los consumidores, deslizante), con **detección de reutilización** (revoca la sesión) y un periodo de gracia de 20 s para pestañas concurrentes; `logout` y `logout-all`; revocación inmediata al bloquear una persona o una membresía (lista de `sid` en Redis + sesión en la base).
    - **Organizaciones y membresías**: una persona puede estar en varias organizaciones (`PLATFORM`, `WINERY`, `PICKUP_POINT`) con un rol en cada una: plataforma `SUPERADMIN`/`ADMIN`/`OPERATIONS`/`SUPPORT`; bodega `OWNER`/`ENOLOGIST`/`AGRONOMIST`/`OPERATOR`/`ACCOUNTANT`. La organización activa se elige con `POST /v1/auth/switch-organization`; `GET /v1/users/me` devuelve `{ user, memberships, activeOrganizationId }`.
    - **Autorización**: guards globales (límite por IP real → acceso y sesión viva → `@Audience`/`@OrgType`/`@Roles` contra la organización activa → bodega de la petición). El personal de plataforma opera sobre una bodega con `?wineryId=` (obligatorio en escrituras). Una bodega solo puede añadir o reactivar membresías **de sí misma** (SE-01).
-   - `users.user_role` (`PLATFORM_ADMIN`, `WINERY_ADMIN`…) y `winery_members` quedan **obsoletos** hasta H1: solo alimentan los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`).
-   > 🔒 El endpoint público `POST /v1/auth/signup` solo crea cuentas `CONSUMER` o `WINERY_ADMIN` (esta, **obsoleta**: se retira en H1); el superadministrador sale de la semilla (`SUPERADMIN_*`, membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega entra por invitación. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
+   - Sin rol global desde H1: `users.user_role` y los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`, `tokens.refreshToken`) se retiraron al cerrar la Ola 1. `winery_members` sigue como autoría de la trazabilidad y matrícula (mismo id que la membresía).
+   > 🔒 El endpoint público `POST /v1/auth/signup` solo crea **consumidores**; el superadministrador sale de la semilla (`SUPERADMIN_*`, membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega entra por invitación. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
    - **Alta de bodegas y equipo** (Ola 1 · 1.3–1.6, detalle en [`docs/arquitectura/organizaciones.md`](docs/arquitectura/organizaciones.md)): solicitud pública con captcha y verificación del correo (`/v1/public/winery-applications`) o alta directa (`/v1/platform/wineries`); la bodega nace `INVITED` con la invitación del dueño y pasa a `ACTIVE` —con su **prefijo de lote único**— cuando él acepta. Suspender, reactivar, revocar y transferir la titularidad desde el back office. **SE-05 activo**: el ERP responde 403 `ORG_NOT_ACTIVE` a una bodega no `ACTIVE` (el perfil y la bitácora propia se leen suspendida). Equipo del dueño y del back office con bloqueos que cierran las sesiones al instante.
 5. **Grafo DAG de Trazabilidad:** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
 6. **Formato Estándar de Respuesta API:**
@@ -340,9 +340,10 @@ sequenceDiagram
     actor Consumidor as Consumidor / Inspector
 
     Note over Admin,Consumidor: 1. Identidad y Onboarding Institucional
-    Bodega->>API: POST /v1/auth/signup + POST /v1/wineries (PENDING)
-    Admin->>API: POST /v1/wineries/:id/approve (Cambia a ACTIVE + Stellar Key)
-    Bodega->>API: POST /v1/wineries/my/members (Incorpora Agrónomo y Enólogo)
+    Bodega->>API: POST /v1/public/winery-applications (solicitud)
+    Admin->>API: POST /v1/platform/winery-applications/:id/approve (bodega INVITED + invitación)
+    Bodega->>API: POST /v1/invitations/:token/accept (ACTIVE + prefijo de lote)
+    Bodega->>API: POST /v1/organizations/current/invitations (Agrónomo y Enólogo)
 
     Note over Admin,Consumidor: 2. Trazabilidad de Campo y Vendimia
     Agro->>API: POST /v1/terroirs (Parcela a 1,850 msnm, Moscatel)

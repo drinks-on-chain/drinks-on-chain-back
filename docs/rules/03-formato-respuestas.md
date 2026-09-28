@@ -21,7 +21,7 @@
 ```
 
 ### Respuesta de lista con paginación (ajustado por A-33)
-Toda colección (también `wineries/pending` y `wineries/my/members`) devuelve una página:
+Toda colección devuelve una página:
 ```json
 {
   "success": true,
@@ -204,7 +204,6 @@ Motivo ausente en una acción del back office sobre terceros (`@RequiresReason()
 ### Bodegas
 | Código | HTTP | Descripción |
 |---|---|---|
-| `WINERY_NOT_PENDING` | 409 | Aprobar o rechazar una bodega que ya no está en `INVITED` (antes `PENDING`) |
 
 ### ERP — Cosechas
 | Código | HTTP | Descripción |

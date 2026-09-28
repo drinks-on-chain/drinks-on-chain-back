@@ -49,7 +49,6 @@
 | `phone_number` | `String? (VarChar 20)` | UNIQUE, Nullable | Teléfono de contacto o verificación MFA |
 | `password_hash` | `String (VarChar 255)` | NOT NULL | Contraseña cifrada con bcrypt (cost factor 12) |
 | `full_name` | `String (VarChar 200)` | NOT NULL | Nombre y apellidos o razón social |
-| `user_role` | `UserRoleEnum` | NOT NULL | `PLATFORM_ADMIN`, `WINERY_ADMIN`, `ENOLOGIST`, `AGRONOMIST`, `CONSUMER`, `POS_OPERATOR` |
 | `dynamic_user_id` | `String? (VarChar 200)` | UNIQUE, Nullable | Identificador en Dynamic API |
 | `preferred_locale` | `String (Char 2)` | default `'es'` | Idioma preferido (`es` / `en`) |
 | `is_active` | `Boolean` | default `true` | Estado activo de la cuenta |
