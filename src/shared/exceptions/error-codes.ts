@@ -129,8 +129,6 @@ export const ErrorCode = {
   PLATFORM_SUPERADMIN_PROTECTED: 'PLATFORM_SUPERADMIN_PROTECTED',
 
   // ── Bodegas ───────────────────────────────────────────────
-  /** 409 · La bodega ya no está en INVITED (aprobar o rechazar dos veces). */
-  WINERY_NOT_PENDING: 'WINERY_NOT_PENDING',
   /** 409 · Ya hay una bodega o una solicitud abierta con ese NIT (contrato O1 §3). */
   ORG_TAX_ID_TAKEN: 'ORG_TAX_ID_TAKEN',
   /** 409 · Cambio de estado de la bodega no permitido (suspender, reactivar, revocar, transferir). */

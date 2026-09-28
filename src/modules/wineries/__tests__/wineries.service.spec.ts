@@ -1,615 +1,119 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { NotFoundException } from '@nestjs/common';
+import { WineryCategoryEnum, WineryStatusEnum } from '@prisma/client';
 import { WineriesService } from '../wineries.service';
 import { WineryRepository } from '../repositories/winery.repository';
-import { WineryMemberRepository } from '../repositories/winery-member.repository';
-import { WalletsService } from '@modules/wallets/wallets.service';
-import { OnchainProducerHook } from '../hooks/onchain-producer.hook';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { AuditService } from '@shared/audit/audit.service';
-import { createAuditServiceMock } from '@shared/audit/__tests__/audit-service.mock';
-import { OutboxService } from '@shared/outbox/outbox.service';
 import { OrganizationsService } from '@modules/organizations/organizations.service';
-import { MembershipsService } from '@modules/organizations/memberships.service';
-import { SessionsService } from '@modules/auth/sessions/sessions.service';
-import { ConflictException } from '@nestjs/common';
-import {
-  WineryCategoryEnum,
-  WineryStatusEnum,
-  WineryMemberRoleEnum,
-  WalletPurposeEnum,
-} from '@prisma/client';
 
+/**
+ * Directorio y perfil de la bodega activa (lo que queda del módulo de 0.1
+ * tras retirar la autoinscripción, la aprobación antigua y `my/members*`
+ * en H1).
+ */
 describe('WineriesService', () => {
   let service: WineriesService;
 
+  const winery = {
+    id: 'winery-uuid-1',
+    legalName: 'Kohlberg S.A.',
+    commercialName: 'Bodega Kohlberg',
+    beverageCategory: WineryCategoryEnum.WINERY,
+    taxIdNit: '1028374029',
+    senasagSanitaryReg: null,
+    geographicRegion: 'Tarija',
+    countryCode: 'BO',
+    address: null,
+    contactEmail: 'contacto@kohlberg.bo',
+    contactPhone: null,
+    logoUrl: null,
+    stellarPublicKey: null,
+    onchainProducerId: null,
+    onchainRegisterTxHash: null,
+    isExportCertified: false,
+    certificationStatus: WineryStatusEnum.ACTIVE,
+    approvedAt: null,
+    createdAt: new Date('2026-09-01T00:00:00Z'),
+  };
+
+  const mockTx = { tx: true };
   const mockWineryRepository = {
-    create: jest.fn(),
     findById: jest.fn(),
-    findByTaxId: jest.fn(),
-    findPendingWineries: jest.fn(),
     update: jest.fn(),
   };
-
-  const mockWineryMemberRepository = {
-    create: jest.fn(),
-    findMembership: jest.fn(),
-    findMembersByWineryId: jest.fn(),
-  };
-
-  const mockWalletsService = {
-    provisionWineryWallet: jest.fn(),
-    provisionUserWallet: jest.fn(),
-  };
-
-  const mockOutbox = {
-    add: jest.fn().mockResolvedValue({ id: 'evt-1' }),
-  };
-
-  // Cliente de la transacción: lo que reciben repositorios y outbox
-  const mockTx = {
-    user: {
-      create: jest.fn(),
-      findUnique: jest.fn().mockResolvedValue({ fullName: 'Persona' }),
-    },
-    // slug libre y prefijo de lote (candados y lecturas en la transacción)
-    $executeRaw: jest.fn().mockResolvedValue(0),
-    winery: {
-      findMany: jest.fn().mockResolvedValue([]),
-      findUnique: jest.fn().mockResolvedValue(null),
-      update: jest.fn().mockResolvedValue({}),
-    },
-    wineryStatusChange: { create: jest.fn().mockResolvedValue({}) },
-  };
-
-  const mockOnchainProducerHook = {
-    executeProducerRegistration: jest.fn(),
-  };
-
-  const mockOrganizations = {
-    createForWinery: jest.fn().mockResolvedValue({}),
-    syncWinery: jest.fn().mockResolvedValue({}),
-  };
-
-  const mockMemberships = {
-    addToWinery: jest.fn(),
-  };
-
-  const mockSessions = {
-    revokeForOrganization: jest.fn().mockResolvedValue(0),
-  };
-
+  const mockOrganizations = { syncWinery: jest.fn().mockResolvedValue({}) };
   const mockPrisma = {
-    user: {
-      findUnique: jest.fn(),
-      update: jest.fn().mockResolvedValue({}),
-      create: jest.fn().mockResolvedValue({}),
-    },
-    winery: {
-      findMany: jest.fn(),
-      count: jest.fn(),
-    },
+    winery: { findMany: jest.fn(), count: jest.fn() },
     $transaction: jest.fn((callback: (tx: typeof mockTx) => Promise<unknown>) =>
       callback(mockTx),
     ),
   };
-
-  const mockAudit = createAuditServiceMock(mockTx);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         WineriesService,
         { provide: WineryRepository, useValue: mockWineryRepository },
-        {
-          provide: WineryMemberRepository,
-          useValue: mockWineryMemberRepository,
-        },
-        { provide: WalletsService, useValue: mockWalletsService },
-        { provide: OnchainProducerHook, useValue: mockOnchainProducerHook },
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: OutboxService, useValue: mockOutbox },
         { provide: OrganizationsService, useValue: mockOrganizations },
-        { provide: MembershipsService, useValue: mockMemberships },
-        { provide: SessionsService, useValue: mockSessions },
-        { provide: AuditService, useValue: mockAudit },
       ],
     }).compile();
-
-    service = module.get<WineriesService>(WineriesService);
-
+    service = module.get(WineriesService);
     jest.clearAllMocks();
   });
 
-  describe('createWinery', () => {
-    it('debe registrar una bodega en estado INVITED y aprovisionar su billetera', async () => {
-      mockWineryRepository.findByTaxId.mockResolvedValue(null);
-      mockWineryRepository.create.mockResolvedValue({
-        id: 'winery-uuid-1',
-        legalName: 'Kohlberg S.A.',
-        commercialName: 'Bodega Kohlberg',
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: '1028374029',
-        senasagSanitaryReg: '08-01-03',
-        geographicRegion: 'Tarija',
-        countryCode: 'BO',
-        address: 'Km 15',
-        contactEmail: 'contacto@kohlberg.bo',
-        contactPhone: null,
-        logoUrl: null,
-        certificationStatus: WineryStatusEnum.INVITED,
-        createdAt: new Date(),
-      });
-      mockMemberships.addToWinery.mockResolvedValue({});
-      mockWalletsService.provisionWineryWallet.mockResolvedValue({
-        id: 'wallet-uuid-1',
-        stellarPublicAddress:
-          'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-        dynamicVaultId: 'vault-123',
-      });
-      mockWineryRepository.update.mockResolvedValue({
-        id: 'winery-uuid-1',
-        legalName: 'Kohlberg S.A.',
-        commercialName: 'Bodega Kohlberg',
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: '1028374029',
-        senasagSanitaryReg: '08-01-03',
-        geographicRegion: 'Tarija',
-        countryCode: 'BO',
-        address: 'Km 15',
-        contactEmail: 'contacto@kohlberg.bo',
-        contactPhone: null,
-        logoUrl: null,
-        stellarPublicKey: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-        dynamicVaultId: 'vault-123',
-        certificationStatus: WineryStatusEnum.INVITED,
-        isExportCertified: false,
-        createdAt: new Date(),
-        members: [],
-      });
-
-      const result = await service.createWinery('user-uuid-1', {
-        legalName: 'Kohlberg S.A.',
-        commercialName: 'Bodega Kohlberg',
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: '1028374029',
-        geographicRegion: 'Tarija',
-        contactEmail: 'contacto@kohlberg.bo',
-      });
-
-      expect(result.id).toBe('winery-uuid-1');
-      expect(result.certificationStatus).toBe(WineryStatusEnum.INVITED);
-      expect(result.stellarPublicKey).toBe(
-        'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-      );
-      expect(mockOrganizations.createForWinery).toHaveBeenCalledWith(
-        mockTx,
-        expect.objectContaining({ id: 'winery-uuid-1' }),
-      );
-      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(mockTx, {
-        wineryId: 'winery-uuid-1',
-        userId: 'user-uuid-1',
-        role: WineryMemberRoleEnum.OWNER,
-      });
-      expect(mockWalletsService.provisionWineryWallet).toHaveBeenCalledWith(
-        'user-uuid-1',
-        'winery-uuid-1',
-        WalletPurposeEnum.PRODUCER_SIGNING,
-        mockTx,
-      );
-    });
-
-    it('escribe todo en una transacción junto con el evento winery.created', async () => {
-      mockWineryRepository.findByTaxId.mockResolvedValue(null);
-      mockWineryRepository.create.mockResolvedValue({ id: 'winery-uuid-1' });
-      mockMemberships.addToWinery.mockResolvedValue({});
-      mockWalletsService.provisionWineryWallet.mockResolvedValue({
-        id: 'wallet-uuid-1',
-        stellarPublicAddress: 'GABC',
-        dynamicVaultId: 'vault-123',
-      });
-      mockWineryRepository.update.mockResolvedValue({
-        id: 'winery-uuid-1',
-        stellarPublicKey: 'GABC',
-        certificationStatus: WineryStatusEnum.INVITED,
-      });
-
-      await service.createWinery('user-uuid-1', {
-        legalName: 'Kohlberg S.A.',
-        commercialName: 'Bodega Kohlberg',
-        beverageCategory: WineryCategoryEnum.WINERY,
-        taxIdNit: '1028374029',
-        geographicRegion: 'Tarija',
-        contactEmail: 'contacto@kohlberg.bo',
-      });
-
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(mockWineryRepository.create).toHaveBeenCalledWith(
-        expect.objectContaining({ taxIdNit: '1028374029' }),
-        mockTx,
-      );
-      expect(mockAudit.record).toHaveBeenCalledWith(
-        mockTx,
-        expect.objectContaining({
-          action: 'WINERY_CREATED',
-          resource: { type: 'winery', id: 'winery-uuid-1' },
-        }),
-      );
-      expect(mockWineryRepository.update).toHaveBeenCalledWith(
-        'winery-uuid-1',
-        { stellarPublicKey: 'GABC', dynamicVaultId: 'vault-123' },
-        mockTx,
-      );
-      expect(mockOutbox.add).toHaveBeenCalledWith(mockTx, {
-        type: 'winery.created',
-        aggregateType: 'winery',
-        aggregateId: 'winery-uuid-1',
-        queue: 'chain',
-        payload: {
-          wineryId: 'winery-uuid-1',
-          ownerUserId: 'user-uuid-1',
-          walletId: 'wallet-uuid-1',
-          vaultId: 'vault-123',
-          stellarPublicKey: 'GABC',
-        },
-      });
-    });
-
-    it('si un paso falla, el error sale de la transacción y no se escribe el evento', async () => {
-      mockWineryRepository.findByTaxId.mockResolvedValue(null);
-      mockWineryRepository.create.mockResolvedValue({ id: 'winery-uuid-1' });
-      mockMemberships.addToWinery.mockResolvedValue({});
-      mockWalletsService.provisionWineryWallet.mockRejectedValue(
-        new Error('proveedor caído'),
-      );
-
-      await expect(
-        service.createWinery('user-uuid-1', {
-          legalName: 'Kohlberg S.A.',
-          commercialName: 'Bodega Kohlberg',
-          beverageCategory: WineryCategoryEnum.WINERY,
-          taxIdNit: '1028374029',
-          geographicRegion: 'Tarija',
-          contactEmail: 'contacto@kohlberg.bo',
-        }),
-      ).rejects.toThrow('proveedor caído');
-      expect(mockOutbox.add).not.toHaveBeenCalled();
-    });
-
-    it('debe arrojar ConflictException si el NIT ya existe', async () => {
-      mockWineryRepository.findByTaxId.mockResolvedValue({ id: 'existing' });
-
-      await expect(
-        service.createWinery('user-uuid-1', {
-          legalName: 'Kohlberg S.A.',
-          commercialName: 'Bodega Kohlberg',
-          beverageCategory: WineryCategoryEnum.WINERY,
-          taxIdNit: '1028374029',
-          geographicRegion: 'Tarija',
-          contactEmail: 'contacto@kohlberg.bo',
-        }),
-      ).rejects.toThrow(ConflictException);
-    });
+  it('getMyWinery: 404 si la bodega no existe', async () => {
+    mockWineryRepository.findById.mockResolvedValue(null);
+    await expect(service.getMyWinery('nada')).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
   });
 
-  describe('addMember (SE-01)', () => {
-    it('añade la membresía de la bodega en una transacción sin tocar el rol global', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({
-        id: 'enologist-user-id',
-        fullName: 'Valeria Soliz',
-        email: 'valeria@kohlberg.bo',
-      });
-      mockMemberships.addToWinery.mockResolvedValue({
-        id: 'member-uuid-1',
-        userId: 'enologist-user-id',
-        wineryId: 'winery-uuid-1',
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: 'ENOL-1234',
-        isActive: true,
-        joinedAt: new Date(),
-      });
-
-      const member = await service.addMember('winery-uuid-1', {
-        userId: 'enologist-user-id',
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: 'ENOL-1234',
-      });
-
-      expect(member.fullName).toBe('Valeria Soliz');
-      expect(member.memberRole).toBe(WineryMemberRoleEnum.ENOLOGIST);
-      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(mockTx, {
-        wineryId: 'winery-uuid-1',
-        userId: 'enologist-user-id',
-        role: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: 'ENOL-1234',
-        professionalLicensePdfUrl: undefined,
-      });
-      // SE-01: nunca se reescribe users.user_role desde una bodega
-      expect(mockPrisma.user.update).not.toHaveBeenCalled();
+  it('updateMyWinery: bodega y organización en la misma transacción', async () => {
+    mockWineryRepository.update.mockResolvedValue({
+      ...winery,
+      commercialName: 'Kohlberg',
+    });
+    mockWineryRepository.findById.mockResolvedValue({
+      ...winery,
+      commercialName: 'Kohlberg',
+      members: [],
     });
 
-    it('propaga el 409 ORG_ALREADY_MEMBER de las membresías', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'enologist-user-id' });
-      mockMemberships.addToWinery.mockRejectedValue(
-        Object.assign(new Error('ya es miembro'), {
-          statusCode: 409,
-          errorCode: 'ORG_ALREADY_MEMBER',
-        }),
-      );
-
-      await expect(
-        service.addMember('winery-uuid-1', {
-          userId: 'enologist-user-id',
-          memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        }),
-      ).rejects.toMatchObject({ errorCode: 'ORG_ALREADY_MEMBER' });
+    const result = await service.updateMyWinery(winery.id, {
+      commercialName: '  Kohlberg ',
     });
+
+    expect(mockWineryRepository.update).toHaveBeenCalledWith(
+      winery.id,
+      expect.objectContaining({ commercialName: 'Kohlberg' }),
+      mockTx,
+    );
+    expect(mockOrganizations.syncWinery).toHaveBeenCalledWith(
+      mockTx,
+      expect.objectContaining({ id: winery.id }),
+    );
+    expect(result).toMatchObject({ id: winery.id, commercialName: 'Kohlberg' });
   });
 
-  describe('createAndAddMember', () => {
-    it('crea usuario, billetera y membresía en una transacción con member.added', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue(null);
-      mockTx.user.create.mockResolvedValue({
-        id: 'user-new',
-        fullName: 'Valeria Soliz',
-        email: 'valeria@kohlberg.bo',
-      });
-      mockWalletsService.provisionUserWallet.mockResolvedValue({
-        id: 'wallet-new',
-        dynamicVaultId: 'vault-new',
-      });
-      mockMemberships.addToWinery.mockResolvedValue({
-        id: 'member-new',
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: null,
-        isActive: true,
-        joinedAt: new Date('2026-09-27T10:00:00.000Z'),
-      });
+  it('findAllWineries: página { items, total, limit, offset } con filtros', async () => {
+    mockPrisma.winery.findMany.mockResolvedValue([winery]);
+    mockPrisma.winery.count.mockResolvedValue(3);
 
-      const member = await service.createAndAddMember('winery-uuid-1', {
-        email: 'Valeria@Kohlberg.bo ',
-        password: 'Secreta123!',
-        fullName: 'Valeria Soliz',
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-      });
-
-      expect(member).toEqual({
-        id: 'member-new',
-        userId: 'user-new',
-        fullName: 'Valeria Soliz',
-        email: 'valeria@kohlberg.bo',
-        memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        professionalLicenseNumber: null,
-        isActive: true,
-        joinedAt: new Date('2026-09-27T10:00:00.000Z'),
-      });
-      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
-      expect(mockPrisma.user.create).not.toHaveBeenCalled();
-      expect(mockTx.user.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({ email: 'valeria@kohlberg.bo' }),
-      });
-      expect(mockWalletsService.provisionUserWallet).toHaveBeenCalledWith(
-        'user-new',
-        WalletPurposeEnum.CONSUMER_NFT,
-        mockTx,
-      );
-      expect(mockMemberships.addToWinery).toHaveBeenCalledWith(
-        mockTx,
-        expect.objectContaining({
-          userId: 'user-new',
-          wineryId: 'winery-uuid-1',
-          role: WineryMemberRoleEnum.ENOLOGIST,
-        }),
-      );
-      expect(mockOutbox.add).toHaveBeenCalledWith(mockTx, {
-        type: 'member.added',
-        aggregateType: 'winery',
-        aggregateId: 'winery-uuid-1',
-        queue: 'chain',
-        payload: {
-          wineryId: 'winery-uuid-1',
-          userId: 'user-new',
-          memberId: 'member-new',
-          memberRole: WineryMemberRoleEnum.ENOLOGIST,
-          walletId: 'wallet-new',
-          vaultId: 'vault-new',
-        },
-      });
+    const page = await service.findAllWineries({
+      limit: 1,
+      offset: 2,
+      status: WineryStatusEnum.ACTIVE,
     });
 
-    it('rechaza un correo ya registrado sin abrir la transacción', async () => {
-      mockPrisma.user.findUnique.mockResolvedValue({ id: 'existing' });
-
-      await expect(
-        service.createAndAddMember('winery-uuid-1', {
-          email: 'valeria@kohlberg.bo',
-          password: 'Secreta123!',
-          fullName: 'Valeria Soliz',
-          memberRole: WineryMemberRoleEnum.ENOLOGIST,
-        }),
-      ).rejects.toThrow(ConflictException);
-      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('approveWinery', () => {
-    it('debe cambiar el estado a ACTIVE y ejecutar el hook de registro on-chain', async () => {
-      const pendingWinery = {
-        id: 'winery-uuid-1',
-        commercialName: 'Bodega Kohlberg',
-        taxIdNit: '1028374029',
-        countryCode: 'BO',
-        stellarPublicKey: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-        certificationStatus: WineryStatusEnum.INVITED,
-      };
-      mockWineryRepository.findById.mockResolvedValue(pendingWinery);
-      mockOnchainProducerHook.executeProducerRegistration.mockResolvedValue({
-        onchainProducerId: 'PROD_BO_1028374029',
-        txHash: '0x_simulated_tx_12345',
-        isSimulated: true,
-      });
-      mockWineryRepository.update.mockResolvedValue({
-        ...pendingWinery,
-        certificationStatus: WineryStatusEnum.ACTIVE,
-        approvedAt: new Date(),
-        approvedByUserId: 'admin-user-id',
-        onchainProducerId: 'PROD_BO_1028374029',
-        onchainRegisterTxHash: '0x_simulated_tx_12345',
-        members: [],
-      });
-
-      const result = await service.approveWinery(
-        'winery-uuid-1',
-        'admin-user-id',
-      );
-
-      expect(result.certificationStatus).toBe(WineryStatusEnum.ACTIVE);
-      expect(mockOrganizations.syncWinery).toHaveBeenCalledWith(
-        mockTx,
-        expect.objectContaining({
-          id: 'winery-uuid-1',
-          certificationStatus: WineryStatusEnum.ACTIVE,
-        }),
-      );
-      expect(result.onchainProducerId).toBe('PROD_BO_1028374029');
-      expect(result.onchainRegisterTxHash).toBe('0x_simulated_tx_12345');
-      expect(
-        mockOnchainProducerHook.executeProducerRegistration,
-      ).toHaveBeenCalledWith(
-        pendingWinery,
-        'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-      );
-      // Estado y bitácora en la misma transacción
-      expect(mockWineryRepository.update).toHaveBeenCalledWith(
-        'winery-uuid-1',
-        expect.objectContaining({
-          certificationStatus: WineryStatusEnum.ACTIVE,
-        }),
-        mockTx,
-      );
-      expect(mockAudit.recorded.at(-1)).toMatchObject({
-        action: 'WINERY_APPROVED',
-        resource: { type: 'winery', id: 'winery-uuid-1' },
-        organizationId: 'winery-uuid-1',
-        before: { certificationStatus: WineryStatusEnum.INVITED },
-        after: { certificationStatus: WineryStatusEnum.ACTIVE },
-      });
-    });
-
-    it('debe arrojar 409 WINERY_NOT_PENDING si la bodega ya no está en estado INVITED', async () => {
-      mockWineryRepository.findById.mockResolvedValue({
-        id: 'winery-uuid-1',
-        certificationStatus: WineryStatusEnum.ACTIVE,
-      });
-
-      await expect(
-        service.approveWinery('winery-uuid-1', 'admin-user-id'),
-      ).rejects.toMatchObject({
-        statusCode: 409,
-        errorCode: 'WINERY_NOT_PENDING',
-      });
-    });
-  });
-
-  describe('rejectWinery', () => {
-    it('revoca la bodega y su organización y cierra las sesiones que la tienen activa', async () => {
-      mockWineryRepository.findById.mockResolvedValue({
-        id: 'winery-uuid-1',
-        certificationStatus: WineryStatusEnum.INVITED,
-      });
-      mockWineryRepository.update.mockResolvedValue({
-        id: 'winery-uuid-1',
-        commercialName: 'Bodega Kohlberg',
-        certificationStatus: WineryStatusEnum.REVOKED,
-        members: [],
-      });
-
-      const result = await service.rejectWinery('winery-uuid-1', 'admin', {
-        rejectionReason: 'Documentación incompleta',
-      });
-
-      expect(result.certificationStatus).toBe(WineryStatusEnum.REVOKED);
-      expect(mockOrganizations.syncWinery).toHaveBeenCalledWith(
-        mockTx,
-        expect.objectContaining({
-          certificationStatus: WineryStatusEnum.REVOKED,
-        }),
-      );
-      expect(mockSessions.revokeForOrganization).toHaveBeenCalledWith(
-        'winery-uuid-1',
-        'ORGANIZATION_REVOKED',
-      );
-    });
-  });
-
-  describe('listas paginadas (contrato O0 §2)', () => {
-    it('getPendingWineries devuelve { items, total, limit, offset } y pagina en el repositorio', async () => {
-      mockWineryRepository.findPendingWineries.mockResolvedValue([
-        [
-          {
-            id: 'winery-uuid-2',
-            legalName: 'Pendiente S.A.',
-            commercialName: 'Bodega Pendiente',
-            certificationStatus: WineryStatusEnum.INVITED,
-          },
-        ],
-        41,
-      ]);
-
-      const page = await service.getPendingWineries({ limit: 20, offset: 20 });
-
-      expect(mockWineryRepository.findPendingWineries).toHaveBeenCalledWith({
-        take: 20,
-        skip: 20,
-      });
-      expect(page).toMatchObject({ total: 41, limit: 20, offset: 20 });
-      expect(page.items).toHaveLength(1);
-      expect(page.items[0]).toMatchObject({ id: 'winery-uuid-2' });
-    });
-
-    it('getMyMembers devuelve { items, total, limit, offset } de la bodega', async () => {
-      mockWineryMemberRepository.findMembersByWineryId.mockResolvedValue([
-        [
-          {
-            id: 'member-1',
-            memberRole: WineryMemberRoleEnum.ENOLOGIST,
-            professionalLicenseNumber: null,
-            isActive: true,
-            joinedAt: new Date('2026-09-01T00:00:00Z'),
-            user: {
-              id: 'user-1',
-              fullName: 'Valeria Soliz',
-              email: 'valeria@example.com',
-            },
-          },
-        ],
-        1,
-      ]);
-
-      const page = await service.getMyMembers('winery-uuid-1', {
-        limit: 5,
-        offset: 0,
-      });
-
-      expect(
-        mockWineryMemberRepository.findMembersByWineryId,
-      ).toHaveBeenCalledWith('winery-uuid-1', { take: 5, skip: 0 });
-      expect(page).toEqual({
-        items: [
-          {
-            id: 'member-1',
-            userId: 'user-1',
-            fullName: 'Valeria Soliz',
-            email: 'valeria@example.com',
-            memberRole: WineryMemberRoleEnum.ENOLOGIST,
-            professionalLicenseNumber: null,
-            isActive: true,
-            joinedAt: new Date('2026-09-01T00:00:00Z'),
-          },
-        ],
-        total: 1,
-        limit: 5,
-        offset: 0,
-      });
-    });
+    expect(page).toMatchObject({ total: 3, limit: 1, offset: 2 });
+    expect(page.items).toHaveLength(1);
+    expect(mockPrisma.winery.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { certificationStatus: WineryStatusEnum.ACTIVE },
+        take: 1,
+        skip: 2,
+      }),
+    );
   });
 });
