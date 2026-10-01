@@ -1,6 +1,6 @@
 /**
- * Claims del token de acceso (contrato O0 §5). `email`, `userRole`,
- * `wineryId` y `memberRole` se mantienen por compatibilidad (*retirada* en H1).
+ * Claims del token de acceso (contrato O0 §5). Los de compatibilidad
+ * (`email`, `userRole`, `wineryId`, `memberRole`) se retiraron en H1.
  */
 export interface AccessTokenClaims {
   sub: string;
@@ -10,10 +10,6 @@ export interface AccessTokenClaims {
   role: string | null;
   sid: string;
   jti: string;
-  email: string;
-  userRole: string;
-  wineryId: string | null;
-  memberRole: string | null;
   iat?: number;
   exp?: number;
 }

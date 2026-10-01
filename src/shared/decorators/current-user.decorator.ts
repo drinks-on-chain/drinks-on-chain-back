@@ -8,7 +8,6 @@ export interface AuthenticatedUser {
   id: string;
   /** Igual que `id` (compatibilidad con el código de 0.1). */
   userId: string;
-  email: string;
   /** Claim `sid`. */
   sessionId: string;
   /** Claim `aud`. */
@@ -21,12 +20,6 @@ export interface AuthenticatedUser {
   organizationStatus: 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED' | null;
   /** Claim `role`: rol en la organización activa. */
   role: string | null;
-  /** Compatibilidad hasta H1: `userRole` equivalente a la organización activa. */
-  userRole: string;
-  /** Compatibilidad hasta H1: la bodega activa (si la organización activa es una bodega). */
-  wineryId: string | null;
-  /** Compatibilidad hasta H1: rol en la bodega activa. */
-  memberRole: string | null;
 }
 
 export const CurrentUser = createParamDecorator(

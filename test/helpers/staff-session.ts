@@ -4,11 +4,13 @@ import {
   MembershipRoleEnum,
   OrganizationStatusEnum,
   OrganizationTypeEnum,
-  UserRoleEnum,
   WineryCategoryEnum,
+  WineryMemberRoleEnum,
   WineryStatusEnum,
 } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { randomUUID } from 'crypto';
+import { MembershipsService } from '../../src/modules/organizations/memberships.service';
 import { SessionsService } from '../../src/modules/auth/sessions/sessions.service';
 import { AccessTokenService } from '../../src/modules/auth/sessions/access-token.service';
 import { PrismaService } from '../../src/shared/prisma/prisma.service';
@@ -38,7 +40,6 @@ export async function staffToken(
     // Una sesión de plataforma exige el segundo factor (PLT-05)
     mfaVerified: params.organizationType === 'PLATFORM',
   });
-  const winery = params.organizationType === 'WINERY';
   return app.get(AccessTokenService).sign({
     sub: params.userId,
     aud: 'STAFF',
@@ -46,10 +47,6 @@ export async function staffToken(
     orgType: params.organizationType,
     role: params.role,
     sid: session.id,
-    email: params.email,
-    userRole: winery ? UserRoleEnum.WINERY_ADMIN : UserRoleEnum.PLATFORM_ADMIN,
-    wineryId: winery ? params.organizationId : null,
-    memberRole: winery ? params.role : null,
   });
 }
 
@@ -68,10 +65,6 @@ export async function createMember(
       email: params.email,
       passwordHash: 'e2e-sin-login',
       fullName: params.fullName,
-      userRole:
-        params.organizationId === PLATFORM_ORGANIZATION_ID
-          ? UserRoleEnum.PLATFORM_ADMIN
-          : UserRoleEnum.WINERY_ADMIN,
     },
   });
   const membership = await prisma.membership.create({
@@ -108,7 +101,13 @@ export async function platformStaff(
 /** Bodega activa con su organización (mismo id). */
 export async function createActiveWinery(
   prisma: PrismaService,
-  params: { name: string; taxId: string; status?: WineryStatusEnum },
+  params: {
+    name: string;
+    taxId: string;
+    status?: WineryStatusEnum;
+    category?: WineryCategoryEnum;
+    region?: string;
+  },
 ) {
   const id = randomUUID();
   const status = params.status ?? WineryStatusEnum.ACTIVE;
@@ -117,9 +116,9 @@ export async function createActiveWinery(
       id,
       legalName: `${params.name} S.R.L.`,
       commercialName: params.name,
-      beverageCategory: WineryCategoryEnum.WINERY,
+      beverageCategory: params.category ?? WineryCategoryEnum.WINERY,
       taxIdNit: params.taxId,
-      geographicRegion: 'Tarija',
+      geographicRegion: params.region ?? 'Tarija',
       contactEmail: `contacto+${id.slice(0, 8)}@test.bo`,
       certificationStatus: status,
     },
@@ -134,4 +133,85 @@ export async function createActiveWinery(
     },
   });
   return id;
+}
+
+/**
+ * Persona con contraseña en una bodega, como la deja aceptar una invitación
+ * (desde H1 no hay autoinscripción ni `my/members`): cuenta nueva (o la de
+ * `userId`), membresía y su espejo en `winery_members` (mismo id, autoría de
+ * la trazabilidad). Devuelve el id de la persona y el de la membresía.
+ */
+export async function addWineryMember(
+  app: INestApplication,
+  params: {
+    wineryId: string;
+    role: WineryMemberRoleEnum | `${WineryMemberRoleEnum}`;
+    professionalLicenseNumber?: string;
+    /** Persona existente; si falta, se crea con `email`, `password` y `fullName`. */
+    userId?: string;
+    email?: string;
+    password?: string;
+    fullName?: string;
+  },
+): Promise<{ userId: string; membershipId: string }> {
+  const prisma = app.get(PrismaService);
+  let userId = params.userId;
+  if (!userId) {
+    const user = await prisma.user.create({
+      data: {
+        email: params.email!.toLowerCase(),
+        passwordHash: await bcrypt.hash(params.password ?? 'e2e-sin-login', 4),
+        fullName: params.fullName ?? 'Miembro e2e',
+        emailVerifiedAt: new Date(),
+      },
+    });
+    userId = user.id;
+  }
+  const member = await prisma.$transaction((tx) =>
+    app.get(MembershipsService).addToWinery(tx, {
+      wineryId: params.wineryId,
+      userId: userId!,
+      role: params.role as WineryMemberRoleEnum,
+      professionalLicenseNumber: params.professionalLicenseNumber,
+    }),
+  );
+  return { userId, membershipId: member.id };
+}
+
+/**
+ * Bodega `ACTIVE` (o en `status`) con su dueña, que puede iniciar sesión con
+ * `password`: el estado que dejaban `signup` + `POST /wineries` + `approve`
+ * antes de H1 (ahora solicitud o alta directa + invitación aceptada).
+ */
+export async function wineryWithOwner(
+  app: INestApplication,
+  params: {
+    name: string;
+    taxId?: string;
+    email: string;
+    password: string;
+    fullName?: string;
+    status?: WineryStatusEnum;
+    category?: WineryCategoryEnum;
+    region?: string;
+  },
+): Promise<{ wineryId: string; ownerId: string; membershipId: string }> {
+  const prisma = app.get(PrismaService);
+  const wineryId = await createActiveWinery(prisma, {
+    name: params.name,
+    taxId:
+      params.taxId ??
+      `${Date.now()}${Math.floor(Math.random() * 1e4)}`.slice(-15),
+    status: params.status,
+    category: params.category,
+    region: params.region,
+  });
+  const { userId, membershipId } = await addWineryMember(app, {
+    wineryId,
+    role: WineryMemberRoleEnum.OWNER,
+    email: params.email,
+    password: params.password,
+    fullName: params.fullName ?? `Dueña ${params.name}`,
+  });
+  return { wineryId, ownerId: userId, membershipId };
 }

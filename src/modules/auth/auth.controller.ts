@@ -34,7 +34,6 @@ import {
 import { AuthService, IssuedSession } from './auth.service';
 import { SignupDto } from './dto/signup.dto';
 import { LoginDto } from './dto/login.dto';
-import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { SwitchOrganizationDto } from './dto/switch-organization.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { MfaChallengeResponseDto } from './dto/mfa.dto';
@@ -85,12 +84,12 @@ export class AuthController {
     },
   })
   @ApiOperation({
-    summary: 'Registrar un nuevo usuario en la plataforma',
-    description: `Crea la cuenta (contraseña con bcrypt), su billetera custodial y abre una sesión. ${SET_COOKIE_DESCRIPTION}.`,
+    summary: 'Registrar un consumidor',
+    description: `Crea una cuenta de consumidor (\`audience: CONSUMER\`, sin membresías), su billetera custodial y abre una sesión. ${SET_COOKIE_DESCRIPTION}. El personal nunca se registra aquí: entra por invitación o por la solicitud de alta de su bodega (el registro de personal se retiró al cerrar la Ola 1). La Ola 4 añadirá captcha y verificación del correo.`,
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
-    description: 'Usuario registrado y sesión abierta',
+    description: 'Consumidor registrado y sesión abierta',
     type: AuthResponseDto,
   })
   @ApiUnprocessableEntityResponse({
@@ -172,7 +171,7 @@ export class AuthController {
   })
   @ApiOperation({
     summary: 'Renovar la sesión (rotativa)',
-    description: `Lee el refresco de la cookie \`doc_rt\` (o, hasta H1, del cuerpo), lo rota y responde como el login. ${SET_COOKIE_DESCRIPTION}. Un refresco ya rotado presentado otra vez dentro del periodo de gracia (20 s) devuelve el mismo par nuevo; fuera de él revoca la sesión (401 \`AUTH_REFRESH_REUSED\`).`,
+    description: `Lee el refresco de la cookie \`doc_rt\` (el cuerpo no se lee), lo rota y responde como el login. ${SET_COOKIE_DESCRIPTION}. Un refresco ya rotado presentado otra vez dentro del periodo de gracia (20 s) devuelve el mismo par nuevo; fuera de él revoca la sesión (401 \`AUTH_REFRESH_REUSED\`).`,
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -185,14 +184,13 @@ export class AuthController {
     type: ApiErrorResponseDto,
   })
   async refreshTokens(
-    @Body() dto: RefreshTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<AuthResponseDto> {
     return this.send(
       req,
       res,
-      await this.authService.refresh(readRefreshToken(req, dto?.refreshToken)),
+      await this.authService.refresh(readRefreshToken(req)),
     );
   }
 
@@ -201,7 +199,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Cambiar la organización activa',
-    description: `Misma sesión (\`sid\`), tokens nuevos con la organización elegida. Necesita el acceso vigente y el refresco de esa sesión (cookie \`doc_rt\` o, hasta H1, el cuerpo), que se rota. ${SET_COOKIE_DESCRIPTION}.`,
+    description: `Misma sesión (\`sid\`), tokens nuevos con la organización elegida. Necesita el acceso vigente y el refresco de esa sesión en la cookie \`doc_rt\`, que se rota. ${SET_COOKIE_DESCRIPTION}.`,
   })
   @ApiResponse({
     status: HttpStatus.OK,
@@ -233,7 +231,7 @@ export class AuthController {
       await this.authService.switchOrganization(
         user,
         dto.organizationId,
-        readRefreshToken(req, dto.refreshToken),
+        readRefreshToken(req),
       ),
     );
   }
@@ -245,23 +243,19 @@ export class AuthController {
     name: 'Authorization',
     required: false,
     description:
-      'Bearer con el acceso (aunque haya caducado); si falta, se usa el refresco',
+      'Bearer con el acceso (aunque haya caducado); si falta, se usa la cookie `doc_rt`',
   })
   @ApiOperation({
     summary: 'Cerrar la sesión actual',
     description:
-      'Revoca la sesión (identificada por el acceso, aunque haya caducado, o por el refresco) y borra la cookie (`doc_rt=; Max-Age=0`). Siempre 204.',
+      'Revoca la sesión (identificada por el acceso, aunque haya caducado, o por la cookie `doc_rt`) y borra la cookie (`doc_rt=; Max-Age=0`). Siempre 204.',
   })
   @ApiNoContentResponse({ description: 'Sesión cerrada' })
   async logout(
-    @Body() dto: RefreshTokenDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
   ): Promise<void> {
-    await this.authService.logout(
-      bearerToken(req),
-      readRefreshToken(req, dto?.refreshToken),
-    );
+    await this.authService.logout(bearerToken(req), readRefreshToken(req));
     clearRefreshCookie(res, useSecureCookie(this.settings.nodeEnv, req));
   }
 

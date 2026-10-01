@@ -1,5 +1,7 @@
 # Catálogo de Endpoints de la API — Drinks on Chain
 
+> ⚠️ **Documento de 0.1, desactualizado.** Desde el cierre de la Ola 1 (H1) ya no existen `POST /v1/wineries`, `GET /v1/wineries/pending`, `POST /v1/wineries/:id/approve|reject` ni `/v1/wineries/my/members*`; `signup` solo registra consumidores; la sesión no lleva `userRole`/`wineryId`/`memberRole` ni `tokens.refreshToken` (el refresco va solo en la cookie `doc_rt`) y los roles van por membresía. La referencia vigente es `openapi.json` (y `/docs` del servidor); el modelo, en [`docs/arquitectura/`](../arquitectura/).
+
 > Guía de referencia exhaustiva y actualizada de endpoints de la API para desarrolladores Frontend y clientes de integración.
 >
 > 📌 **Formato Estándar de Respuesta:** Todos los endpoints responden bajo una estructura unificada:

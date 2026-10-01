@@ -11,7 +11,7 @@ erDiagram
   ORGANIZATION |o--o| WINERY : "mismo id"
   USER ||--o{ SESSION : "abre"
   ORGANIZATION |o--o{ SESSION : "activa en"
-  WINERY_MEMBER |o--|| MEMBERSHIP : "mismo id (obsoleto, H1)"
+  WINERY_MEMBER |o--|| MEMBERSHIP : "mismo id (autoría y matrícula)"
 ```
 
 | Tabla | Qué guarda |
@@ -23,7 +23,7 @@ erDiagram
 
 Roles válidos por tipo: plataforma `SUPERADMIN`, `ADMIN`, `OPERATIONS`, `SUPPORT`; bodega `OWNER`, `ENOLOGIST`, `AGRONOMIST`, `OPERATOR`, `ACCOUNTANT`; punto de canje `MANAGER`, `CASHIER` (Ola 5).
 
-**Obsoletos hasta H1** (se retiran al cerrar la Ola 1): `users.user_role` (ya no autoriza nada; solo alimenta `user.userRole` y el claim de compatibilidad) y `winery_members` (matrícula profesional y autoría; `is_active` se mantiene sincronizado con `memberships.status`).
+**`winery_members`** no autoriza nada: guarda la matrícula profesional y es la **autoría de la trazabilidad** (claves foráneas de vendimia, tratamientos, embotellado y laboratorio), con el mismo id que la membresía; `member_role` e `is_active` se mantienen sincronizados con ella. `users.user_role` (rol global de 0.1) se borró en la retirada de H1 (más abajo).
 
 ### Migración `20260927120000_organizations_memberships_sessions`
 
@@ -56,12 +56,12 @@ sequenceDiagram
   A-->>C: misma forma que el login + cookie nueva
 ```
 
-- **Acceso**: JWT HS256 de **15 min** (`JWT_EXPIRES_IN`, recortado a 900 s aunque se configure más). Claims `sub`, `aud` (`STAFF` \| `CONSUMER`), `org`, `orgType`, `role`, `sid`, `jti` y, hasta H1, `email`, `userRole`, `wineryId`, `memberRole`.
-- **Refresco**: `<sid>.<generación>.<secreto>`. El secreto inicial es aleatorio; cada rotación deriva el siguiente con `HMAC-SHA256(JWT_REFRESH_SECRET, "sid.gen+1.secreto")`. Solo se guarda el hash del vigente. Viaja en la cookie `doc_rt` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age`), sin `Secure` solo con `NODE_ENV=development` y origen `localhost`; y en `tokens.refreshToken` por compatibilidad hasta H1 (también se acepta en el cuerpo de `refresh`, `switch-organization` y `logout`).
+- **Acceso**: JWT HS256 de **15 min** (`JWT_EXPIRES_IN`, recortado a 900 s aunque se configure más). Claims `sub`, `aud` (`STAFF` \| `CONSUMER`), `org`, `orgType`, `role`, `sid`, `jti` (los de compatibilidad `email`, `userRole`, `wineryId` y `memberRole` se retiraron en H1).
+- **Refresco**: `<sid>.<generación>.<secreto>`. El secreto inicial es aleatorio; cada rotación deriva el siguiente con `HMAC-SHA256(JWT_REFRESH_SECRET, "sid.gen+1.secreto")`. Solo se guarda el hash del vigente. Viaja en la cookie `doc_rt` (`HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age`), sin `Secure` solo con `NODE_ENV=development` y origen `localhost`. **Solo** en la cookie: desde H1 no va en `tokens.refreshToken` ni se lee del cuerpo (`refresh` y `logout` no tienen cuerpo; `switch-organization` con `refreshToken` → 422).
 - **Duración deslizante**: 7 días el personal (`SESSION_TTL_STAFF_DAYS`), 30 los consumidores (`SESSION_TTL_CONSUMER_DAYS`); cada rotación la renueva.
 - **Rotación y reutilización**: el refresco vigente rota. El inmediatamente anterior, presentado otra vez dentro del **periodo de gracia** (`REFRESH_GRACE_SECONDS`, 20 s), devuelve **el mismo par nuevo** (el refresco se recalcula por derivación; el acceso sale de Redis): dos pestañas renovando a la vez no cierran la sesión. Fuera de la gracia, o cualquier refresco más antiguo de la cadena → se revoca la sesión y **401 `AUTH_REFRESH_REUSED`**. Un refresco que no encaja en la cadena es **401 `AUTH_REFRESH_INVALID`** y no revoca nada (conocer un `sid` no permite cerrar la sesión de otro).
-- **Organización activa**: la última usada si sigue siendo utilizable (membresía `ACTIVE`, organización no `REVOKED`); si no, la primera utilizable (plataforma antes que bodega, y entre bodegas la más antigua); `null` si no hay. Si la sesión no tenía (p. ej. el dueño acaba de registrar su bodega), la renovación toma la de por defecto.
-- **`POST /auth/switch-organization`** `{ organizationId }`: exige el acceso y el refresco de **esa misma sesión** (cookie o cuerpo), que se rota; misma `sid`, `org` nueva, se recuerda como la última usada. Sin membresía → 404 `ORG_NOT_FOUND`; membresía bloqueada → 403 `ORG_MEMBERSHIP_BLOCKED`; organización revocada → 403 `ORG_REVOKED`.
+- **Organización activa**: la última usada si sigue siendo utilizable (membresía `ACTIVE`, organización no `REVOKED`); si no, la primera utilizable (plataforma antes que bodega, y entre bodegas la más antigua); `null` si no hay. Si la sesión no tenía (p. ej. se abrió antes de unirse a una organización), la renovación toma la de por defecto.
+- **`POST /auth/switch-organization`** `{ organizationId }`: exige el acceso y el refresco de **esa misma sesión** (cookie `doc_rt`), que se rota; misma `sid`, `org` nueva, se recuerda como la última usada. Sin membresía → 404 `ORG_NOT_FOUND`; membresía bloqueada → 403 `ORG_MEMBERSHIP_BLOCKED`; organización revocada → 403 `ORG_REVOKED`.
 - **`POST /auth/logout`** (pública): revoca la sesión identificada por el acceso (aunque haya caducado) o por el refresco, y borra la cookie (`Max-Age=0`). **`POST /auth/logout-all`**: todas las de la persona. Ambas 204.
 - **`GET /users/me`** y **`PATCH /users/me`** → `{ user, memberships, activeOrganizationId }` (`user` = perfil de 0.1 + `audience`, `notificationPrefs` y `promotionsConsent`; contrato O1 §1 y §11 bis).
 
@@ -74,6 +74,9 @@ Revocar = `sessions.revoked_at` + marca `auth:revoked:<sid>` en Redis durante la
 | Bloquear una membresía (`MembershipsService.block`) | Las de esa persona con esa organización activa | `MEMBERSHIP_BLOCKED` |
 | Bloquear la cuenta (`UsersService.blockAccount`) | Todas las de la persona | `USER_BLOCKED` |
 | Rechazar (revocar) una bodega | Todas las que la tienen activa | `ORGANIZATION_REVOKED` |
+| Suspender una bodega (Ola 1 · 1.5) | Todas las que la tienen activa | `ORGANIZATION_SUSPENDED` |
+| Cambiar el rol de un miembro de bodega (dueño o plataforma) | Las de esa persona con esa bodega activa | `ROLE_CHANGED` |
+| Transferencia de titularidad aceptada | Las del dueño anterior con esa bodega activa | `OWNERSHIP_TRANSFERRED` |
 | Reutilización de un refresco | Esa sesión | `REFRESH_REUSED` |
 | `logout` / `logout-all` | Esa / todas | `LOGOUT` / `LOGOUT_ALL` |
 | Contraseña restablecida (`reset-password`) | Todas las de la persona | `PASSWORD_RESET` |
@@ -93,18 +96,18 @@ Guards globales (`AppModule`, en este orden): límite de peticiones → **`Acces
 | `@Audience('STAFF')` | claim `aud` |
 | `@OrgType('WINERY')` | tipo de la organización activa |
 | `@Roles('OWNER', 'ENOLOGIST')` | rol en la organización activa |
-| `@RequireActiveOrg()` | SE-05: bodega activa en estado `ACTIVE`. En la Ola 0 solo aviso en logs; con `FEATURE_ENFORCE_ACTIVE_ORG=true`, 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: <estado> }]` |
+| `@RequireActiveOrg({ allow? })` | SE-05: bodega activa en estado `ACTIVE` (o uno de `allow`). **Activo por defecto desde la Ola 1**: 403 `ORG_NOT_ACTIVE` con `details: [{ field: null, message: <estado> }]`; `FEATURE_ENFORCE_ACTIVE_ORG=false` lo deja en aviso (ver [`organizaciones.md`](organizaciones.md#bodega-no-activa-en-el-erp-se-05)) |
 
-- **Rutas de bodega** (`@OrgType('WINERY')`: todo el ERP y `wineries/my*`): la bodega es la activa; si la petición apunta a otra (`wineryId` en ruta, query o cuerpo) → **404**. El personal de plataforma pasa sin rol de bodega: `SUPERADMIN`, `ADMIN` y `OPERATIONS` leen y escriben, `SUPPORT` solo lee; eligen la bodega con `?wineryId=` y **las escrituras lo exigen** (422 con `details[{ field: 'wineryId' }]`, OP-07); una bodega inexistente → 404 `ORG_NOT_FOUND`.
-- **Rutas de plataforma** (`GET /wineries`, `/wineries/pending`: todo el personal de plataforma; `approve`/`reject`: `SUPERADMIN`, `ADMIN`, `OPERATIONS`).
-- **SE-01**: `POST /wineries/my/members` y `/members/create` (solo `OWNER` o plataforma) crean o reactivan **la membresía de esa bodega** (`MembershipsService.addToWinery`); nunca escriben `users.user_role` ni membresías de otra organización. Ya miembro activo → 409 `ORG_ALREADY_MEMBER`; bloqueada por la plataforma → 403 `ORG_BLOCKED_BY_PLATFORM`.
+- **Rutas de bodega** (`@OrgType('WINERY')`: todo el ERP y `wineries/my`): la bodega es la activa; si la petición apunta a otra (`wineryId` en ruta, query o cuerpo) → **404**. El personal de plataforma pasa sin rol de bodega: `SUPERADMIN`, `ADMIN` y `OPERATIONS` leen y escriben, `SUPPORT` solo lee; eligen la bodega con `?wineryId=` y **las escrituras lo exigen** (422 con `details[{ field: 'wineryId' }]`, OP-07); una bodega inexistente → 404 `ORG_NOT_FOUND`.
+- **Rutas de plataforma** (`GET /wineries` y `/platform/*`; permisos por la matriz de `permissions.ts`).
+- **SE-01**: una bodega solo escribe **su** membresía: el equipo entra por invitación (`POST /organizations/current/invitations`, aceptación con `MembershipsService.addToWinery`) y nunca toca membresías de otra organización. Ya miembro activo → 409 `ORG_ALREADY_MEMBER`; bloqueada por la plataforma → 403 `ORG_BLOCKED_BY_PLATFORM`.
 
 Matriz de roles de bodega en el ERP (docs-back/05 §3; la plataforma, como arriba):
 
 | Ruta | OWNER | ENOLOGIST | AGRONOMIST | OPERATOR | ACCOUNTANT |
 |---|---|---|---|---|---|
 | Parcelas: alta y edición | ✅ | — | ✅ | — | — |
-| Parcelas: lectura | ✅ | ✅ | ✅ | — | ✅ |
+| Parcelas: lectura | ✅ | ✅ | ✅ | ✅ (mínima, §11 bis) | ✅ |
 | Vendimia (pesaje): alta | ✅ | ✅ | ✅ | ✅ | — |
 | Vendimia: lectura | ✅ | ✅ | ✅ | ✅ | ✅ |
 | Dictamen fitosanitario | ✅ | ✅ | ✅ | — | — |
@@ -115,8 +118,8 @@ Matriz de roles de bodega en el ERP (docs-back/05 §3; la plataforma, como arrib
 | Crianza, destilación, embotellado: lectura | ✅ | ✅ | — | — | ✅ |
 | Laboratorio: alta | ✅ | ✅ | — | — | — |
 | Laboratorio: lectura | ✅ | ✅ | ✅ | — | ✅ |
-| `PATCH /wineries/my`, alta de miembros | ✅ | — | — | — | — |
-| `GET /wineries/my`, `/my/members` | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `PATCH /wineries/my` | ✅ | — | — | — | — |
+| `GET /wineries/my` | ✅ | ✅ | ✅ | ✅ | ✅ |
 
 Cambios frente a 0.1: el operario de planta ya no es `POS_OPERATOR` (OP-05) y pesa y registra lecturas; el contador lee; el dueño dictamina; los consumidores ya no leen análisis de laboratorio por el ERP (llegará con el visor público).
 
@@ -140,7 +143,7 @@ Cambios frente a 0.1: el operario de planta ya no es `POS_OPERATOR` (OP-05) y pe
 | `AUTH_INSUFFICIENT_PERMISSIONS` | 403 | Audiencia, tipo de organización o rol insuficientes |
 | `ORG_NOT_FOUND` | 404 | Sin membresía en la organización / bodega inexistente |
 | `ORG_MEMBERSHIP_BLOCKED` / `ORG_REVOKED` | 403 | `switch-organization` a una membresía bloqueada / organización revocada |
-| `ORG_NOT_ACTIVE` | 403 | ERP con bodega no `ACTIVE` (solo con `FEATURE_ENFORCE_ACTIVE_ORG`) |
+| `ORG_NOT_ACTIVE` | 403 | ERP con bodega no `ACTIVE` (activo por defecto desde la Ola 1) |
 | `ORG_BLOCKED_BY_PLATFORM` | 403 | El dueño intenta reactivar a quien bloqueó la plataforma |
 | `ORG_ALREADY_MEMBER` | 409 | Ya es miembro activo |
 
@@ -177,7 +180,7 @@ erDiagram
 | `POST /v1/users/me/password` `{ currentPassword, newPassword }` | 204; 422 `AUTH_INVALID_CURRENT_PASSWORD`; cierra las demás sesiones y avisa por correo |
 | `PATCH /v1/users/me` | Nombre, teléfono, idioma (`es`/`en`), `notificationPrefs` parcial y `promotionsConsent` (con fecha); bitácora `USER_PROFILE_UPDATED` |
 
-**Política de contraseñas** (`src/modules/auth/account/password-policy.ts`, NIST 800-63B): 10–128 caracteres, fuera de la lista de comunes, no un mismo carácter repetido ni una secuencia de teclas, no el propio correo. Se aplica a las contraseñas nuevas (restablecer, cambiar, aceptar invitación); el `signup` antiguo no cambia (se retira para el personal en H1).
+**Política de contraseñas** (`src/modules/auth/account/password-policy.ts`, NIST 800-63B): 10–128 caracteres, fuera de la lista de comunes, no un mismo carácter repetido ni una secuencia de teclas, no el propio correo. Se aplica a las contraseñas nuevas (restablecer, cambiar, aceptar invitación); el `signup` de consumidores la adoptará en la Ola 4 con el captcha y la verificación.
 
 **Captcha** (`src/shared/captcha/captcha.service.ts`): Cloudflare Turnstile con `TURNSTILE_SECRET_KEY`. Las claves de prueba publicadas por Cloudflare se resuelven sin red (`1x…AA` siempre valida, `2x…AA` siempre falla), así el desarrollo y la CI no dependen de Cloudflare. Con una clave real se llama a `siteverify` (5 s); sin respuesta → 503 `CAPTCHA_UNAVAILABLE` (nunca se deja pasar).
 
@@ -212,7 +215,7 @@ sequenceDiagram
 | Ruta | Quién | Notas |
 |---|---|---|
 | `GET /v1/invitations/{token}` | Público | `{ email, organizationName, organizationType, role, invitedByName, expiresAt, status, accountExists }`; 404 `INVITATION_NOT_FOUND` |
-| `POST /v1/invitations/{token}/accept` | Público o con sesión (`@OptionalAuth`) | Cuenta nueva `{ fullName, password }` (correo verificado, billetera, `userRole` de compatibilidad). Cuenta existente `{}` con el acceso **y la cookie** de esa misma persona (rota la sesión con la organización invitada activa, como `switch-organization`). Plataforma → reto TOTP con la plataforma como organización del reto. Errores: 401 `AUTH_LOGIN_REQUIRED`, 403 `INVITATION_EMAIL_MISMATCH`, 422 `INVITATION_EXPIRED`, 409 `INVITATION_NOT_PENDING` |
+| `POST /v1/invitations/{token}/accept` | Público o con sesión (`@OptionalAuth`) | Cuenta nueva `{ fullName, password }` (correo verificado, billetera). Cuenta existente `{}` con el acceso **y la cookie** de esa misma persona (rota la sesión con la organización invitada activa, como `switch-organization`). Plataforma → reto TOTP con la plataforma como organización del reto. Errores: 401 `AUTH_LOGIN_REQUIRED`, 403 `INVITATION_EMAIL_MISMATCH`, 422 `INVITATION_EXPIRED`, 409 `INVITATION_NOT_PENDING` |
 | `GET/POST /v1/organizations/current/invitations` | Dueño (o encargado del punto), organización `ACTIVE` | Otros roles o la plataforma → 403; organización no activa → 403 `ORG_NOT_ACTIVE` |
 | `POST /v1/invitations/{id}/resend` · `/revoke` `{ reason? }` | Dueño de esa organización o plataforma (las de plataforma, solo administración) | De otra organización → 404. Reenviar: pendiente o caducada, token y caducidad nuevos (el enlace anterior da 404); una caducada vuelve a contar para el límite |
 | `POST /v1/platform/organizations/{organizationId}/invitations` `{ email, role, reason? }` | ADMIN, OPERATIONS, SUPPORT | Bodega `ACTIVE` o `SUSPENDED`; avisa al dueño (plantilla `aviso-equipo`) |
@@ -240,6 +243,25 @@ El superusuario no se degrada, no se bloquea (membresía ni cuenta) → 403 `PLA
 **Bitácora y motivo (AUD-05)**: cada acción registra su evento en la misma transacción (`AUTH_MFA_CHALLENGED`, `AUTH_LOGIN_SUCCEEDED` con el método del segundo factor, `MFA_*`, `USER_*`, `INVITATION_*`, `PLATFORM_USER_*`, `MEMBER_JOINED`). El motivo es obligatorio (3–500, 422 en `reason`) donde el contrato lo escribe sin `?` (rol, bloqueos, `reset-mfa`) y opcional donde lleva `reason?` (invitar, reenviar, anular, enviar recuperación), como en los mocks.
 
 **Correos** (`src/modules/mail/templates/account.ts`): `invitacion`, `recuperar-contrasena`, `contrasena-cambiada`, `verificar-correo`, `segundo-factor-restablecido`, `segundo-factor-intentos-fallidos`, `aviso-equipo` (al dueño, EQP-10; la parte B lo reutiliza para bloqueos y cambios de rol).
+
+## Retirada en H1 (cierre de la Ola 1)
+
+Contrato O1 §11 y O0 §5. Los clientes (ERP y Backoffice en `dev`) ya no usaban nada de esto.
+
+| Retirado | Queda |
+|---|---|
+| `tokens.refreshToken` en `login`, `refresh`, `switch-organization`, `mfa/*` y la aceptación de invitaciones | Solo la cookie `doc_rt` |
+| Refresco en el cuerpo de `refresh`, `logout` y `switch-organization` | `refresh`/`logout` no leen el cuerpo (sin cookie → 401 `AUTH_REFRESH_INVALID` / 204); `switch-organization` con `refreshToken` → 422 |
+| `user.userRole`, `user.wineryId`, `user.memberRole` (sesión) y `user.userRole` (`/users/me`) | `memberships` + `activeOrganizationId` |
+| Claims `email`, `userRole`, `wineryId`, `memberRole` | `sub, aud, org, orgType, role, sid, jti` |
+| `POST /v1/auth/signup` con `userRole` (registro de personal) | `signup` solo de consumidores (`audience: CONSUMER`, sin membresías); `userRole` → 422. La Ola 4 le añade captcha y verificación |
+| `users.user_role` y el tipo `user_role_enum` | Migración *contract* `20260927190000_o1_retirada_h1` |
+
+**Decisión sobre `signup`**: se conserva para consumidores en vez de borrarla. El contrato la mantiene para la Ola 4, los mocks la cubren como consumidor y el registro de consumidores ya era público desde 0.1 (no abre nada nuevo; límite de 5/min por IP). Borrarla ahora obligaría a una ruptura más y a recrearla en la Ola 4.
+
+**`winery_members` se conserva**: es la clave foránea de la autoría de la trazabilidad (`harvest_batches.certified_by_member_id`, `enological_treatments.authorized_by_member_id`, `bottling_batches.released_by_member_id`, `batch_lab_analyses.reviewed_by_member_id`) y guarda la matrícula. La Ola 2 mueve la autoría a `created_by_membership_id`; cuando nada la lea, se podrá retirar con otra migración *contract*.
+
+Las rutas de bodegas retiradas están en [`organizaciones.md`](organizaciones.md#rutas-retiradas-en-h1-11).
 
 ## Pruebas
 

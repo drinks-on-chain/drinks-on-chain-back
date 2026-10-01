@@ -36,16 +36,12 @@ function principal(overrides: Partial<AuthenticatedUser>): AuthenticatedUser {
   return {
     id: 'user-1',
     userId: 'user-1',
-    email: 'x@y.bo',
     sessionId: SID,
     audience: 'STAFF',
     organizationId: WINERY_A,
     organizationType: 'WINERY',
     organizationStatus: 'ACTIVE',
     role: 'OWNER',
-    userRole: 'WINERY_ADMIN',
-    wineryId: WINERY_A,
-    memberRole: 'OWNER',
     ...overrides,
   };
 }
@@ -290,10 +286,6 @@ describe('AccessTokenGuard (acceso válido + sesión viva)', () => {
     role: 'OWNER',
     sid: SID,
     jti: 'j',
-    email: 'x@y.bo',
-    userRole: 'WINERY_ADMIN',
-    wineryId: WINERY_A,
-    memberRole: 'OWNER',
   };
 
   const liveSession = (

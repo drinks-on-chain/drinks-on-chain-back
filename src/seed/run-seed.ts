@@ -5,6 +5,10 @@ import { loadMockFixtures, MockFixtures } from './fixtures';
 import { ensurePlatformOrganization, upsertSuperadmin } from './platform.seed';
 import { SeedOptions } from './seed.options';
 import { DemoIdentitySummary, seedDemoIdentity } from './identity.seed';
+import {
+  DemoOrganizationsSummary,
+  seedDemoOrganizations,
+} from './organizations.seed';
 import { ConfigService } from '@nestjs/config';
 import { MfaCrypto } from '../modules/auth/mfa/mfa-crypto';
 
@@ -17,6 +21,7 @@ export interface SeedResult {
   superadmin: { id: string; created: boolean } | null;
   demo: DemoSeedSummary | null;
   identity: DemoIdentitySummary | null;
+  organizations: DemoOrganizationsSummary | null;
 }
 
 const silentLogger: SeedLogger = {
@@ -56,7 +61,7 @@ export async function runSeed(
 
   if (!options.demo) {
     logger.log('Sin datos de demostración (SEED_DEMO distinto de true)');
-    return { superadmin, demo: null, identity: null };
+    return { superadmin, demo: null, identity: null, organizations: null };
   }
 
   const fx = fixtures ?? loadMockFixtures();
@@ -80,7 +85,7 @@ export async function runSeed(
           }),
         )
       : null;
-  const { demo, identity } = await prisma.$transaction(
+  const { demo, identity, organizations } = await prisma.$transaction(
     async (tx) => {
       const summary = await seedDemo(tx, fx, hash);
       const ident = await seedDemoIdentity(tx, fx, {
@@ -88,7 +93,10 @@ export async function runSeed(
         totpSecret: demoOptions.totpSecret,
         encryptTotp: crypto ? (secret) => crypto.encrypt(secret) : null,
       });
-      return { demo: summary, identity: ident };
+      const orgs = await seedDemoOrganizations(tx, fx, {
+        demoPassword: demoOptions.password,
+      });
+      return { demo: summary, identity: ident, organizations: orgs };
     },
     { maxWait: 10_000, timeout: 120_000 },
   );
@@ -111,5 +119,16 @@ export async function runSeed(
       `Invitación ${link.status} a ${link.email}: <APP_URL_${link.app}>${link.path}`,
     );
   }
-  return { superadmin, demo, identity };
+  logger.log(
+    `Solicitudes de alta de demostración: ${organizations.applications} (${organizations.applicationNotes} notas); perfil de ${organizations.profiles} bodegas (${organizations.statusChanges} cambios de estado)`,
+  );
+  for (const link of organizations.links) {
+    logger.log(
+      `Solicitud sin verificar de ${link.email}: <APP_URL_BODEGAS>${link.path}`,
+    );
+  }
+  for (const warning of organizations.warnings) {
+    logger.warn(`Semilla de bodegas: ${warning}`);
+  }
+  return { superadmin, demo, identity, organizations };
 }

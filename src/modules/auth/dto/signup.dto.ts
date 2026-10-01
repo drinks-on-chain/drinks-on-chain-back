@@ -1,6 +1,5 @@
 import {
   IsEmail,
-  IsEnum,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -8,11 +7,14 @@ import {
   Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { UserRoleEnum } from '@prisma/client';
 
+/**
+ * `POST /v1/auth/signup`: solo consumidores. El campo `userRole` (registro de
+ * personal) se retiró al cerrar la Ola 1 (H1); enviarlo es un 422.
+ */
 export class SignupDto {
   @ApiProperty({
-    example: 'juan.perez@bodega.bo',
+    example: 'ana.rojas@correo.bo',
     description: 'Correo electrónico único para inicio de sesión',
   })
   @IsEmail({}, { message: 'El correo electrónico debe ser válido' })
@@ -38,16 +40,6 @@ export class SignupDto {
   @IsString()
   @IsNotEmpty({ message: 'El nombre completo es obligatorio' })
   fullName!: string;
-
-  @ApiPropertyOptional({
-    enum: [UserRoleEnum.CONSUMER, UserRoleEnum.WINERY_ADMIN],
-    default: UserRoleEnum.CONSUMER,
-    description:
-      'Rol del usuario para registro público (CONSUMER o WINERY_ADMIN). Roles administrativos y operativos no están permitidos en registro público.',
-  })
-  @IsOptional()
-  @IsEnum(UserRoleEnum, { message: 'Rol de usuario no válido' })
-  userRole?: UserRoleEnum = UserRoleEnum.CONSUMER;
 
   @ApiPropertyOptional({
     example: '+59170012345',

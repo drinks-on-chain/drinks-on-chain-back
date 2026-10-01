@@ -35,7 +35,6 @@ import { MembershipsService } from '@modules/organizations/memberships.service';
 import {
   PLATFORM_ORGANIZATION_ID,
   isRoleValidForType,
-  legacyUserRoleForNewMember,
 } from '@modules/organizations/organization.constants';
 import { WalletsService } from '@modules/wallets/wallets.service';
 import { AuthService } from '@modules/auth/auth.service';
@@ -97,10 +96,15 @@ export interface InvitationAcceptedContext {
   membershipId: string;
 }
 
-/** Gancho de aceptación (p. ej. la parte B activa la bodega del dueño). */
+/**
+ * Gancho de aceptación (p. ej. activar la bodega del dueño o completar una
+ * transferencia de titularidad). Corre en la transacción de la aceptación;
+ * puede devolver una función que se ejecuta **después** de confirmarla (p. ej.
+ * revocar sesiones, que no deben quedar revocadas si la transacción falla).
+ */
 export type InvitationAcceptHook = (
   ctx: InvitationAcceptedContext,
-) => Promise<void>;
+) => Promise<void | (() => Promise<void>)>;
 
 export type AcceptOutcome =
   | { kind: 'session'; issued: IssuedSession }
@@ -474,93 +478,105 @@ export class InvitationsService {
       passwordHash = await bcrypt.hash(dto.password!, PASSWORD_BCRYPT_ROUNDS);
     }
 
-    const userId = await this.prisma.$transaction(async (tx) => {
-      let uid: string;
-      if (existing) {
-        uid = existing.id;
-      } else {
-        const created = await tx.user.create({
+    const { userId, afterCommit } = await this.prisma.$transaction(
+      async (tx) => {
+        const afterCommit: (() => Promise<void>)[] = [];
+        let uid: string;
+        if (existing) {
+          uid = existing.id;
+        } else {
+          const created = await tx.user.create({
+            data: {
+              email: invitation.email,
+              fullName: fullName!,
+              passwordHash: passwordHash!,
+              // El enlace llegó a ese buzón
+              emailVerifiedAt: new Date(),
+              isActive: true,
+            },
+          });
+          uid = created.id;
+          await this.wallets.provisionUserWallet(
+            uid,
+            WalletPurposeEnum.CONSUMER_NFT,
+            tx,
+          );
+          await this.audit.record(tx, {
+            action: AuditAction.USER_CREATED,
+            resource: { type: 'user', id: uid },
+            actor: { userId: uid, fullName: created.fullName },
+            organizationId: organization.id,
+            after: { email: created.email, via: 'INVITATION' },
+          });
+        }
+
+        const accepted = await tx.invitation.updateMany({
+          where: {
+            id: invitation.id,
+            status: InvitationStatusEnum.PENDING,
+            expiresAt: { gt: new Date() },
+          },
           data: {
-            email: invitation.email,
-            fullName: fullName!,
-            passwordHash: passwordHash!,
-            userRole:
-              organization.type === OrganizationTypeEnum.PLATFORM
-                ? 'PLATFORM_ADMIN'
-                : isRoleValidForType('WINERY', invitation.role)
-                  ? legacyUserRoleForNewMember(
-                      invitation.role as WineryMemberRoleEnum,
-                    )
-                  : 'CONSUMER',
-            // El enlace llegó a ese buzón
-            emailVerifiedAt: new Date(),
-            isActive: true,
+            status: InvitationStatusEnum.ACCEPTED,
+            acceptedAt: new Date(),
+            acceptedByUserId: uid,
           },
         });
-        uid = created.id;
-        await this.wallets.provisionUserWallet(
-          uid,
-          WalletPurposeEnum.CONSUMER_NFT,
-          tx,
-        );
+        if (accepted.count === 0) {
+          throw new AppException(
+            409,
+            ErrorCode.INVITATION_NOT_PENDING,
+            'La invitación ya no está pendiente',
+          );
+        }
+        const membershipId = await this.join(tx, invitation, uid);
         await this.audit.record(tx, {
-          action: AuditAction.USER_CREATED,
-          resource: { type: 'user', id: uid },
-          actor: { userId: uid, fullName: created.fullName },
+          action: AuditAction.INVITATION_ACCEPTED,
+          resource: { type: 'invitation', id: invitation.id },
+          actor: {
+            userId: uid,
+            role: invitation.role,
+            organizationId: organization.id,
+            viaPlatform: false,
+          },
           organizationId: organization.id,
-          after: { email: created.email, via: 'INVITATION' },
         });
-      }
-
-      const accepted = await tx.invitation.updateMany({
-        where: {
-          id: invitation.id,
-          status: InvitationStatusEnum.PENDING,
-          expiresAt: { gt: new Date() },
-        },
-        data: {
-          status: InvitationStatusEnum.ACCEPTED,
-          acceptedAt: new Date(),
-          acceptedByUserId: uid,
-        },
-      });
-      if (accepted.count === 0) {
-        throw new AppException(
-          409,
-          ErrorCode.INVITATION_NOT_PENDING,
-          'La invitación ya no está pendiente',
+        await this.audit.record(tx, {
+          action: AuditAction.MEMBER_JOINED,
+          resource: { type: 'membership', id: membershipId },
+          actor: {
+            userId: uid,
+            role: invitation.role,
+            organizationId: organization.id,
+            viaPlatform: false,
+          },
+          organizationId: organization.id,
+          after: { role: invitation.role, purpose: invitation.purpose },
+        });
+        for (const hook of this.acceptHooks) {
+          const after = await hook({
+            tx,
+            invitation,
+            organization,
+            userId: uid,
+            membershipId,
+          });
+          if (after) afterCommit.push(after);
+        }
+        return { userId: uid, afterCommit };
+      },
+      AUDIT_TX_OPTIONS,
+    );
+    this.logger.log(`Invitación ${invitation.id} aceptada por ${userId}`);
+    for (const after of afterCommit) {
+      try {
+        await after();
+      } catch (error) {
+        this.logger.error(
+          `Tras aceptar la invitación ${invitation.id}: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
-      const membershipId = await this.join(tx, invitation, uid);
-      await this.audit.record(tx, {
-        action: AuditAction.INVITATION_ACCEPTED,
-        resource: { type: 'invitation', id: invitation.id },
-        actor: {
-          userId: uid,
-          role: invitation.role,
-          organizationId: organization.id,
-          viaPlatform: false,
-        },
-        organizationId: organization.id,
-      });
-      await this.audit.record(tx, {
-        action: AuditAction.MEMBER_JOINED,
-        resource: { type: 'membership', id: membershipId },
-        actor: {
-          userId: uid,
-          role: invitation.role,
-          organizationId: organization.id,
-          viaPlatform: false,
-        },
-        organizationId: organization.id,
-        after: { role: invitation.role, purpose: invitation.purpose },
-      });
-      for (const hook of this.acceptHooks) {
-        await hook({ tx, invitation, organization, userId: uid, membershipId });
-      }
-      return uid;
-    }, AUDIT_TX_OPTIONS);
-    this.logger.log(`Invitación ${invitation.id} aceptada por ${userId}`);
+    }
 
     // Plataforma: siempre con el segundo factor (inscribirlo si es nueva)
     if (organization.type === OrganizationTypeEnum.PLATFORM) {
@@ -752,10 +768,24 @@ export class InvitationsService {
     }
   }
 
+  /**
+   * Comprueba el cupo antes de sumar una persona activa al equipo de una
+   * bodega fuera de una invitación (p. ej. desbloquear a un miembro), bajo el
+   * mismo candado por organización que las invitaciones.
+   */
+  async assertCapacityForMember(
+    tx: Prisma.TransactionClient,
+    organizationId: string,
+  ): Promise<void> {
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${orgLockKey(organizationId)})`;
+    await this.assertTeamCapacity(tx, organizationId, new Date(), null);
+  }
+
   private async assertTeamCapacity(
     tx: Prisma.TransactionClient,
     organizationId: string,
     now: Date,
+    field: string | null = 'email',
   ): Promise<void> {
     const limit = await this.settings.effective<number | null>(
       TEAM_LIMIT_SETTING,
@@ -770,7 +800,7 @@ export class InvitationsService {
         422,
         ErrorCode.ORG_MEMBER_LIMIT_REACHED,
         `La bodega alcanzó su límite de ${limit} colaboradores (miembros activos + invitaciones pendientes)`,
-        [{ field: 'email', message: `Límite de ${limit} colaboradores` }],
+        [{ field, message: `Límite de ${limit} colaboradores` }],
       );
     }
   }

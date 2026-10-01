@@ -20,6 +20,7 @@ import {
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { ValidationException } from '@shared/exceptions/validation.exception';
+import { ensureLotPrefix } from '@modules/wineries/winery-codes';
 
 @Injectable()
 export class BottlingService {
@@ -89,11 +90,14 @@ export class BottlingService {
       );
     }
 
-    // 2. Generación de Código Internacional de Lote
+    // 2. Generación de Código Internacional de Lote con el prefijo único de
+    // la bodega (ORG-05; cierra la colisión de prefijos de EA-07). Una bodega
+    // activa antes de la Ola 1 sin prefijo recibe el suyo aquí. La secuencia
+    // sin carreras (contador por bodega y año) llega con la Etapa 2 (EA-07).
     const bottlingYear = new Date(dto.bottlingDate).getFullYear();
-    const wineryCode = (
-      winery.commercialName.replace(/[^a-zA-Z0-9]/g, '').slice(0, 3) || 'DOC'
-    ).toUpperCase();
+    const wineryCode =
+      winery.lotPrefix ??
+      (await this.prisma.$transaction((tx) => ensureLotPrefix(tx, winery)));
 
     const existingCount = await this.prisma.bottlingBatch.count({
       where: { wineryId },

@@ -142,7 +142,7 @@ export class PublicInvitationsController {
       token,
       dto,
       req.user ?? null,
-      readRefreshToken(req, undefined),
+      readRefreshToken(req),
       clientInfo(req),
     );
     if (outcome.kind === 'mfa') {

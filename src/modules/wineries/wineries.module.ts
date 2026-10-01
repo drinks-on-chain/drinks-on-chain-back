@@ -2,34 +2,14 @@ import { Module } from '@nestjs/common';
 import { WineriesController } from './wineries.controller';
 import { WineriesService } from './wineries.service';
 import { WineryRepository } from './repositories/winery.repository';
-import { WineryMemberRepository } from './repositories/winery-member.repository';
-import { OnchainProducerHook } from './hooks/onchain-producer.hook';
-import { WalletsModule } from '@modules/wallets/wallets.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { AuthModule } from '@modules/auth/auth.module';
-import { OutboxModule } from '@shared/outbox/outbox.module';
 import { OrganizationsModule } from '@modules/organizations/organizations.module';
 
 @Module({
-  imports: [
-    PrismaModule,
-    WalletsModule,
-    AuthModule,
-    OutboxModule,
-    OrganizationsModule,
-  ],
+  imports: [PrismaModule, AuthModule, OrganizationsModule],
   controllers: [WineriesController],
-  providers: [
-    WineriesService,
-    WineryRepository,
-    WineryMemberRepository,
-    OnchainProducerHook,
-  ],
-  exports: [
-    WineriesService,
-    WineryRepository,
-    WineryMemberRepository,
-    OnchainProducerHook,
-  ],
+  providers: [WineriesService, WineryRepository],
+  exports: [WineriesService, WineryRepository],
 })
 export class WineriesModule {}

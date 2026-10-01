@@ -1,9 +1,4 @@
-import {
-  MembershipRoleEnum,
-  OrganizationTypeEnum,
-  UserRoleEnum,
-  WineryMemberRoleEnum,
-} from '@prisma/client';
+import { MembershipRoleEnum, OrganizationTypeEnum } from '@prisma/client';
 
 /**
  * Organización de plataforma (Drinks on Chain). Id fijo: lo crea la migración
@@ -57,43 +52,3 @@ export const ORGANIZATION_TYPE_PRIORITY: Record<OrganizationType, number> = {
   WINERY: 1,
   PICKUP_POINT: 2,
 };
-
-/**
- * `userRole` de compatibilidad (claim y `user.userRole`, *retirada* en H1)
- * equivalente al rol en la organización activa. Solo informa: la autorización
- * usa la membresía.
- */
-export function legacyUserRoleFor(
-  organizationType: OrganizationType | null,
-  role: MembershipRole | null,
-  storedUserRole: UserRoleEnum,
-): UserRoleEnum {
-  if (organizationType === 'PLATFORM') {
-    return UserRoleEnum.PLATFORM_ADMIN;
-  }
-  if (organizationType === 'WINERY' && role) {
-    const byRole: Partial<Record<MembershipRole, UserRoleEnum>> = {
-      OWNER: UserRoleEnum.WINERY_ADMIN,
-      ENOLOGIST: UserRoleEnum.ENOLOGIST,
-      AGRONOMIST: UserRoleEnum.AGRONOMIST,
-    };
-    return byRole[role] ?? storedUserRole;
-  }
-  return storedUserRole;
-}
-
-/**
- * `userRole` que se guarda al crear una cuenta nueva desde una bodega
- * (`members/create`). Solo para cuentas nuevas: ninguna ruta de una bodega
- * modifica el de una cuenta existente (SE-01).
- */
-export function legacyUserRoleForNewMember(
-  memberRole: WineryMemberRoleEnum,
-): UserRoleEnum {
-  const byRole: Partial<Record<WineryMemberRoleEnum, UserRoleEnum>> = {
-    [WineryMemberRoleEnum.OWNER]: UserRoleEnum.WINERY_ADMIN,
-    [WineryMemberRoleEnum.ENOLOGIST]: UserRoleEnum.ENOLOGIST,
-    [WineryMemberRoleEnum.AGRONOMIST]: UserRoleEnum.AGRONOMIST,
-  };
-  return byRole[memberRole] ?? UserRoleEnum.CONSUMER;
-}

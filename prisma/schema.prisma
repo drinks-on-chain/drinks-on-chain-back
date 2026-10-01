@@ -259,20 +259,6 @@ model EmailMessage {
 // -----------------------------------------------------------------------------
 // ENUMS DE IDENTIDAD, BODEGAS Y WALLETS (FASE 3)
 // -----------------------------------------------------------------------------
-/// Obsoleto (se retira al cierre de la Ola 1, H1): la autorización usa las
-/// membresías (`memberships`). Solo se conserva para las respuestas y claims
-/// de compatibilidad.
-enum UserRoleEnum {
-  PLATFORM_ADMIN
-  WINERY_ADMIN
-  ENOLOGIST
-  AGRONOMIST
-  CONSUMER
-  POS_OPERATOR
-
-  @@map("user_role_enum")
-}
-
 enum WineryCategoryEnum {
   WINERY
   BREWERY
@@ -469,45 +455,44 @@ enum BeverageTypeEnum {
 // ENTIDADES DE IDENTIDAD Y ACCESO (FASE 3)
 // -----------------------------------------------------------------------------
 model User {
-  id                  String       @id @default(uuid()) @db.Uuid
-  email               String       @unique @db.VarChar(255)
-  phoneNumber         String?      @unique @map("phone_number") @db.VarChar(20)
-  passwordHash        String       @map("password_hash") @db.VarChar(255)
-  fullName            String       @map("full_name") @db.VarChar(200)
-  /// Obsoleto (H1): rol global de 0.1; ya no autoriza nada.
-  userRole            UserRoleEnum @map("user_role")
-  dynamicUserId       String?      @unique @map("dynamic_user_id") @db.VarChar(200)
-  preferredLocale     String       @default("es") @map("preferred_locale") @db.Char(2)
-  isActive            Boolean      @default(true) @map("is_active")
-  lastLoginAt         DateTime?    @map("last_login_at") @db.Timestamptz(6)
+  id                  String    @id @default(uuid()) @db.Uuid
+  email               String    @unique @db.VarChar(255)
+  phoneNumber         String?   @unique @map("phone_number") @db.VarChar(20)
+  passwordHash        String    @map("password_hash") @db.VarChar(255)
+  fullName            String    @map("full_name") @db.VarChar(200)
+  dynamicUserId       String?   @unique @map("dynamic_user_id") @db.VarChar(200)
+  preferredLocale     String    @default("es") @map("preferred_locale") @db.Char(2)
+  isActive            Boolean   @default(true) @map("is_active")
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(6)
   /// Última organización activa elegida (la de por defecto al iniciar sesión).
-  lastOrganizationId  String?      @map("last_organization_id") @db.Uuid
+  lastOrganizationId  String?   @map("last_organization_id") @db.Uuid
   /// Correo comprobado (enlace de verificación, invitación o recuperación).
-  emailVerifiedAt     DateTime?    @map("email_verified_at") @db.Timestamptz(6)
+  emailVerifiedAt     DateTime? @map("email_verified_at") @db.Timestamptz(6)
   /// Preferencias de comunicación (IAM-09): `{ lotProgress, redemptionReminders }`.
-  notificationPrefs   Json         @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
+  notificationPrefs   Json      @default("{\"lotProgress\": true, \"redemptionReminders\": true}") @map("notification_prefs") @db.JsonB
   /// Consentimiento de promociones con su fecha (null = no aceptado).
-  promotionsConsentAt DateTime?    @map("promotions_consent_at") @db.Timestamptz(6)
+  promotionsConsentAt DateTime? @map("promotions_consent_at") @db.Timestamptz(6)
   /// Bloqueo de la cuenta completa por la plataforma (`is_active = false`).
-  blockedReason       String?      @map("blocked_reason") @db.VarChar(500)
-  blockedAt           DateTime?    @map("blocked_at") @db.Timestamptz(6)
-  createdAt           DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt           DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  blockedReason       String?   @map("blocked_reason") @db.VarChar(500)
+  blockedAt           DateTime? @map("blocked_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
-  lastOrganization         Organization?     @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
+  lastOrganization         Organization?       @relation("UserLastOrganization", fields: [lastOrganizationId], references: [id], onDelete: SetNull)
   memberships              Membership[]
   sessions                 Session[]
-  /// Obsoleto (H1): perfil del miembro en la bodega; la autorización usa `memberships`.
+  /// Perfil del miembro en cada bodega (matrícula, autoría); la autorización usa `memberships`.
   wineryMemberships        WineryMember[]
   wallets                  UserWallet[]
-  approvedWineries         Winery[]          @relation("ApprovedByUser")
+  approvedWineries         Winery[]            @relation("ApprovedByUser")
   recordedFermentationLogs FermentationLog[]
   accountTokens            AccountToken[]
   mfa                      UserMfa?
   mfaRecoveryCodes         MfaRecoveryCode[]
   mfaChallenges            MfaChallenge[]
-  invitationsSent          Invitation[]      @relation("InvitationInvitedBy")
+  invitationsSent          Invitation[]        @relation("InvitationInvitedBy")
+  assignedApplications     WineryApplication[] @relation("WineryApplicationAssignee")
 
   @@map("users")
 }
@@ -533,11 +518,22 @@ model Winery {
   certificationStatus   WineryStatusEnum   @default(INVITED) @map("certification_status")
   approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(6)
   approvedByUserId      String?            @map("approved_by_user_id") @db.Uuid
+  /// Ruta pública (`/v1/public/wineries/{slug}`): única y estable (no cambia al renombrar).
+  slug                  String?            @unique @db.VarChar(120)
+  /// Prefijo del código de lote (ORG-05): 3–5 letras, único y definitivo; se asigna al activarse.
+  lotPrefix             String?            @unique @map("lot_prefix") @db.VarChar(5)
+  /// Primera activación (el dueño aceptó su invitación).
+  activatedAt           DateTime?          @map("activated_at") @db.Timestamptz(6)
+  publicStory           String?            @map("public_story") @db.Text
+  website               String?            @db.VarChar(500)
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
-  approvedByUser    User?              @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  approvedByUser    User?                @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  /// Solicitud de alta aprobada que la creó (camino A).
+  application       WineryApplication?
+  statusChanges     WineryStatusChange[]
   /// Organización de la bodega (enlace 1:1, mismo id).
   organization      Organization?
   members           WineryMember[]
@@ -577,7 +573,7 @@ model Organization {
 
 /// Membresía de una persona en una organización con su rol (EQP-01, EQP-09).
 /// En las bodegas, el id coincide con el de `winery_members` (autoría de la
-/// trazabilidad), que se mantiene en paralelo hasta H1.
+/// trazabilidad y matrícula), que se mantiene en paralelo.
 model Membership {
   id             String                   @id @default(uuid()) @db.Uuid
   userId         String                   @map("user_id") @db.Uuid
@@ -759,9 +755,113 @@ model Invitation {
   @@map("invitations")
 }
 
-/// Obsoleto (H1): perfil del miembro en la bodega (matrícula) y autoría de la
-/// trazabilidad. La autorización usa `memberships` (mismo id); `is_active` se
-/// mantiene sincronizado con `memberships.status`.
+// -----------------------------------------------------------------------------
+// SOLICITUDES DE ALTA Y ESTADO DE LAS BODEGAS (Ola 1 · 1.3–1.5; contrato O1 §3–§4)
+// docs/arquitectura/organizaciones.md. Del token de verificación solo se guarda
+// el SHA-256.
+// -----------------------------------------------------------------------------
+enum WineryApplicationStatusEnum {
+  UNVERIFIED
+  RECEIVED
+  IN_REVIEW
+  MEETING_SCHEDULED
+  APPROVED
+  REJECTED
+
+  @@map("winery_application_status_enum")
+}
+
+enum MeetingChannelEnum {
+  CALL
+  VIDEO
+  IN_PERSON
+
+  @@map("meeting_channel_enum")
+}
+
+/// Solicitud de alta de una bodega desde el formulario público (ORG-01, ORG-02).
+model WineryApplication {
+  id                 String                      @id @default(uuid()) @db.Uuid
+  status             WineryApplicationStatusEnum @default(UNVERIFIED)
+  legalName          String                      @map("legal_name") @db.VarChar(300)
+  tradeName          String                      @map("trade_name") @db.VarChar(300)
+  /// NIT (solo dígitos).
+  taxId              String                      @map("tax_id") @db.VarChar(20)
+  category           WineryCategoryEnum
+  region             String                      @db.VarChar(120)
+  contactName        String                      @map("contact_name") @db.VarChar(200)
+  contactEmail       String                      @map("contact_email") @db.VarChar(255)
+  contactPhone       String?                     @map("contact_phone") @db.VarChar(30)
+  message            String?                     @db.Text
+  /// Enlace de verificación del correo de contacto (hash; se borra al usarlo).
+  verifyTokenHash    String?                     @unique @map("verify_token_hash") @db.Char(64)
+  verifyExpiresAt    DateTime?                   @map("verify_expires_at") @db.Timestamptz(6)
+  verifiedAt         DateTime?                   @map("verified_at") @db.Timestamptz(6)
+  /// IP real del envío (límite por IP).
+  submittedIp        String?                     @map("submitted_ip") @db.VarChar(64)
+  assigneeUserId     String?                     @map("assignee_user_id") @db.Uuid
+  assigneeName       String?                     @map("assignee_name") @db.VarChar(200)
+  meetingScheduledAt DateTime?                   @map("meeting_scheduled_at") @db.Timestamptz(6)
+  meetingChannel     MeetingChannelEnum?         @map("meeting_channel")
+  meetingNotes       String?                     @map("meeting_notes") @db.Text
+  decisionByUserId   String?                     @map("decision_by_user_id") @db.Uuid
+  decisionByName     String?                     @map("decision_by_name") @db.VarChar(200)
+  decidedAt          DateTime?                   @map("decided_at") @db.Timestamptz(6)
+  decisionReason     String?                     @map("decision_reason") @db.Text
+  /// Bodega creada al aprobarla.
+  wineryId           String?                     @unique @map("winery_id") @db.Uuid
+  createdAt          DateTime                    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime                    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  assignee User?                   @relation("WineryApplicationAssignee", fields: [assigneeUserId], references: [id], onDelete: SetNull)
+  winery   Winery?                 @relation(fields: [wineryId], references: [id], onDelete: SetNull)
+  notes    WineryApplicationNote[]
+
+  @@index([status, createdAt])
+  @@index([taxId])
+  @@index([contactEmail, createdAt])
+  @@index([submittedIp, createdAt])
+  @@index([assigneeUserId])
+  @@map("winery_applications")
+}
+
+/// Nota interna de operaciones sobre una solicitud (también la de la reunión hecha).
+model WineryApplicationNote {
+  id            String   @id @default(uuid()) @db.Uuid
+  applicationId String   @map("application_id") @db.Uuid
+  text          String   @db.Text
+  authorUserId  String?  @map("author_user_id") @db.Uuid
+  authorName    String   @map("author_name") @db.VarChar(200)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  application WineryApplication @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+  @@map("winery_application_notes")
+}
+
+/// Historial de estados de una bodega (`statusHistory` de la ficha, contrato O1 §4).
+model WineryStatusChange {
+  id        String           @id @default(uuid()) @db.Uuid
+  wineryId  String           @map("winery_id") @db.Uuid
+  status    WineryStatusEnum
+  changedAt DateTime         @default(now()) @map("changed_at") @db.Timestamptz(6)
+  byUserId  String?          @map("by_user_id") @db.Uuid
+  /// Nombre de quien hizo el cambio (el dueño al activarse; "Sistema" en los anteriores a la Ola 1).
+  byName    String           @map("by_name") @db.VarChar(200)
+  reason    String?          @db.Text
+
+  winery Winery @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+
+  @@index([wineryId, changedAt])
+  @@map("winery_status_changes")
+}
+
+/// Perfil del miembro en la bodega (matrícula) y autoría de la trazabilidad
+/// (claves foráneas de vendimia, tratamientos, embotellado y laboratorio). No
+/// autoriza nada: la autorización usa `memberships` (mismo id); `member_role` e
+/// `is_active` se mantienen sincronizados con ella. Se conservó en la retirada
+/// de H1 por esas claves foráneas.
 model WineryMember {
   id                        String               @id @default(uuid()) @db.Uuid
   userId                    String               @map("user_id") @db.Uuid

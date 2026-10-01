@@ -35,6 +35,9 @@ import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { CaptchaModule } from './shared/captcha/captcha.module';
 import { InvitationsModule } from './modules/invitations/invitations.module';
 import { PlatformUsersModule } from './modules/platform-users/platform-users.module';
+import { WineryManagementModule } from './modules/winery-management/winery-management.module';
+import { WineryApplicationsModule } from './modules/winery-applications/winery-applications.module';
+import { TeamModule } from './modules/team/team.module';
 
 @Module({
   imports: [
@@ -67,6 +70,9 @@ import { PlatformUsersModule } from './modules/platform-users/platform-users.mod
     DashboardModule,
     InvitationsModule,
     PlatformUsersModule,
+    WineryManagementModule,
+    WineryApplicationsModule,
+    TeamModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →

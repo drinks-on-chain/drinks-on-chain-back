@@ -4,7 +4,6 @@ import {
   OrganizationStatusEnum,
   OrganizationTypeEnum,
   PrismaClient,
-  UserRoleEnum,
 } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import * as request from 'supertest';
@@ -123,7 +122,6 @@ export async function createPlatformUser(
       email: params.email,
       passwordHash: await bcrypt.hash(params.password, 4),
       fullName: params.fullName ?? 'Personal de plataforma',
-      userRole: UserRoleEnum.PLATFORM_ADMIN,
       isActive: true,
     },
   });

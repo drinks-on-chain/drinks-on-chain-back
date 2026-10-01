@@ -23,6 +23,10 @@ export const RevocationReason = {
   USER_BLOCKED: 'USER_BLOCKED',
   MEMBERSHIP_BLOCKED: 'MEMBERSHIP_BLOCKED',
   ORGANIZATION_REVOKED: 'ORGANIZATION_REVOKED',
+  /** Bodega suspendida por la plataforma (vuelven a entrar y ven ORG_NOT_ACTIVE). */
+  ORGANIZATION_SUSPENDED: 'ORGANIZATION_SUSPENDED',
+  /** Titularidad de la bodega transferida (el dueño anterior cambia de rol). */
+  OWNERSHIP_TRANSFERRED: 'OWNERSHIP_TRANSFERRED',
   /** Sesión de plataforma sin segundo factor (abierta antes de exigirlo). */
   MFA_REQUIRED: 'MFA_REQUIRED',
   MFA_RESET: 'MFA_RESET',

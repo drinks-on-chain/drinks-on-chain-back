@@ -1,5 +1,5 @@
-import { ConflictException, ForbiddenException } from '@nestjs/common';
-import { AudienceEnum, UserRoleEnum } from '@prisma/client';
+import { ConflictException } from '@nestjs/common';
+import { AudienceEnum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { WalletsService } from '@modules/wallets/wallets.service';
@@ -40,7 +40,6 @@ const baseUser = {
   fullName: 'Dueña',
   phoneNumber: null,
   preferredLocale: 'es',
-  userRole: UserRoleEnum.WINERY_ADMIN,
   isActive: true,
   lastOrganizationId: null as string | null,
   passwordHash: '',
@@ -141,9 +140,6 @@ describe('AuthService', () => {
           phoneNumber: null,
           preferredLocale: 'es',
           audience: 'STAFF',
-          userRole: UserRoleEnum.WINERY_ADMIN,
-          wineryId: WINERY_A,
-          memberRole: 'OWNER',
         },
         memberships: expect.any(Array),
         activeOrganizationId: WINERY_A,
@@ -151,9 +147,10 @@ describe('AuthService', () => {
           accessToken: 'signed.access.token',
           tokenType: 'Bearer',
           expiresIn: 900,
-          refreshToken: `${SID}.0.secret`,
         },
       });
+      // El refresco solo va en la cookie (H1)
+      expect(issued.refreshToken).toBe(`${SID}.0.secret`);
       expect(issued.cookieMaxAgeSeconds).toBe(7 * 86400);
       expect(accessTokens.sign).toHaveBeenCalledWith({
         sub: 'user-1',
@@ -162,10 +159,6 @@ describe('AuthService', () => {
         orgType: 'WINERY',
         role: 'OWNER',
         sid: SID,
-        email: 'duena@bodega.bo',
-        userRole: UserRoleEnum.WINERY_ADMIN,
-        wineryId: WINERY_A,
-        memberRole: 'OWNER',
       });
       expect(loginAttempts.recordSuccess).toHaveBeenCalledWith(
         'duena@bodega.bo',
@@ -188,15 +181,15 @@ describe('AuthService', () => {
       );
 
       expect(issued.body.activeOrganizationId).toBe(WINERY_B);
-      expect(issued.body.user.memberRole).toBe('ENOLOGIST');
-      expect(issued.body.user.userRole).toBe(UserRoleEnum.ENOLOGIST);
+      expect(
+        issued.body.memberships.find(
+          (m) => m.organizationId === issued.body.activeOrganizationId,
+        )?.role,
+      ).toBe('ENOLOGIST');
     });
 
     it('consumidor: audiencia CONSUMER, sin organización y 30 días', async () => {
-      prisma.user.findUnique.mockResolvedValue({
-        ...baseUser,
-        userRole: UserRoleEnum.CONSUMER,
-      });
+      prisma.user.findUnique.mockResolvedValue(baseUser);
       memberships.listForUser.mockResolvedValue([]);
 
       const issued = await loginSession(
@@ -304,7 +297,8 @@ describe('AuthService', () => {
         audience: AudienceEnum.STAFF,
         activeOrganizationId: WINERY_A,
       });
-      expect(issued.body.tokens.refreshToken).toBe(`${SID}.4.next`);
+      expect(issued.refreshToken).toBe(`${SID}.4.next`);
+      expect(issued.body.tokens).not.toHaveProperty('refreshToken');
       expect(revocations.saveGraceAccess).toHaveBeenCalledWith(
         SID,
         4,
@@ -608,10 +602,7 @@ describe('AuthService', () => {
   describe('signup', () => {
     it('registra y abre una sesión de consumidor', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
-      prisma.user.create.mockResolvedValue({
-        ...baseUser,
-        userRole: UserRoleEnum.CONSUMER,
-      });
+      prisma.user.create.mockResolvedValue(baseUser);
 
       const issued = await service.signup(
         {
@@ -623,11 +614,16 @@ describe('AuthService', () => {
       );
 
       expect(issued.body.user.audience).toBe('CONSUMER');
+      expect(issued.body.user).not.toHaveProperty('userRole');
       expect(issued.body.memberships).toEqual([]);
       expect(wallets.provisionUserWallet).toHaveBeenCalled();
+      // Sin rol global: solo los datos de la cuenta
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.not.objectContaining({ userRole: expect.anything() }),
+      });
     });
 
-    it('rechaza correos repetidos y roles no públicos', async () => {
+    it('rechaza correos repetidos', async () => {
       prisma.user.findUnique.mockResolvedValue({ id: 'x' });
       await expect(
         service.signup(
@@ -635,19 +631,6 @@ describe('AuthService', () => {
           client,
         ),
       ).rejects.toThrow(ConflictException);
-
-      prisma.user.findUnique.mockResolvedValue(null);
-      await expect(
-        service.signup(
-          {
-            email: 'a@x.bo',
-            password: 'Password123!',
-            fullName: 'A',
-            userRole: UserRoleEnum.PLATFORM_ADMIN,
-          },
-          client,
-        ),
-      ).rejects.toThrow(ForbiddenException);
     });
   });
 });

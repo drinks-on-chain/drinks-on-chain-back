@@ -75,7 +75,7 @@ export function selectDemoPeople(fx: MockFixtures): DemoPeople {
         reason: 'SUPERADMIN: el superusuario sale de SUPERADMIN_*',
       });
     } else {
-      skipped.push({ user, reason: `${user.userRole} sin organización` });
+      skipped.push({ user, reason: 'sin organización' });
     }
   }
   return { included, skipped };
@@ -134,7 +134,6 @@ export async function seedDemo(
         id: u.id,
         email: u.email,
         fullName: u.fullName,
-        userRole: u.userRole,
         phoneNumber: u.phoneNumber,
         preferredLocale: u.preferredLocale,
         isActive: u.isActive,

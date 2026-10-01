@@ -49,7 +49,16 @@ describe('session.config', () => {
     expect(settings.staffSessionTtlSeconds).toBe(7 * 86400);
     expect(settings.consumerSessionTtlSeconds).toBe(30 * 86400);
     expect(settings.refreshGraceSeconds).toBe(20);
-    expect(settings.enforceActiveOrganization).toBe(false);
+    // SE-05 activo por defecto desde la Ola 1; `false` lo deja en aviso
+    expect(settings.enforceActiveOrganization).toBe(true);
+    expect(
+      sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: false }))
+        .enforceActiveOrganization,
+    ).toBe(false);
+    expect(
+      sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: 'false' }))
+        .enforceActiveOrganization,
+    ).toBe(false);
     expect(
       sessionSettingsFromConfig(config({ FEATURE_ENFORCE_ACTIVE_ORG: true }))
         .enforceActiveOrganization,
@@ -80,12 +89,12 @@ describe('refresh-cookie', () => {
     ).toBe(true);
   });
 
-  it('lee doc_rt de la cabecera Cookie y, si falta, el cuerpo (compatibilidad)', () => {
+  it('lee el refresco solo de la cookie doc_rt (el cuerpo se retiró en H1)', () => {
     const withCookie = req({ cookie: 'a=1; doc_rt=abc.1.xyz; b=2' });
     expect(readCookie(withCookie, 'doc_rt')).toBe('abc.1.xyz');
-    expect(readRefreshToken(withCookie, 'del-cuerpo')).toBe('abc.1.xyz');
-    expect(readRefreshToken(req({}), ' del-cuerpo ')).toBe('del-cuerpo');
-    expect(readRefreshToken(req({}), undefined)).toBeNull();
+    expect(readRefreshToken(withCookie)).toBe('abc.1.xyz');
+    expect(readRefreshToken(req({ cookie: 'a=1' }))).toBeNull();
+    expect(readRefreshToken(req({}))).toBeNull();
   });
 });
 

@@ -1,14 +1,17 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { WalletPurposeEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { OutboxService } from '../src/shared/outbox/outbox.service';
 import { runWithCorrelationId } from '../src/shared/logging/correlation';
-import { WineriesService } from '../src/modules/wineries/wineries.service';
+import {
+  ActorRef,
+  WineryManagementService,
+} from '../src/modules/winery-management/winery-management.service';
+import { InvitationsService } from '../src/modules/invitations/invitations.service';
 import { MockDynamicWalletProvider } from '../src/modules/wallets/providers/mock-dynamic-wallet.provider';
-import { deleteIdentityData } from './helpers/identity';
+import { createPlatformUser, deleteIdentityData } from './helpers/identity';
 
 /** Proveedor simulado que puede fallar a propósito a mitad de la operación. */
 class FlakyWalletProvider extends MockDynamicWalletProvider {
@@ -23,27 +26,21 @@ class FlakyWalletProvider extends MockDynamicWalletProvider {
 /**
  * OP-01 y outbox con Postgres real: las operaciones de varios pasos son todo
  * o nada, y el evento del outbox existe solo si la transacción se confirma.
+ * Desde H1 la operación de referencia es aceptar la invitación del dueño
+ * (cuenta, billetera, membresía, activación y `winery.activated`); la
+ * autoinscripción y `members/create` se retiraron.
  */
 describe('Outbox y transacciones (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
   let outbox: OutboxService;
-  let wineries: WineriesService;
+  let management: WineryManagementService;
+  let invitations: InvitationsService;
+  let actor: ActorRef;
   const walletProvider = new FlakyWalletProvider();
 
   const run = `o0be3-${Date.now()}`;
-  const ownerEmail = `owner_${run}@test.bo`;
-  let ownerId: string;
   const createdWineryIds: string[] = [];
-
-  const wineryDto = (nit: string) => ({
-    legalName: `Bodega ${run} S.A.`,
-    commercialName: `Bodega ${run}`,
-    beverageCategory: WineryCategoryEnum.WINERY,
-    taxIdNit: nit,
-    geographicRegion: 'Tarija',
-    contactEmail: `contacto_${run}@test.bo`,
-  });
   const nit = (suffix: string) =>
     `E2E${Date.now().toString().slice(-8)}${suffix}`.slice(0, 20);
 
@@ -59,17 +56,15 @@ describe('Outbox y transacciones (e2e)', () => {
     await app.init();
     prisma = app.get(PrismaService);
     outbox = app.get(OutboxService);
-    wineries = app.get(WineriesService);
-
-    const owner = await prisma.user.create({
-      data: {
-        email: ownerEmail,
-        passwordHash: 'x',
-        fullName: 'Owner E2E',
-        userRole: 'CONSUMER',
-      },
+    management = app.get(WineryManagementService);
+    invitations = app.get(InvitationsService);
+    const staff = await createPlatformUser(prisma, {
+      email: `staff_${run}@test.bo`,
+      password: 'Password123!',
+      fullName: 'Operaciones E2E',
+      role: 'OPERATIONS',
     });
-    ownerId = owner.id;
+    actor = { userId: staff.id, fullName: staff.fullName };
   });
 
   afterEach(() => {
@@ -80,6 +75,16 @@ describe('Outbox y transacciones (e2e)', () => {
     if (prisma) {
       await prisma.outboxEvent.deleteMany({
         where: { correlationId: { startsWith: run } },
+      });
+      const mails = await prisma.emailMessage.findMany({
+        where: { toAddress: { contains: run } },
+        select: { id: true },
+      });
+      await prisma.outboxEvent.deleteMany({
+        where: { aggregateId: { in: mails.map((m) => m.id) } },
+      });
+      await prisma.emailMessage.deleteMany({
+        where: { id: { in: mails.map((m) => m.id) } },
       });
       await deleteIdentityData(prisma, {
         emailContains: run,
@@ -104,161 +109,129 @@ describe('Outbox y transacciones (e2e)', () => {
     await app?.close();
   });
 
-  it('createWinery confirma bodega, membresía, billetera y el evento winery.created', async () => {
-    const correlationId = `${run}-ok`;
-    const winery = await runWithCorrelationId(correlationId, () =>
-      wineries.createWinery(ownerId, wineryDto(nit('A'))),
+  /** Bodega INVITED con la invitación de su dueña (alta directa) y el token del correo. */
+  async function invitedWinery(suffix: string) {
+    const ownerEmail = `owner_${suffix}_${run}@test.bo`.toLowerCase();
+    const winery = await prisma.$transaction((tx) =>
+      management.createInvitedWinery(
+        tx,
+        {
+          legalName: `Bodega ${suffix} ${run} S.A.`,
+          tradeName: `Bodega ${suffix} ${run}`,
+          taxId: nit(suffix),
+          category: WineryCategoryEnum.WINERY,
+          region: 'Tarija',
+          contactEmail: ownerEmail,
+        },
+        actor,
+        null,
+      ),
     );
     createdWineryIds.push(winery.id);
+    await prisma.$transaction((tx) =>
+      management.inviteOwner(tx, {
+        wineryId: winery.id,
+        email: ownerEmail,
+        fullName: 'Dueña E2E',
+        actor,
+        reason: null,
+      }),
+    );
+    const mail = await prisma.emailMessage.findFirstOrThrow({
+      where: { toAddress: ownerEmail, template: 'invitacion' },
+      orderBy: { createdAt: 'desc' },
+    });
+    const link = (mail.variables as { enlace: string }).enlace;
+    const token = decodeURIComponent(
+      /invitacion\/([A-Za-z0-9_-]+)/.exec(link)![1],
+    );
+    return { wineryId: winery.id, ownerEmail, token };
+  }
 
-    expect(winery.stellarPublicKey).toMatch(/^G[A-Z0-9]{55}$/);
-    const membership = await prisma.wineryMember.findUnique({
-      where: { userId_wineryId: { userId: ownerId, wineryId: winery.id } },
-    });
-    expect(membership?.memberRole).toBe('OWNER');
-    // Organización de la bodega (mismo id) y membresía OWNER (mismo id que winery_members)
-    const organization = await prisma.organization.findUnique({
-      where: { id: winery.id },
-    });
-    expect(organization).toMatchObject({
-      type: 'WINERY',
-      status: 'INVITED',
-      wineryId: winery.id,
-    });
-    const orgMembership = await prisma.membership.findUnique({
-      where: {
-        userId_organizationId: { userId: ownerId, organizationId: winery.id },
-      },
-    });
-    expect(orgMembership).toMatchObject({
-      id: membership?.id,
-      role: 'OWNER',
-      status: 'ACTIVE',
+  const accept = (token: string) =>
+    invitations.accept(
+      token,
+      { fullName: 'Dueña E2E', password: 'Vendimia-Tarija-2026' },
+      null,
+      null,
+      { ip: '127.0.0.1', userAgent: 'e2e' },
+    );
+
+  it('aceptar la invitación del dueño confirma cuenta, billetera, membresía, activación y winery.activated', async () => {
+    const { wineryId, ownerEmail, token } = await invitedWinery('A');
+    const correlationId = `${run}-ok`;
+
+    await runWithCorrelationId(correlationId, () => accept(token));
+
+    const owner = await prisma.user.findUniqueOrThrow({
+      where: { email: ownerEmail },
     });
     const wallet = await prisma.userWallet.findFirst({
-      where: { wineryId: winery.id },
+      where: { userId: owner.id },
     });
-    expect(wallet?.stellarPublicAddress).toBe(winery.stellarPublicKey);
+    expect(wallet?.stellarPublicAddress).toMatch(/^G[A-Z0-9]{55}$/);
+    // Membresía OWNER y su espejo en winery_members (mismo id)
+    const membership = await prisma.membership.findUniqueOrThrow({
+      where: {
+        userId_organizationId: { userId: owner.id, organizationId: wineryId },
+      },
+    });
+    expect(membership).toMatchObject({ role: 'OWNER', status: 'ACTIVE' });
+    const member = await prisma.wineryMember.findUnique({
+      where: { userId_wineryId: { userId: owner.id, wineryId } },
+    });
+    expect(member).toMatchObject({ id: membership.id, memberRole: 'OWNER' });
+    const winery = await prisma.winery.findUniqueOrThrow({
+      where: { id: wineryId },
+    });
+    expect(winery.certificationStatus).toBe('ACTIVE');
+    expect(winery.lotPrefix).toMatch(/^[A-Z]{3,5}$/);
 
     const events = await prisma.outboxEvent.findMany({
-      where: { correlationId },
+      where: { correlationId, eventType: 'winery.activated' },
     });
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      eventType: 'winery.created',
       aggregateType: 'winery',
-      aggregateId: winery.id,
-      queue: 'chain',
-      payload: expect.objectContaining({
-        wineryId: winery.id,
-        ownerUserId: ownerId,
-        walletId: wallet?.id,
-      }),
-    });
-  });
-
-  it('createWinery que falla a mitad (billetera) no deja bodega, membresía ni evento', async () => {
-    const correlationId = `${run}-winery-fail`;
-    const taxIdNit = nit('B');
-    walletProvider.fail = true;
-
-    await expect(
-      runWithCorrelationId(correlationId, () =>
-        wineries.createWinery(ownerId, wineryDto(taxIdNit)),
-      ),
-    ).rejects.toThrow('fallo simulado del proveedor');
-
-    expect(await prisma.winery.count({ where: { taxIdNit } })).toBe(0);
-    expect(
-      await prisma.wineryMember.count({
-        where: { userId: ownerId, winery: { taxIdNit } },
-      }),
-    ).toBe(0);
-    expect(await prisma.outboxEvent.count({ where: { correlationId } })).toBe(
-      0,
-    );
-  });
-
-  it('createAndAddMember que falla a mitad (billetera) no deja el usuario', async () => {
-    const [winery] = createdWineryIds;
-    const correlationId = `${run}-member-wallet-fail`;
-    const email = `member_wallet_${run}@test.bo`;
-    walletProvider.fail = true;
-
-    await expect(
-      runWithCorrelationId(correlationId, () =>
-        wineries.createAndAddMember(winery, {
-          email,
-          password: 'Secreta123',
-          fullName: 'Miembro E2E',
-          memberRole: 'ENOLOGIST',
-        }),
-      ),
-    ).rejects.toThrow('fallo simulado del proveedor');
-
-    expect(await prisma.user.count({ where: { email } })).toBe(0);
-    expect(await prisma.outboxEvent.count({ where: { correlationId } })).toBe(
-      0,
-    );
-  });
-
-  it('createAndAddMember que falla en la membresía no deja usuario ni billetera', async () => {
-    const correlationId = `${run}-member-fk-fail`;
-    const email = `member_fk_${run}@test.bo`;
-
-    // Bodega inexistente: la membresía viola la clave foránea tras crear
-    // usuario y billetera en la misma transacción
-    await expect(
-      runWithCorrelationId(correlationId, () =>
-        wineries.createAndAddMember(randomUUID(), {
-          email,
-          password: 'Secreta123',
-          fullName: 'Miembro E2E',
-          memberRole: 'ENOLOGIST',
-        }),
-      ),
-    ).rejects.toThrow();
-
-    expect(await prisma.user.count({ where: { email } })).toBe(0);
-    expect(await prisma.userWallet.count({ where: { user: { email } } })).toBe(
-      0,
-    );
-    expect(await prisma.outboxEvent.count({ where: { correlationId } })).toBe(
-      0,
-    );
-  });
-
-  it('createAndAddMember confirma usuario, billetera, membresía y member.added', async () => {
-    const [wineryId] = createdWineryIds;
-    const correlationId = `${run}-member-ok`;
-    const email = `member_ok_${run}@test.bo`;
-
-    const member = await runWithCorrelationId(correlationId, () =>
-      wineries.createAndAddMember(wineryId, {
-        email,
-        password: 'Secreta123',
-        fullName: 'Miembro E2E',
-        memberRole: 'ENOLOGIST',
-      }),
-    );
-
-    expect(member.email).toBe(email);
-    const wallet = await prisma.userWallet.findFirst({
-      where: { userId: member.userId },
-    });
-    expect(wallet).not.toBeNull();
-    const [event] = await prisma.outboxEvent.findMany({
-      where: { correlationId },
-    });
-    expect(event).toMatchObject({
-      eventType: 'member.added',
       aggregateId: wineryId,
-      payload: expect.objectContaining({
-        userId: member.userId,
-        memberId: member.id,
-        walletId: wallet?.id,
-      }),
+      queue: 'chain',
     });
+  });
+
+  it('una aceptación que falla a mitad (billetera) no deja cuenta, membresía, activación ni evento', async () => {
+    const { wineryId, ownerEmail, token } = await invitedWinery('B');
+    const correlationId = `${run}-fail`;
+    walletProvider.fail = true;
+
+    await expect(
+      runWithCorrelationId(correlationId, () => accept(token)),
+    ).rejects.toThrow('fallo simulado del proveedor');
+
+    expect(await prisma.user.count({ where: { email: ownerEmail } })).toBe(0);
+    expect(
+      await prisma.membership.count({ where: { organizationId: wineryId } }),
+    ).toBe(0);
+    expect(await prisma.wineryMember.count({ where: { wineryId } })).toBe(0);
+    expect(
+      (await prisma.winery.findUniqueOrThrow({ where: { id: wineryId } }))
+        .certificationStatus,
+    ).toBe('INVITED');
+    expect(
+      await prisma.invitation.count({
+        where: { organizationId: wineryId, status: 'PENDING' },
+      }),
+    ).toBe(1);
+    expect(await prisma.outboxEvent.count({ where: { correlationId } })).toBe(
+      0,
+    );
+
+    // Tras el fallo, la misma invitación se puede aceptar
+    walletProvider.fail = false;
+    await accept(token);
+    expect(
+      (await prisma.winery.findUniqueOrThrow({ where: { id: wineryId } }))
+        .certificationStatus,
+    ).toBe('ACTIVE');
   });
 
   it('si la transacción se revierte, el evento no existe', async () => {

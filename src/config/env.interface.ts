@@ -34,6 +34,7 @@ export interface EnvironmentVariables {
   // Cuenta, segundo factor e invitaciones (contrato O1 §1–§2)
   MFA_ENCRYPTION_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;
+  APP_URL_BODEGAS?: string;
   APP_URL_ERP?: string;
   APP_URL_BACKOFFICE?: string;
   APP_URL_POS?: string;

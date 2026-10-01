@@ -9,9 +9,11 @@ import type { ClientApp } from '@shared/context/request-context';
  * pidió (`X-Client-App`). La URL base de cada app es configuración
  * (`APP_URL_*`); las rutas son las de los mocks (`docs/CONTRATO.md` §6).
  */
-export type LinkApp = 'ERP' | 'BACKOFFICE' | 'POS' | 'MARKETPLACE';
+export type LinkApp = 'ERP' | 'BACKOFFICE' | 'POS' | 'MARKETPLACE' | 'BODEGAS';
 
 export const DEFAULT_APP_URLS: Readonly<Record<LinkApp, string>> = {
+  /** Sitio de las bodegas (`bodegas.`): formulario `/unirse`. */
+  BODEGAS: 'http://localhost:3000',
   ERP: 'http://localhost:3002',
   BACKOFFICE: 'http://localhost:3003',
   POS: 'http://localhost:3004',
@@ -19,6 +21,7 @@ export const DEFAULT_APP_URLS: Readonly<Record<LinkApp, string>> = {
 };
 
 const ENV_BY_APP: Readonly<Record<LinkApp, string>> = {
+  BODEGAS: 'APP_URL_BODEGAS',
   ERP: 'APP_URL_ERP',
   BACKOFFICE: 'APP_URL_BACKOFFICE',
   POS: 'APP_URL_POS',
@@ -31,6 +34,13 @@ export const APP_LINK_PATHS = {
     `/restablecer-contrasena?token=${encodeURIComponent(token)}`,
   emailVerify: (token: string) =>
     `/verificar-correo?token=${encodeURIComponent(token)}`,
+  /** Sitio de bodegas: verificación del correo de una solicitud de alta. */
+  applicationVerify: (token: string) =>
+    `/unirse/verificar?token=${encodeURIComponent(token)}`,
+  /** Backoffice: detalle de una solicitud de alta. */
+  applicationDetail: (id: string) => `/solicitudes/${encodeURIComponent(id)}`,
+  /** Backoffice: ficha de una bodega. */
+  wineryDetail: (id: string) => `/bodegas/${encodeURIComponent(id)}`,
 } as const;
 
 /** App de los enlaces de una organización según su tipo. */
@@ -77,5 +87,18 @@ export class AppLinks {
 
   emailVerify(app: LinkApp, token: string): string {
     return `${this.bases[app]}${APP_LINK_PATHS.emailVerify(token)}`;
+  }
+
+  applicationVerify(token: string): string {
+    return `${this.bases.BODEGAS}${APP_LINK_PATHS.applicationVerify(token)}`;
+  }
+
+  applicationDetail(id: string): string {
+    return `${this.bases.BACKOFFICE}${APP_LINK_PATHS.applicationDetail(id)}`;
+  }
+
+  /** Inicio del ERP (la bodega entra con su cuenta). */
+  erpHome(): string {
+    return this.bases.ERP;
   }
 }

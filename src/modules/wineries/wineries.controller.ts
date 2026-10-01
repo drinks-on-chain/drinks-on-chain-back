@@ -1,14 +1,11 @@
 import {
   Controller,
   Get,
-  Post,
   Patch,
   Body,
-  Param,
   Query,
   HttpCode,
   HttpStatus,
-  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
@@ -17,37 +14,27 @@ import {
   ApiBearerAuth,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
-  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { WineriesService } from './wineries.service';
-import { CreateWineryDto } from './dto/create-winery.dto';
 import { UpdateWineryDto } from './dto/update-winery.dto';
-import { AddMemberDto } from './dto/add-member.dto';
-import { CreateMemberDto } from './dto/create-member.dto';
-import { ApproveWineryDto } from './dto/approve-winery.dto';
-import { RejectWineryDto } from './dto/reject-winery.dto';
 import { QueryWineriesDto } from './dto/query-wineries.dto';
-import {
-  WineryResponseDto,
-  WineryMemberItemDto,
-} from './dto/winery-response.dto';
+import { WineryResponseDto } from './dto/winery-response.dto';
 import {
   OrgType,
+  RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import {
-  CurrentUser,
-  AuthenticatedUser,
-} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
-import {
-  PaginationQueryDto,
-  WineryScopedPaginationQueryDto,
-} from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 
+/**
+ * Directorio (plataforma) y perfil de la bodega activa (0.1). La
+ * autoinscripción, `pending`/`approve`/`reject` y `my/members*` se retiraron
+ * al cerrar la Ola 1 (H1): los sustituyen `/v1/public/winery-applications`,
+ * `/v1/platform/*` y `/v1/organizations/current/*`.
+ */
 @ApiTags('Bodegas y Productores')
 @ApiBearerAuth()
 @Controller('wineries')
@@ -63,26 +50,6 @@ export class WineriesController {
       );
     }
     return tenantId;
-  }
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({
-    summary: 'Solicitar alta y registro de una nueva bodega',
-    description:
-      'Crea una bodega en estado INVITED con su organización, asocia al creador como OWNER y asigna una billetera custodial institucional. Para operar con ella, cambia la organización activa (`POST /v1/auth/switch-organization`) o renueva la sesión.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Bodega registrada exitosamente en estado INVITED',
-    type: WineryResponseDto,
-  })
-  @ApiConflictResponse({ description: 'El NIT ya se encuentra registrado' })
-  async createWinery(
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateWineryDto,
-  ): Promise<WineryResponseDto> {
-    return this.wineriesService.createWinery(user.id, dto);
   }
 
   @Get()
@@ -109,6 +76,7 @@ export class WineriesController {
   @Get('my')
   @HttpCode(HttpStatus.OK)
   @OrgType('WINERY')
+  @RequireActiveOrg({ allow: ['SUSPENDED'] })
   @ApiOperation({
     summary: 'Obtener datos institucionales de la bodega del usuario',
     description:
@@ -130,6 +98,7 @@ export class WineriesController {
   @HttpCode(HttpStatus.OK)
   @OrgType('WINERY')
   @Roles('OWNER')
+  @RequireActiveOrg()
   @ApiOperation({
     summary: 'Actualizar datos de la bodega',
     description:
@@ -148,153 +117,5 @@ export class WineriesController {
     @Body() dto: UpdateWineryDto,
   ): Promise<WineryResponseDto> {
     return this.wineriesService.updateMyWinery(tenantId, dto);
-  }
-
-  @Post('my/members')
-  @HttpCode(HttpStatus.CREATED)
-  @OrgType('WINERY')
-  @Roles('OWNER')
-  @ApiOperation({
-    summary: 'Incorporar un nuevo miembro operativo a la bodega',
-    description:
-      'Añade o reactiva la membresía de un usuario existente en **esta** bodega (enólogo, agrónomo, operario o contador). Nunca modifica su rol global ni sus membresías en otras organizaciones (SE-01).',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Miembro incorporado exitosamente',
-    type: WineryMemberItemDto,
-  })
-  @ApiConflictResponse({
-    description:
-      'ORG_ALREADY_MEMBER: el usuario ya es miembro activo de la bodega',
-  })
-  @ApiForbiddenResponse({
-    description:
-      'ORG_BLOCKED_BY_PLATFORM: la plataforma bloqueó esa membresía; el dueño no puede reactivarla',
-  })
-  @ApiNotFoundResponse({ description: 'El usuario no existe' })
-  async addMember(
-    @TenantId() tenantId: string,
-    @Body() dto: AddMemberDto,
-  ): Promise<WineryMemberItemDto> {
-    return this.wineriesService.addMember(tenantId, dto);
-  }
-
-  @Post('my/members/create')
-  @HttpCode(HttpStatus.CREATED)
-  @OrgType('WINERY')
-  @Roles('OWNER')
-  @ApiOperation({
-    summary:
-      'Registrar y dar de alta a un nuevo miembro operativo en la bodega',
-    description:
-      'Crea la cuenta de usuario, aprovisiona su billetera custodial y lo asocia a la bodega en un solo paso.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Miembro operativo creado e incorporado exitosamente',
-    type: WineryMemberItemDto,
-  })
-  @ApiConflictResponse({
-    description: 'El correo electrónico ya se encuentra registrado',
-  })
-  async createAndAddMember(
-    @TenantId() tenantId: string,
-    @Body() dto: CreateMemberDto,
-  ): Promise<WineryMemberItemDto> {
-    return this.wineriesService.createAndAddMember(tenantId, dto);
-  }
-
-  @Get('my/members')
-  @HttpCode(HttpStatus.OK)
-  @OrgType('WINERY')
-  @ApiOperation({
-    summary: 'Listar miembros operativos de la bodega',
-    description: 'Retorna la lista de miembros activos en la bodega actual.',
-  })
-  @ApiPaginatedResponse(WineryMemberItemDto, {
-    description: 'Página de miembros activos de la bodega',
-  })
-  async getMyMembers(
-    @TenantId() tenantId: string | undefined,
-    @Query() query: WineryScopedPaginationQueryDto,
-  ): Promise<Paginated<WineryMemberItemDto>> {
-    return this.wineriesService.getMyMembers(
-      this.requireTenant(tenantId),
-      query,
-    );
-  }
-
-  @Get('pending')
-  @HttpCode(HttpStatus.OK)
-  @OrgType('PLATFORM')
-  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS', 'SUPPORT')
-  @ApiOperation({
-    summary: 'Listar bodegas pendientes de aprobación (solo plataforma)',
-    description:
-      'Obtiene todas las solicitudes de bodegas en estado INVITED para revisión y certificación legal.',
-  })
-  @ApiForbiddenResponse({
-    description: 'Requiere la organización de plataforma activa',
-  })
-  @ApiPaginatedResponse(WineryResponseDto, {
-    description: 'Página de bodegas pendientes',
-  })
-  async getPendingWineries(
-    @Query() query: PaginationQueryDto,
-  ): Promise<Paginated<WineryResponseDto>> {
-    return this.wineriesService.getPendingWineries(query);
-  }
-
-  @Post(':id/approve')
-  @HttpCode(HttpStatus.OK)
-  @OrgType('PLATFORM')
-  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
-  @ApiOperation({
-    summary: 'Aprobar y certificar una bodega (solo plataforma)',
-    description:
-      'Cambia el estado de la bodega a ACTIVE y ejecuta el hook C-01 ProducerRegistry para registrarla on-chain.',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Bodega aprobada y registrada exitosamente',
-    type: WineryResponseDto,
-  })
-  @ApiForbiddenResponse({
-    description: 'Requiere la organización de plataforma activa',
-  })
-  @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
-  async approveWinery(
-    @Param('id', ParseUUIDPipe) wineryId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto?: ApproveWineryDto,
-  ): Promise<WineryResponseDto> {
-    return this.wineriesService.approveWinery(wineryId, user.id, dto);
-  }
-
-  @Post(':id/reject')
-  @HttpCode(HttpStatus.OK)
-  @OrgType('PLATFORM')
-  @Roles('SUPERADMIN', 'ADMIN', 'OPERATIONS')
-  @ApiOperation({
-    summary: 'Rechazar una solicitud de bodega (solo plataforma)',
-    description:
-      'Cambia el estado de la bodega a REJECTED registrando formalmente el motivo legal o técnico.',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Bodega rechazada exitosamente',
-    type: WineryResponseDto,
-  })
-  @ApiForbiddenResponse({
-    description: 'Requiere la organización de plataforma activa',
-  })
-  @ApiNotFoundResponse({ description: 'Bodega no encontrada' })
-  async rejectWinery(
-    @Param('id', ParseUUIDPipe) wineryId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: RejectWineryDto,
-  ): Promise<WineryResponseDto> {
-    return this.wineriesService.rejectWinery(wineryId, user.id, dto);
   }
 }

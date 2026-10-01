@@ -83,17 +83,19 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/harvest-batches',
       'GET /v1/organizations/current/audit',
       'GET /v1/organizations/current/invitations',
+      'GET /v1/organizations/current/members',
       'GET /v1/platform/audit',
       'GET /v1/platform/organizations/{organizationId}/invitations',
+      'GET /v1/platform/organizations/{organizationId}/members',
       'GET /v1/platform/settings/{key}/history',
       'GET /v1/platform/settings/{key}/overrides',
       'GET /v1/platform/users',
+      'GET /v1/platform/wineries',
+      'GET /v1/platform/winery-applications',
       'GET /v1/production-batches',
       'GET /v1/terroirs',
       'GET /v1/wine-aging',
       'GET /v1/wineries',
-      'GET /v1/wineries/my/members',
-      'GET /v1/wineries/pending',
     ];
 
     // Listas cortas y cerradas que el contrato fija como array sin paginar
@@ -156,6 +158,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/health/live',
       'GET /v1/health/ready',
       'GET /v1/invitations/{token}',
+      'GET /v1/public/wineries/{slug}',
       'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/forgot-password',
       'POST /v1/auth/login',
@@ -168,6 +171,8 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/auth/reset-password',
       'POST /v1/auth/signup',
       'POST /v1/auth/verify-email',
+      'POST /v1/public/winery-applications',
+      'POST /v1/public/winery-applications/verify',
     ];
     // Públicas que además aceptan una sesión (@OptionalAuth)
     const OPTIONAL_AUTH = ['POST /v1/invitations/{token}/accept'];
@@ -270,6 +275,62 @@ describe('Contrato OpenAPI (OPS-12)', () => {
     expect(header).toMatchObject({
       required: false,
       schema: { type: 'string', format: 'uuid' },
+    });
+  });
+
+  describe('retirada en H1 (contrato O1 §11, O0 §5)', () => {
+    const schema = (name: string) =>
+      document.components?.schemas?.[name] as SchemaObject;
+
+    it('no quedan rutas obsoletas ni operaciones deprecated', () => {
+      const retired = [
+        'POST /v1/wineries',
+        'GET /v1/wineries/pending',
+        'POST /v1/wineries/{id}/approve',
+        'POST /v1/wineries/{id}/reject',
+        'GET /v1/wineries/my/members',
+        'POST /v1/wineries/my/members',
+        'POST /v1/wineries/my/members/create',
+      ];
+      expect(ops.map(key).filter((k) => retired.includes(k))).toEqual([]);
+      expect(ops.filter((op) => op.deprecated).map(key)).toEqual([]);
+    });
+
+    it('la sesión no lleva el refresco en el cuerpo ni los campos de compatibilidad', () => {
+      expect(Object.keys(schema('AuthTokensDto').properties ?? {})).toEqual([
+        'accessToken',
+        'tokenType',
+        'expiresIn',
+      ]);
+      for (const name of ['AuthUserDto', 'MeUserDto']) {
+        const props = Object.keys(schema(name).properties ?? {});
+        expect({ name, props }).toEqual({
+          name,
+          props: expect.not.arrayContaining([
+            'userRole',
+            'wineryId',
+            'memberRole',
+          ]),
+        });
+      }
+    });
+
+    it('refresh, logout y switch-organization no aceptan el refresco en el cuerpo', () => {
+      for (const path of ['/v1/auth/refresh', '/v1/auth/logout']) {
+        expect({ path, body: document.paths[path].post?.requestBody }).toEqual({
+          path,
+          body: undefined,
+        });
+      }
+      expect(
+        Object.keys(schema('SwitchOrganizationDto').properties ?? {}),
+      ).toEqual(['organizationId']);
+    });
+
+    it('signup es solo para consumidores (sin userRole)', () => {
+      expect(Object.keys(schema('SignupDto').properties ?? {})).not.toContain(
+        'userRole',
+      );
     });
   });
 });

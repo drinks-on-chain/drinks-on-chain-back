@@ -32,8 +32,8 @@
 - Los decoradores `@TenantId()` y el guardia `TenantGuard` aseguran que el contexto del tenant provenga exclusivamente de la **organización activa** del token firmado (claim `org`), o de `?wineryId=` solo para el personal de plataforma, que en las escrituras debe indicarlo siempre (OP-07). *Ajustado por A-33.*
 
 ### C. Organizaciones y roles por membresía — ajustado por A-33 (27-09-2026)
-- Los permisos van **por membresía** (persona + organización + rol), nunca por un rol global de la persona. `users.user_role` y `winery_members` quedan obsoletos (solo compatibilidad hasta H1).
-- Una ruta de una organización **solo escribe membresías de esa organización** (SE-01): `POST /wineries/my/members` añade o reactiva la membresía de esa bodega y nada más; nunca toca el rol global ni las membresías de otra organización (plataforma incluida).
+- Los permisos van **por membresía** (persona + organización + rol), nunca por un rol global de la persona. `users.user_role` se retiró en H1; `winery_members` no autoriza nada (solo autoría de la trazabilidad y matrícula).
+- Una ruta de una organización **solo escribe membresías de esa organización** (SE-01): el equipo entra por invitación (`POST /organizations/current/invitations`) y aceptarla añade o reactiva la membresía de esa bodega y nada más; nunca toca las membresías de otra organización (plataforma incluida).
 - `@Audience()`, `@OrgType()` y `@Roles()` se evalúan contra la organización activa de la sesión; la matriz de roles del ERP está en `docs/arquitectura/identidad.md`.
 - Toda ruta del ERP lleva `@RequireActiveOrg()` (SE-05).
 

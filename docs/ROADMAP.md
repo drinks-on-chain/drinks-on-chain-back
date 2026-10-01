@@ -47,7 +47,7 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Organización activa por defecto (última usada; si no, la primera activa, plataforma antes que bodega), `POST /auth/switch-organization`, `GET /users/me` con `{ user, memberships, activeOrganizationId }` · 2026-09-27
   - [x] Guards globales y `@Audience`/`@OrgType`/`@Roles`/`@RequireActiveOrg` por membresía; matriz de roles del ERP de docs-back/05 §3; plataforma con `?wineryId=` obligatorio en escrituras (OP-07); SE-05 como aviso (`FEATURE_ENFORCE_ACTIVE_ORG`) · 2026-09-27
   - [x] SE-01: las rutas de una bodega solo crean o reactivan su propia membresía; nada escribe ya `users.user_role` · 2026-09-27
-  - [ ] Retirar `users.user_role`, `winery_members` y los campos de compatibilidad (cierre de la Ola 1, H1)
+  - [x] Retirada en H1: `users.user_role` borrado (migración *contract* `20260927190000_o1_retirada_h1`) y fuera los campos y claims de compatibilidad (`userRole`, `wineryId`, `memberRole`, `email`) y `tokens.refreshToken`; `winery_members` se conserva como autoría de la trazabilidad hasta que la Ola 2 la mueva a las membresías · 2026-09-27
 - [x] **0.7 Bitácora base** (AUD-01, AUD-02) — registro en la misma transacción, solo inserción, encadenada por hash. · 2026-09-27 ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md))
   - [x] Tabla `audit_events` con la forma del contrato O1 §7, `seq` monotónico, `hash` SHA-256 del evento canónico y `prevHash` · 2026-09-27
   - [x] Inmutabilidad en la base: trigger que rechaza `UPDATE`, `DELETE` y `TRUNCATE` · 2026-09-27
@@ -76,7 +76,8 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Fixtures de `@drinks-on-chain/mocks` 0.3.0-rc.2 copiados (`pnpm seed:sync`): personal interno, 6 bodegas en todos los estados con sus membresías y bloqueos, trazabilidad completa del ERP con los mismos ids, códigos y fechas · 2026-09-27
   - [x] e2e: dos ejecuciones sobre un esquema vacío sin duplicados y una dueña de demo que inicia sesión y ve sus parcelas · 2026-09-27
   - [ ] Ejecutarla en el servidor de desarrollo con contraseñas generadas allí (coordinación)
-  - [ ] `lotPrefix`, perfiles públicos y ajustes por bodega de los mocks cuando existan en el modelo (Ola 1; las invitaciones y el TOTP ya están, 1.1–1.2)
+  - [x] `lotPrefix`, `slug`, perfiles públicos, historial de estados y solicitudes de alta de los mocks (Ola 1 · 1.3–1.5) · 2026-09-27
+  - [ ] Ajustes por bodega de los mocks (se crean con el uso; sin sembrar)
 
 ## Etapa 1 · Back office y bodegas (Ola 1)
 
@@ -94,19 +95,41 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] Semilla: invitaciones de demostración con token secreto (HMAC con `SEED_DEMO_PASSWORD`) · 2026-09-27
   - [x] Pruebas: unitarias y e2e (recuperación hasta Mailpit, TOTP, invitaciones, límites, permisos por rol y entre organizaciones) · 2026-09-27
   - [ ] Definir `MFA_ENCRYPTION_KEY` y la clave real de Turnstile en el servidor (coordinación)
+- [x] **1.3 Solicitudes de alta** (ORG-01, ORG-02) — formulario público con captcha, bandeja con estados, reunión agendada, aprobar o rechazar con motivo. · 2026-09-27 ([`docs/arquitectura/organizaciones.md`](arquitectura/organizaciones.md#solicitudes-de-alta-3))
+  - [x] Modelo `winery_applications` (+ notas, reunión, decisión) con las transiciones del contrato (409 `APPLICATION_INVALID_TRANSITION`) sin carreras · 2026-09-27
+  - [x] `POST /v1/public/winery-applications`: captcha, campo trampa, límite por IP (minuto y hora) y por correo, NIT repetido → 202 silencioso con aviso a operaciones; `POST …/verify` con el enlace del correo (`APP_URL_BODEGAS/unirse/verificar`) · 2026-09-27
+  - [x] Bandeja y detalle; tomar, notas, reunión, reunión hecha, aprobar (bodega `INVITED` + invitación al dueño en la misma transacción) y rechazar con motivo y correo · 2026-09-27
+- [x] **1.4 Alta directa y activación** (ORG-03, ORG-04, ORG-05) — alta desde el back office, invitación automática al dueño, activación al aceptar, prefijo de lote único. · 2026-09-27
+  - [x] `POST /v1/platform/wineries` (201 `{ winery, invitation }`) · 2026-09-27
+  - [x] Activación con `InvitationsService.onAccepted`: `ACTIVE`, `lotPrefix` único (3–5 letras con desambiguación, columna única), `activatedAt`, `winery.activated` por el outbox · 2026-09-27
+  - [x] Migración: `slug` y `lotPrefix` de las bodegas existentes respetando los prefijos de sus códigos de lote (`ALT`, `CVJ`…), historial inicial · 2026-09-27
+  - [x] El embotellado usa `lotPrefix` (EA-07: colisión de prefijos) · 2026-09-27
+  - [ ] Secuencia del código de lote sin carreras (EA-07, resto): Etapa 2
+- [x] **1.5 Gestión de bodegas** (ORG-07, ORG-08, ORG-09, ORG-10, ORG-11, SE-05) — perfil editable, suspender, reactivar y revocar (el ERP bloquea bodegas no activas), directorio, transferir titularidad, perfil público. · 2026-09-27
+  - [x] Directorio, ficha con historial, `PATCH` con motivo; suspender/reactivar/revocar (revocar solo administración) con aviso al dueño y sesiones revocadas; revocar anula las invitaciones · 2026-09-27
+  - [x] Transferir la titularidad (`keepPreviousOwnerAs`: `ENOLOGIST` o `BLOCKED`), sesiones del dueño anterior cerradas al aceptar · 2026-09-27
+  - [x] `GET/PATCH /v1/organizations/current`, `GET /v1/public/wineries/{slug}` · 2026-09-27
+  - [x] SE-05 activo por defecto (`FEATURE_ENFORCE_ACTIVE_ORG`): 403 `ORG_NOT_ACTIVE` con el estado; perfil y bitácora propia en `SUSPENDED` · 2026-09-27
+- [x] **1.6 Equipo de la bodega** (EQP-02, EQP-03, EQP-04, EQP-05, EQP-06, EQP-07, EQP-08, EQP-10) — el dueño invita; reenviar y anular; listado con estado; cambiar rol; bloquear y desbloquear (dueño y back office); límite de colaboradores; aviso al dueño. · 2026-09-27
+  - [x] `GET/PATCH /v1/organizations/current/members…`, `block`/`unblock` con las reglas de `blockedBy`; versión del back office con motivo y aviso al dueño (EQP-10) y `accountStatus` (§11 bis) · 2026-09-27
+  - [x] Bloquear y cambiar el rol revocan las sesiones afectadas; desbloquear respeta el límite de colaboradores · 2026-09-27
+  - [x] `OPERATOR` lee `GET /v1/terroirs` (lista y detalle) sin editarlas (§11 bis) · 2026-09-27
+  - [x] Rutas que se retiran en H1 marcadas `deprecated` con aviso en los logs (`signup` de personal, `POST /wineries`, `wineries/pending|approve|reject`, `wineries/my/members*`) · 2026-09-27
+  - [x] Retiradas al cerrar la ola (H1), comprobado que ERP y Backoffice en `dev` no las usan: `POST /wineries`, `wineries/pending|approve|reject`, `wineries/my/members*`; `signup` solo de consumidores (`userRole` → 422); refresco solo en la cookie · 2026-09-27
+  - [x] Pruebas unitarias y e2e (Postgres, Redis, Mailpit) del recorrido completo, alta directa, SE-05, transferencia, equipo, permisos por rol y entre organizaciones · 2026-09-27
 - [x] **1.7 Configuración en el back office** (CFG-02, CFG-03, CFG-04, CFG-07) — estándar general, ajustes por bodega (selección o todas), volver al estándar, historial y mínimo legal como piso con excepción de administración. · 2026-09-27 ([`docs/arquitectura/configuracion.md`](arquitectura/configuracion.md#back-office-ola-1))
   - [x] `GET/PUT /v1/platform/settings[/{key}]`, `GET/PUT …/{key}/overrides`, `POST …/overrides/reset`, `GET …/{key}/history` con permisos por rol (§9) · 2026-09-27
   - [x] `GET /v1/organizations/current/settings` con `@OrgType('WINERY')`, `?wineryId=` para la plataforma y `@RequireActiveOrg()` · 2026-09-27
   - [x] e2e: 403 por rol, motivo obligatorio, niveles, mínimo legal rechazado y aceptado con excepción, 404 entre bodegas, volver al estándar e historial · 2026-09-27
-- [ ] **1.8 Bitácora y tablero** (AUD-03, AUD-04, AUD-05, CMP-02, PLT-06) ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md#consulta-ola-1))
+- [x] **1.8 Bitácora y tablero** (AUD-03, AUD-04, AUD-05, CMP-02, PLT-06) · 2026-09-27 ([`docs/arquitectura/bitacora.md`](arquitectura/bitacora.md#consulta-ola-1))
   - [x] `GET /v1/platform/audit` con filtros y `seq` descendente; índices para los filtros · 2026-09-27
   - [x] `GET /v1/platform/audit/export`: CSV por streaming, límite de 50 000 filas (`AUDIT_EXPORT_TOO_LARGE`), cabeceras de descarga, celdas seguras contra fórmulas · 2026-09-27
   - [x] `GET /v1/platform/audit/verify` (ADMIN) por fechas · 2026-09-27
   - [x] `GET /v1/organizations/current/audit` para el dueño (también lo hecho por la plataforma), legible con la bodega suspendida · 2026-09-27
   - [x] `@RequiresReason()` común para las rutas del back office sobre terceros (AUD-05) · 2026-09-27
   - [x] `GET /v1/platform/dashboard` con bodegas, miembros bloqueados, alertas y últimos eventos · 2026-09-27
-  - [ ] Contadores de solicitudes e invitaciones con los modelos de las partes A y B (hoy SQL detrás de `to_regclass`; cero si no existen)
-  - [ ] Correos de la etapa (CMP-02) y registro en la bitácora de las acciones de las partes A y B
+  - [x] Contadores de solicitudes e invitaciones con consultas tipadas de Prisma · 2026-09-27
+  - [x] Correos de la etapa (CMP-02: solicitudes, estado de la bodega, avisos a operaciones y al dueño) y bitácora de las acciones de las partes A y B con acción estable y motivo · 2026-09-27
 - [x] **Corrección H0 · decimales y contrato** (error real detectado por el e2e `h0` del ERP) · 2026-09-27
   - [x] Los `Decimal` de Prisma (y de decimal.js) salen como **número JSON** en todas las respuestas (`ResponseTransformInterceptor`) y en las repeticiones idempotentes; la bitácora (`before/after`) y el CSV no cambian (decimales como texto exacto) · 2026-09-27
   - [x] `openapi.json` con tipos reales: anulables (`nullable`) con su tipo en lugar de `object`, relaciones anidadas de los detalles, esquemas del DAG, del pasaporte público, del reposo inerte y de lecturas y tratamientos de cuba · 2026-09-27

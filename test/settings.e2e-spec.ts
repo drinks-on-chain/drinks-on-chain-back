@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { UserRoleEnum, WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
@@ -9,6 +8,7 @@ import { SettingsService } from '../src/modules/settings/settings.service';
 import { SettingsCatalogSync } from '../src/modules/settings/settings-catalog.sync';
 import { SETTINGS_CATALOG } from '../src/modules/settings/settings.catalog';
 import { deleteIdentityData } from './helpers/identity';
+import { wineryWithOwner } from './helpers/staff-session';
 
 /**
  * Configuración con Postgres y Redis reales: catálogo sincronizado, valor
@@ -22,6 +22,7 @@ describe('Configuración (e2e)', () => {
 
   const run = `cfg-${Date.now()}`;
   const email = `settings_${run}@test.bo`;
+  const consumerEmail = `consumidor_${run}@test.bo`;
   const startedAt = new Date();
   const touchedKeys = [
     'canje.ventanaDias',
@@ -29,7 +30,7 @@ describe('Configuración (e2e)', () => {
     'puntos.maxPorBodega',
   ];
   let wineryId: string;
-  let signupToken: string;
+  let consumerToken: string;
 
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -41,31 +42,26 @@ describe('Configuración (e2e)', () => {
     prisma = app.get(PrismaService);
     settings = app.get(SettingsService);
 
-    // Dueña de una bodega: cuenta, alta de la bodega (organización y
-    // membresía de dueña) y sesión con la bodega activa
+    // Dueña de una bodega activa (alta + invitación aceptada desde H1)
+    const owned = await wineryWithOwner(app, {
+      name: `Bodega ${run}`,
+      taxId: `CFG${Date.now().toString().slice(-9)}`,
+      email,
+      password: 'Password123!',
+      fullName: 'Dueña Configuración',
+    });
+    wineryId = owned.wineryId;
+
+    // Un consumidor (sin membresías) para comprobar el 403
     const signup = await request(app.getHttpServer())
       .post('/v1/auth/signup')
       .send({
-        email,
+        email: consumerEmail,
         password: 'Password123!',
-        fullName: 'Dueña Configuración',
-        userRole: UserRoleEnum.WINERY_ADMIN,
+        fullName: 'Consumidor Configuración',
       })
       .expect(201);
-    signupToken = signup.body.data.tokens.accessToken as string;
-    const winery = await request(app.getHttpServer())
-      .post('/v1/wineries')
-      .set('Authorization', `Bearer ${signupToken}`)
-      .send({
-        legalName: `Bodega ${run} S.A.`,
-        commercialName: `Bodega ${run}`,
-        beverageCategory: WineryCategoryEnum.DISTILLERY,
-        taxIdNit: `CFG${Date.now().toString().slice(-9)}`,
-        geographicRegion: 'Tarija',
-        contactEmail: `contacto_${run}@test.bo`,
-      })
-      .expect(201);
-    wineryId = winery.body.data.id as string;
+    consumerToken = signup.body.data.tokens.accessToken as string;
   });
 
   afterAll(async () => {
@@ -93,6 +89,11 @@ describe('Configuración (e2e)', () => {
       await prisma.userWallet.deleteMany({ where: { wineryId } });
       await prisma.winery.deleteMany({ where: { id: wineryId } });
       await prisma.user.deleteMany({ where: { email } });
+      await deleteIdentityData(prisma, { emailContains: consumerEmail });
+      await prisma.userWallet.deleteMany({
+        where: { user: { email: consumerEmail } },
+      });
+      await prisma.user.deleteMany({ where: { email: consumerEmail } });
       await settings.invalidateCache();
     }
     await app?.close();
@@ -222,10 +223,10 @@ describe('Configuración (e2e)', () => {
   });
 
   it('GET /v1/organizations/current/settings devuelve el valor efectivo de la bodega', async () => {
-    // El token del registro (sin membresía todavía) no es de personal: 403
+    // Un consumidor (sin membresías) no es personal: 403
     await request(app.getHttpServer())
       .get('/v1/organizations/current/settings')
-      .set('Authorization', `Bearer ${signupToken}`)
+      .set('Authorization', `Bearer ${consumerToken}`)
       .expect(403);
 
     const login = await request(app.getHttpServer())

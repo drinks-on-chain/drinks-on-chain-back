@@ -129,8 +129,16 @@ export const ErrorCode = {
   PLATFORM_SUPERADMIN_PROTECTED: 'PLATFORM_SUPERADMIN_PROTECTED',
 
   // ── Bodegas ───────────────────────────────────────────────
-  /** 409 · La bodega ya no está en INVITED (aprobar o rechazar dos veces). */
-  WINERY_NOT_PENDING: 'WINERY_NOT_PENDING',
+  /** 409 · Ya hay una bodega o una solicitud abierta con ese NIT (contrato O1 §3). */
+  ORG_TAX_ID_TAKEN: 'ORG_TAX_ID_TAKEN',
+  /** 409 · Cambio de estado de la bodega no permitido (suspender, reactivar, revocar, transferir). */
+  ORG_INVALID_TRANSITION: 'ORG_INVALID_TRANSITION',
+
+  // ── Solicitudes de alta (contrato O1 §3) ──────────────────
+  /** 409 · La solicitud no puede pasar a ese estado (tomar, reunión, aprobar, rechazar). */
+  APPLICATION_INVALID_TRANSITION: 'APPLICATION_INVALID_TRANSITION',
+  /** 422 · Enlace de verificación de la solicitud desconocido, usado o caducado. */
+  APPLICATION_TOKEN_INVALID: 'APPLICATION_TOKEN_INVALID',
 
   // ── Configuración (contrato O1 §6) ────────────────────────
   /** 404 · El parámetro no existe en el catálogo. */

@@ -174,7 +174,7 @@ type PlatformRole = 'SUPERADMIN' | 'ADMIN' | 'OPERATIONS' | 'SUPPORT';
 type WineryRole = 'OWNER' | 'ENOLOGIST' | 'AGRONOMIST' | 'OPERATOR' | 'ACCOUNTANT';
 type PickupPointRole = 'MANAGER' | 'CASHIER';
 type WineryStatus = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REVOKED';
-// Obsoleto hasta H1 (solo compatibilidad): 'PLATFORM_ADMIN' | 'WINERY_ADMIN' | … (users.user_role)
+// Sin rol global: `users.user_role` se retiró en H1
 ```
 
 ### Enums — `PascalCase` para el enum, `UPPER_SNAKE_CASE` para valores

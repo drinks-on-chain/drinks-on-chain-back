@@ -63,12 +63,14 @@ export class TerroirsController {
     return this.terroirsService.create(wineryId, dto);
   }
 
+  // OPERATOR: lectura mínima para elegir la parcela del pesaje (contrato O1
+  // §11 bis, propuesta de coordinación); sin alta ni edición
   @Get()
-  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Listar parcelas de la bodega',
     description:
-      'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad.',
+      'Obtiene las parcelas asociadas a la bodega con soporte de filtros por D.O. y variedad. El operario de planta (`OPERATOR`) las lee para elegir la parcela del pesaje, sin editarlas.',
   })
   @ApiPaginatedResponse(TerroirResponseDto, {
     description: 'Página de parcelas',
@@ -81,7 +83,7 @@ export class TerroirsController {
   }
 
   @Get(':id')
-  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
+  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
     summary: 'Obtener detalle de una parcela',
     description:
