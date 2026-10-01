@@ -33,6 +33,29 @@ export class DashboardTeamDto {
   blockedMembers!: number;
 }
 
+export class DashboardWaitlistDto {
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'Consumidores inscritos',
+  })
+  consumers!: number;
+
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'Bodegas inscritas',
+  })
+  wineries!: number;
+
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'Inscripciones de las últimas 24 h (los dos tipos)',
+  })
+  last24h!: number;
+}
+
 export class DashboardAlertDto {
   @ApiProperty({
     example: 'applications-unassigned',
@@ -71,6 +94,12 @@ export class DashboardDto {
 
   @ApiProperty({ type: DashboardTeamDto })
   team!: DashboardTeamDto;
+
+  @ApiProperty({
+    type: DashboardWaitlistDto,
+    description: 'Lista de espera (contrato O1b §2)',
+  })
+  waitlist!: DashboardWaitlistDto;
 
   @ApiProperty({ type: DashboardAlertDto, isArray: true })
   alerts!: DashboardAlertDto[];
