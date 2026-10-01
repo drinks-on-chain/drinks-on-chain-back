@@ -204,6 +204,15 @@ Variables nuevas de la Ola 1 · 1.1–1.2 (cuenta, segundo factor e invitaciones
 | `FEATURE_ENFORCE_ACTIVE_ORG` | api | SE-05. **Activo por defecto** desde la Ola 1 (403 `ORG_NOT_ACTIVE`); `false` lo deja solo en aviso en los logs |
 | `SEED_DEMO_TOTP_SECRET` | semilla | Secreto TOTP (base32) del personal interno de demostración (`DRINKSONCHAINDEMOTOTPKEY` = el de los mocks). Sin él, lo inscriben al entrar |
 
+Variables nuevas de la lista de espera (v0.1.1; ver [Lista de espera](#-lista-de-espera-v011)):
+
+| Variable | Proceso | Uso |
+|---|---|---|
+| `WAITLIST_LIMIT_IP_MINUTE` | api | Inscripciones por IP real y minuto (20) |
+| `WAITLIST_LIMIT_IP_HOUR` | api | Inscripciones por IP real y hora (300) |
+| `WAITLIST_LIMIT_EMAIL_HOUR` | api | Inscripciones por correo y hora (3) |
+| `WAITLIST_CAPTCHA_REQUIRED` | api | `true` exige `captchaToken` válido de Turnstile; por defecto `false` (campo trampa y límites) |
+
 **CORS**: `CORS_ALLOWED_ORIGINS` es una lista de orígenes exactos separada por comas (`https://erp.ejemplo.com,http://localhost:3002`). No se admiten comodines ni se refleja el origen de la petición; vacía fuera de producción equivale a `http://localhost:3002,http://localhost:3009`. Cabeceras permitidas: `Authorization`, `Content-Type`, `X-Correlation-ID`, `Idempotency-Key`, `Accept-Language`, `X-Client-App`; expuestas: `X-Correlation-ID`, `Retry-After`.
 
 ### ✅ Puertas de calidad
@@ -278,6 +287,29 @@ Con la API levantada:
 - **Swagger UI:** <http://localhost:4000/docs>
 - **JSON OpenAPI Spec:** <http://localhost:4000/docs-json> (mismo documento que `openapi.json`)
 - Sin `SWAGGER_ENABLED`, ambos quedan apagados en producción (SE-08); `SWAGGER_ENABLED=true` los activa. En desarrollo quedan activos: <https://136.243.223.39.sslip.io/docs>.
+
+### 📝 Lista de espera (v0.1.1)
+
+Captación de interesados desde la landing (consumidores) y el sitio de bodegas (bodegas); contrato en `plan/contratos/o1b-lista-de-espera.md` de la carpeta del ecosistema. Módulo `src/modules/waitlist`, tablas `waitlist_entries` y `waitlist_counters` (migración aditiva `20260927200000_o1_lista_de_espera`). No envía correos.
+
+| Ruta | Quién | Qué hace |
+|---|---|---|
+| `POST /v1/public/waitlist` | Público | Inscribe (`type`: `CONSUMER` con `isAdult: true`, o `WINERY` con `wineryName`; `consent: true` siempre). 201 `{ type, position }` |
+| `GET /v1/public/waitlist/stats` | Público | `{ consumers, wineries }`, con caché de 60 s |
+| `GET /v1/platform/waitlist` | ADMIN, OPERATIONS, SUPPORT | Lista paginada (más reciente primero) con `type`, `status`, `source`, `q`, `from`, `to` |
+| `GET /v1/platform/waitlist/sources` | ADMIN, OPERATIONS, SUPPORT | Orígenes (`source`) con su número de inscritos (`?type=` opcional) |
+| `PATCH /v1/platform/waitlist/{id}` | ADMIN, OPERATIONS | `{ status?, notes? }`; `CONTACTED` guarda cuándo y quién |
+| `GET /v1/platform/waitlist/export` | ADMIN, OPERATIONS | CSV (UTF-8 con BOM, celdas protegidas contra fórmulas), sin IP ni agente de usuario |
+| `GET /v1/platform/dashboard` | Personal de plataforma | Añade `waitlist: { consumers, wineries, last24h }` |
+
+- **Posición**: número de orden por tipo, desde 1 y sin huecos. Sale de `waitlist_counters`, cuya fila se bloquea dentro de la transacción de la inscripción (sin carreras). Único por tipo y correo normalizado (minúsculas, sin espacios).
+- **Correo ya inscrito en ese tipo**: mismo 201 con la posición que ya tenía; no se duplica ni se revela nada. Solo se completan `phone`, `city` y `region` si estaban vacíos.
+- **Campo trampa** (`website`): relleno → 201 con una posición verosímil, sin guardar nada.
+- **Límites** (429 `TOO_MANY_REQUESTS` con `Retry-After`): 20 por minuto y 300 por hora por IP real, 3 por hora por correo. El de minuto es el del `ThrottlerGuard`; los de hora viven en Redis (el correo, como hash) y, si Redis no responde, no bloquean. La IP real la resuelve el proxy firmado de las apps (`PROXY_SHARED_SECRET`): sin él, todas las inscripciones llegan con la IP de Vercel y el límite por IP corta a la gente.
+- **Captcha**: solo con `WAITLIST_CAPTCHA_REQUIRED=true` (422 `CAPTCHA_INVALID` en `captchaToken`); actívalo cuando `TURNSTILE_SECRET_KEY` sea la clave real.
+- **Permisos**: capacidad `waitlist` de la matriz (`GET /v1/platform/permissions`): administración y operaciones `FULL`, soporte `READ`.
+- **Bitácora** (recurso `waitlist_entry`): `WAITLIST_JOINED` (origen `PUBLIC`, solo el tipo y el origen de la inscripción), `WAITLIST_STATUS_CHANGED` (estado anterior y nuevo, sin el texto de las notas) y `WAITLIST_EXPORTED` (número de filas y filtros).
+- **Datos personales**: se guardan además la IP real y el agente de usuario (para abuso; no se exportan ni salen por la API) y la fecha del consentimiento.
 
 ### 🌱 Datos de demostración (0.10, OPS-09)
 
