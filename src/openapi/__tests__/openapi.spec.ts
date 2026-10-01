@@ -90,6 +90,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/platform/settings/{key}/history',
       'GET /v1/platform/settings/{key}/overrides',
       'GET /v1/platform/users',
+      'GET /v1/platform/waitlist',
       'GET /v1/platform/wineries',
       'GET /v1/platform/winery-applications',
       'GET /v1/production-batches',
@@ -99,10 +100,12 @@ describe('Contrato OpenAPI (OPS-12)', () => {
     ];
 
     // Listas cortas y cerradas que el contrato fija como array sin paginar
-    // (contrato O1 §6: la configuración son menos de 50 parámetros)
+    // (contrato O1 §6: la configuración son menos de 50 parámetros; contrato
+    // O1b §2: los orígenes de la lista de espera, para el filtro)
     const UNPAGINATED_ARRAYS = [
       'GET /v1/organizations/current/settings',
       'GET /v1/platform/settings',
+      'GET /v1/platform/waitlist/sources',
     ];
 
     it('ninguna respuesta declara un array plano', () => {
@@ -158,6 +161,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/health/live',
       'GET /v1/health/ready',
       'GET /v1/invitations/{token}',
+      'GET /v1/public/waitlist/stats',
       'GET /v1/public/wineries/{slug}',
       'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/forgot-password',
@@ -171,6 +175,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/auth/reset-password',
       'POST /v1/auth/signup',
       'POST /v1/auth/verify-email',
+      'POST /v1/public/waitlist',
       'POST /v1/public/winery-applications',
       'POST /v1/public/winery-applications/verify',
     ];
