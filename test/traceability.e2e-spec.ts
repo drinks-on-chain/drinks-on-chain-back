@@ -15,6 +15,10 @@ import {
   TreatmentTypeEnum,
 } from '@prisma/client';
 
+/** Fecha ISO (AAAA-MM-DD, UTC) de hace `days` días. */
+const isoDaysAgo = (days: number): string =>
+  new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
+
 describe('Traceability ERP & Strategy Pattern (e2e)', () => {
   let app: INestApplication;
   let prisma: PrismaService;
@@ -276,8 +280,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .send({
           fermentationTankId,
           equipmentIdentifier: 'Alambique de Cobre Charentais AL-01',
-          processStartDate: '2026-04-01',
-          processEndDate: '2026-04-03',
+          // Fechas relativas a hoy: con fechas fijas el reposo de 180 días se
+          // cumple solo con el paso del calendario y el Paso 7 deja de probar nada.
+          processStartDate: isoDaysAgo(12),
+          processEndDate: isoDaysAgo(10),
           inputVolumeLiters: 10000.0,
           outputVolumeLiters: 1750.0,
           wasteVolumeLiters: 570.0,
@@ -307,7 +313,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           finalAlcoholAbv: 40.0,
           totalBottlesPackaged: 4080,
           packagingFormatCl: 75,
-          bottlingDate: '2026-04-05',
+          bottlingDate: isoDaysAgo(0),
         });
 
       expect(res.status).toBe(422);
@@ -336,7 +342,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           bottleType: 'Vidrio Extra-Flint 750ml',
           labelDesignUrl:
             'https://storage.drinksonchain.com/labels/singani-anniversary.png',
-          bottlingDate: '2026-10-01',
+          bottlingDate: isoDaysAgo(0),
         });
 
       expect(res.status).toBe(201);
