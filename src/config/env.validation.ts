@@ -144,6 +144,12 @@ export const envValidationSchema = Joi.object({
   RATE_LIMIT_REFRESH_PER_MINUTE: Joi.number().integer().min(1).optional(),
   // Formulario público de solicitud de alta (por IP y minuto)
   RATE_LIMIT_APPLICATION_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  // Lista de espera (contrato O1b §1): inscripciones por minuto y por hora
+  // por IP real, y por hora por correo. Captcha solo si se exige.
+  WAITLIST_LIMIT_IP_MINUTE: Joi.number().integer().min(1).optional(),
+  WAITLIST_LIMIT_IP_HOUR: Joi.number().integer().min(1).optional(),
+  WAITLIST_LIMIT_EMAIL_HOUR: Joi.number().integer().min(1).optional(),
+  WAITLIST_CAPTCHA_REQUIRED: Joi.boolean().optional(),
   // Bloqueo progresivo del login: fallos antes del primer bloqueo
   LOGIN_LOCK_EMAIL_THRESHOLD: Joi.number().integer().min(1).optional(),
   LOGIN_LOCK_IP_THRESHOLD: Joi.number().integer().min(1).optional(),

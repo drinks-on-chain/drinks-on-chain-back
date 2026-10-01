@@ -58,6 +58,16 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
     },
   },
   {
+    key: 'waitlist',
+    label: 'Lista de espera',
+    roles: {
+      SUPERADMIN: 'FULL',
+      ADMIN: 'FULL',
+      OPERATIONS: 'FULL',
+      SUPPORT: 'READ',
+    },
+  },
+  {
     key: 'wineries.suspend',
     label: 'Suspender y reactivar bodegas',
     roles: { SUPERADMIN: 'FULL', ADMIN: 'FULL', OPERATIONS: 'FULL' },
@@ -102,6 +112,7 @@ export type CapabilityKey =
   | 'platform.users'
   | 'settings'
   | 'applications'
+  | 'waitlist'
   | 'wineries.suspend'
   | 'wineries.revoke'
   | 'team'
