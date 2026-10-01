@@ -10,6 +10,7 @@ describe('Matriz de permisos (PLT-04, contrato O1 §9)', () => {
       'platform.users',
       'settings',
       'applications',
+      'waitlist',
       'wineries.suspend',
       'wineries.revoke',
       'team',
@@ -30,6 +31,17 @@ describe('Matriz de permisos (PLT-04, contrato O1 §9)', () => {
       'ADMIN',
       'OPERATIONS',
       'SUPPORT',
+    ]);
+    expect(platformRolesWith('waitlist', 'FULL', 'READ')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+      'OPERATIONS',
+      'SUPPORT',
+    ]);
+    expect(platformRolesWith('waitlist', 'FULL')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+      'OPERATIONS',
     ]);
     expect(levelOf('settings', 'SUPPORT')).toBe('READ');
     expect(levelOf('audit', 'OWNER')).toBe('OWN');

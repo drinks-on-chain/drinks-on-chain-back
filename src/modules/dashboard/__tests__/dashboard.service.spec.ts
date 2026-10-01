@@ -4,8 +4,19 @@ import { DashboardService, buildAlerts } from '../dashboard.service';
 
 const NOW = new Date('2026-09-27T12:00:00.000Z');
 
-function setup(data: { applications?: boolean } = {}) {
+function setup(data: { applications?: boolean; waitlist?: boolean } = {}) {
   const prisma = {
+    waitlistEntry: {
+      groupBy: jest.fn().mockResolvedValue(
+        data.waitlist
+          ? [
+              { type: 'CONSUMER', _count: { _all: 40 } },
+              { type: 'WINERY', _count: { _all: 6 } },
+            ]
+          : [],
+      ),
+      count: jest.fn().mockResolvedValue(data.waitlist ? 12 : 0),
+    },
     wineryApplication: {
       groupBy: jest.fn().mockResolvedValue(
         data.applications
@@ -57,6 +68,15 @@ function setup(data: { applications?: boolean } = {}) {
 }
 
 describe('Tablero del back office', () => {
+  it('lista de espera: totales por tipo y altas de las últimas 24 h', async () => {
+    const { service, prisma } = setup({ waitlist: true });
+    const view = await service.get(NOW);
+    expect(view.waitlist).toEqual({ consumers: 40, wineries: 6, last24h: 12 });
+    expect(prisma.waitlistEntry.count).toHaveBeenCalledWith({
+      where: { createdAt: { gte: new Date('2026-09-26T12:00:00.000Z') } },
+    });
+  });
+
   it('sin solicitudes ni invitaciones: ceros', async () => {
     const { service, auditQuery } = setup();
     const view = await service.get(NOW);
@@ -70,6 +90,7 @@ describe('Tablero del back office', () => {
       wineries: { invited: 0, active: 5, suspended: 1 },
       invitations: { pending: 0, expiringIn24h: 0 },
       team: { blockedMembers: 3 },
+      waitlist: { consumers: 0, wineries: 0, last24h: 0 },
       alerts: [],
       recentAudit: [{ seq: 10 }, { seq: 9 }],
     });

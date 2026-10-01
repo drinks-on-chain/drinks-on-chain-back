@@ -38,6 +38,7 @@ import { PlatformUsersModule } from './modules/platform-users/platform-users.mod
 import { WineryManagementModule } from './modules/winery-management/winery-management.module';
 import { WineryApplicationsModule } from './modules/winery-applications/winery-applications.module';
 import { TeamModule } from './modules/team/team.module';
+import { WaitlistModule } from './modules/waitlist/waitlist.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { TeamModule } from './modules/team/team.module';
     WineryManagementModule,
     WineryApplicationsModule,
     TeamModule,
+    WaitlistModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →

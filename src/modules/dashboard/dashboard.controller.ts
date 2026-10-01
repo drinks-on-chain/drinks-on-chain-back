@@ -30,7 +30,7 @@ export class DashboardController {
   @ApiOperation({
     summary: 'Tablero del back office',
     description:
-      'Solicitudes por estado, bodegas por estado, invitaciones pendientes y por caducar, miembros bloqueados, alertas y los 5 últimos eventos de la bitácora. Los bloques de tokenización, canjes y soporte se añaden en sus olas (cambio aditivo).',
+      'Solicitudes por estado, bodegas por estado, invitaciones pendientes y por caducar, miembros bloqueados, lista de espera (totales por tipo y altas de las últimas 24 h), alertas y los 5 últimos eventos de la bitácora. Los bloques de tokenización, canjes y soporte se añaden en sus olas (cambio aditivo).',
   })
   @ApiOkResponse({ type: DashboardDto })
   @ApiUnauthorizedResponse({ description: 'Sin sesión' })

@@ -31,6 +31,12 @@ export interface EnvironmentVariables {
   LOGIN_LOCK_EMAIL_THRESHOLD?: number;
   LOGIN_LOCK_IP_THRESHOLD?: number;
 
+  // Lista de espera (contrato O1b §1)
+  WAITLIST_LIMIT_IP_MINUTE?: number;
+  WAITLIST_LIMIT_IP_HOUR?: number;
+  WAITLIST_LIMIT_EMAIL_HOUR?: number;
+  WAITLIST_CAPTCHA_REQUIRED?: boolean;
+
   // Cuenta, segundo factor e invitaciones (contrato O1 §1–§2)
   MFA_ENCRYPTION_KEY?: string;
   TURNSTILE_SECRET_KEY?: string;

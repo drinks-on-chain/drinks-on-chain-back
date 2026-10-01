@@ -779,6 +779,38 @@ enum MeetingChannelEnum {
   @@map("meeting_channel_enum")
 }
 
+enum WaitlistTypeEnum {
+  CONSUMER
+  WINERY
+
+  @@map("waitlist_type_enum")
+}
+
+enum WaitlistStatusEnum {
+  NEW
+  CONTACTED
+  DISCARDED
+
+  @@map("waitlist_status_enum")
+}
+
+enum WaitlistInterestEnum {
+  WINE
+  SINGANI
+  BOTH
+
+  @@map("waitlist_interest_enum")
+}
+
+enum WaitlistProducesEnum {
+  WINE
+  SINGANI
+  BOTH
+  OTHER
+
+  @@map("waitlist_produces_enum")
+}
+
 /// Solicitud de alta de una bodega desde el formulario público (ORG-01, ORG-02).
 model WineryApplication {
   id                 String                      @id @default(uuid()) @db.Uuid
@@ -838,6 +870,59 @@ model WineryApplicationNote {
 
   @@index([applicationId, createdAt])
   @@map("winery_application_notes")
+}
+
+/// Inscripción en la lista de espera (contrato O1b): consumidores (landing) y
+/// bodegas (sitio de bodegas). Única por tipo y correo normalizado.
+model WaitlistEntry {
+  id                String                @id @default(uuid()) @db.Uuid
+  type              WaitlistTypeEnum
+  /// Número de orden dentro de su tipo (desde 1, sin huecos; ver `WaitlistCounter`).
+  position          Int
+  status            WaitlistStatusEnum    @default(NEW)
+  /// Persona (consumidor) o persona de contacto (bodega).
+  fullName          String                @map("full_name") @db.VarChar(120)
+  /// Normalizado: minúsculas y sin espacios.
+  email             String                @db.VarChar(255)
+  phone             String?               @db.VarChar(20)
+  city              String?               @db.VarChar(80)
+  interest          WaitlistInterestEnum?
+  wineryName        String?               @map("winery_name") @db.VarChar(160)
+  region            String?               @db.VarChar(80)
+  produces          WaitlistProducesEnum?
+  message           String?               @db.VarChar(500)
+  /// Declaración de mayoría de edad (consumidores, Ley 259).
+  isAdult           Boolean?              @map("is_adult")
+  locale            String                @default("es") @db.VarChar(2)
+  /// Origen de la inscripción (`tarija-2026`).
+  source            String?               @db.VarChar(40)
+  consentAt         DateTime              @map("consent_at") @db.Timestamptz(6)
+  /// IP real del envío (abuso; no se exporta).
+  ip                String?               @db.VarChar(64)
+  userAgent         String?               @map("user_agent") @db.VarChar(300)
+  contactedAt       DateTime?             @map("contacted_at") @db.Timestamptz(6)
+  contactedByUserId String?               @map("contacted_by_user_id") @db.Uuid
+  contactedByName   String?               @map("contacted_by_name") @db.VarChar(200)
+  notes             String?               @db.VarChar(1000)
+  createdAt         DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@unique([type, email])
+  @@unique([type, position])
+  @@index([type, createdAt])
+  @@index([type, status])
+  @@index([source])
+  @@index([createdAt])
+  @@map("waitlist_entries")
+}
+
+/// Último número de orden entregado por tipo. La fila se bloquea al inscribir:
+/// posiciones consecutivas y sin carreras.
+model WaitlistCounter {
+  type         WaitlistTypeEnum @id
+  lastPosition Int              @default(0) @map("last_position")
+
+  @@map("waitlist_counters")
 }
 
 /// Historial de estados de una bodega (`statusHistory` de la ficha, contrato O1 §4).

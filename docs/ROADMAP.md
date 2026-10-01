@@ -137,3 +137,18 @@ Seguimiento en el repo de la planificación de `docs-back/08-roadmap.md` (repo `
   - [x] `/v1/health/ready` con `worker: up | down` (latido del worker en Redis con caducidad); sin worker, 200 y `degraded` · 2026-09-27
   - [x] `null` en campos opcionales del cuerpo = omitido (antes 500 en altas y ediciones del ERP y en `PATCH /users/me`); `@NullableFields` para borrar en PATCH; 422 en obligatorios; 422 declarado en toda operación con cuerpo · 2026-09-27
   - [x] Esquema de respuesta declarado en toda respuesta 2xx en JSON (DAG, pasaporte, reposo, 202 con `data: null`), comprobado en la prueba del contrato · 2026-09-27
+
+## Lista de espera (añadido a la Ola 1 · v0.1.1)
+
+Contrato: `plan/contratos/o1b-lista-de-espera.md` (carpeta del ecosistema). Sale desde `main` (sin lo de la Ola 2). Detalle en el [README](../README.md#-lista-de-espera-v011).
+
+- [x] **Modelo y migración aditiva** — `waitlist_entries` (única por tipo y correo normalizado) y `waitlist_counters` (posición por tipo con la fila bloqueada: consecutiva y sin carreras); migración `20260927200000_o1_lista_de_espera`, anterior a la primera de la Ola 2 · 2026-10-01
+- [x] **Inscripción pública** — `POST /v1/public/waitlist` (201 `{ type, position }`; duplicado → misma respuesta; campo trampa → 201 sin guardar; 422 por campo en español) y `GET /v1/public/waitlist/stats` (caché de 60 s) · 2026-10-01
+  - [x] Límites: 20 por minuto y 300 por hora por IP real, 3 por hora por correo → 429 con `Retry-After` (`WAITLIST_LIMIT_IP_MINUTE`, `WAITLIST_LIMIT_IP_HOUR`, `WAITLIST_LIMIT_EMAIL_HOUR`) · 2026-10-01
+  - [x] Captcha de Turnstile solo con `WAITLIST_CAPTCHA_REQUIRED=true` · 2026-10-01
+- [x] **Back office** — `GET /v1/platform/waitlist` (filtros, búsqueda, página), `GET …/sources`, `PATCH …/{id}` (estado y notas), `GET …/export` (CSV por streaming, BOM, celdas seguras, sin IP ni agente de usuario, máximo 50 000 filas → `WAITLIST_EXPORT_TOO_LARGE`); capacidad `waitlist` en la matriz de permisos (soporte lee; no edita ni exporta) · 2026-10-01
+- [x] **Tablero** — `waitlist: { consumers, wineries, last24h }` en `GET /v1/platform/dashboard` (aditivo) · 2026-10-01
+- [x] **Bitácora** — `WAITLIST_JOINED`, `WAITLIST_STATUS_CHANGED`, `WAITLIST_EXPORTED`; recurso `waitlist_entry`; sin datos personales · 2026-10-01
+- [x] **Pruebas y contrato** — unitarias y e2e (Postgres y Redis reales) con las respuestas validadas contra `openapi.json`, regenerado · 2026-10-01
+- [ ] Correo de confirmación a cada inscrito: cuando haya proveedor de correo y dominio propio
+- [ ] Claves reales de Turnstile y `WAITLIST_CAPTCHA_REQUIRED=true` en el servidor
