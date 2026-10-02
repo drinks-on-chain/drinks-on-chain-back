@@ -83,6 +83,8 @@ export interface LotEventInput {
   data?: Record<string, unknown>;
   resource: { type: string; id: string };
   recordedAt?: Date;
+  /** Por defecto, la del tipo de evento (§12: lo que ve el pasaporte). */
+  visibility?: 'PUBLIC' | 'INTERNAL';
 }
 
 /**
@@ -113,7 +115,9 @@ export async function appendLotEvent(
       data: (input.data ?? {}) as Prisma.InputJsonObject,
       resourceType: input.resource.type,
       resourceId: input.resource.id,
-      visibility: PUBLIC_TYPES.has(input.type) ? 'PUBLIC' : 'INTERNAL',
+      visibility:
+        input.visibility ??
+        (PUBLIC_TYPES.has(input.type) ? 'PUBLIC' : 'INTERNAL'),
     },
   });
 }
