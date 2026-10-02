@@ -1,130 +1,130 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Prueba Merkle de un código de botella (contrato O2 §10 y §12.2). Las hojas
- * son `SHA-256("{serie}:{código}:{sal}")` ordenadas por serie; la raíz la
- * escribe el cierre del expediente en `lot_dossiers.bottle_merkle_root`.
+ * Raíz Merkle de los códigos de botella del expediente (contrato O2 §10 y
+ * §20). El expediente es público y los códigos son el antifalsificación de la
+ * etiqueta, así que no van en claro: va la raíz de un árbol cuyas hojas son
+ * `SHA-256("{serie}:{código}:{sal}")` (texto UTF-8; la sal son 16 bytes
+ * aleatorios en hexadecimal, una por botella, que impide descubrir códigos
+ * vecinos por fuerza bruta).
  *
- * El contrato fija la hoja pero no cómo se combinan los nodos, así que el
- * pasaporte **no supone** una construcción: prueba las habituales contra la
- * raíz guardada (`findMerkleVariant`) y solo publica una prueba que verifica.
- * Si ninguna reproduce la raíz, no hay prueba (`null`) en lugar de una falsa.
+ * Construcción (`sha256-merkle/serial-code-salt`):
+ * 1. Hojas ordenadas por número de serie ascendente.
+ * 2. Cada nivel empareja los nodos de izquierda a derecha:
+ *    `padre = SHA-256(izquierdo ‖ derecho)` sobre los 32 bytes de cada
+ *    resumen (no sobre su texto hexadecimal).
+ * 3. Un nodo sin pareja al final de un nivel **sube tal cual** (no se
+ *    duplica).
+ * 4. La raíz es el único nodo del último nivel, en hexadecimal en minúsculas.
+ *    Sin hojas, la raíz es `SHA-256("")`.
+ *
+ * Quien verifica siempre calcula la hoja a partir de la serie, el código y la
+ * sal (nunca acepta un resumen de hoja suelto), así que un nodo interno no
+ * puede hacerse pasar por una hoja.
  */
-export interface MerkleVariant {
-  /** Nivel impar: se duplica el último nodo o sube tal cual. */
-  odd: 'DUPLICATE' | 'PROMOTE';
-  /** El padre es el hash de los bytes concatenados o del texto hexadecimal. */
-  concat: 'BYTES' | 'HEX';
-}
+export const BOTTLE_MERKLE_ALGORITHM = 'sha256-merkle/serial-code-salt';
 
-export const MERKLE_VARIANTS: readonly MerkleVariant[] = [
-  { odd: 'DUPLICATE', concat: 'BYTES' },
-  { odd: 'PROMOTE', concat: 'BYTES' },
-  { odd: 'DUPLICATE', concat: 'HEX' },
-  { odd: 'PROMOTE', concat: 'HEX' },
-];
-
+/** Paso de una prueba: el hermano y de qué lado queda. */
 export interface MerkleStep {
-  /** Lado en el que va el nodo hermano al combinar. */
+  /** `L`: el hermano va a la izquierda (`SHA-256(hermano ‖ actual)`); `R`: a la derecha. */
   side: 'L' | 'R';
+  /** Resumen del hermano (hexadecimal). */
   hash: string;
 }
 
-const sha256 = (data: string | Buffer): string =>
-  createHash('sha256').update(data).digest('hex');
+function sha256(data: Buffer | string): Buffer {
+  return createHash('sha256').update(data).digest();
+}
+
+/** Texto de la hoja de una botella: `{serie}:{código}:{sal}`. */
+export function bottleLeafPreimage(
+  serial: number,
+  code: string,
+  salt: string,
+): string {
+  return `${serial}:${code}:${salt}`;
+}
 
 /** Hoja de una botella: `SHA-256("{serie}:{código}:{sal}")` en hexadecimal. */
-export function bottleLeaf(serial: number, code: string, salt: string): string {
-  return sha256(`${serial}:${code}:${salt}`);
+export function bottleLeafHash(
+  serial: number,
+  code: string,
+  salt: string,
+): string {
+  return sha256(Buffer.from(bottleLeafPreimage(serial, code, salt), 'utf8'))
+    .toString('hex')
+    .toLowerCase();
 }
 
-function parent(left: string, right: string, concat: MerkleVariant['concat']) {
-  return concat === 'HEX'
-    ? sha256(left + right)
-    : sha256(
-        Buffer.concat([Buffer.from(left, 'hex'), Buffer.from(right, 'hex')]),
-      );
-}
-
-/** Niveles del árbol, de las hojas (índice 0) a la raíz. */
-export function merkleLevels(
-  leaves: readonly string[],
-  variant: MerkleVariant,
-): string[][] {
-  if (leaves.length === 0) return [];
-  const levels: string[][] = [[...leaves]];
-  while (levels[levels.length - 1].length > 1) {
-    const current = levels[levels.length - 1];
-    const next: string[] = [];
-    for (let i = 0; i < current.length; i += 2) {
-      if (i + 1 < current.length) {
-        next.push(parent(current[i], current[i + 1], variant.concat));
-      } else if (variant.odd === 'DUPLICATE') {
-        next.push(parent(current[i], current[i], variant.concat));
-      } else {
-        next.push(current[i]);
-      }
-    }
-    levels.push(next);
+function nextLevel(level: Buffer[]): Buffer[] {
+  const next: Buffer[] = [];
+  for (let i = 0; i < level.length; i += 2) {
+    next.push(
+      i + 1 < level.length
+        ? sha256(Buffer.concat([level[i], level[i + 1]]))
+        : level[i],
+    );
   }
-  return levels;
+  return next;
 }
 
-export function merkleRoot(
-  leaves: readonly string[],
-  variant: MerkleVariant,
-): string | null {
-  const levels = merkleLevels(leaves, variant);
-  return levels.length > 0 ? levels[levels.length - 1][0] : null;
-}
-
-/** Camino de la hoja `index` a la raíz (los nodos hermanos, de abajo arriba). */
-export function merkleProof(
-  levels: readonly (readonly string[])[],
-  index: number,
-  variant: MerkleVariant,
-): MerkleStep[] {
-  const path: MerkleStep[] = [];
-  let position = index;
-  for (let depth = 0; depth < levels.length - 1; depth++) {
-    const level = levels[depth];
-    const isRight = position % 2 === 1;
-    const sibling = isRight ? position - 1 : position + 1;
-    if (sibling < level.length) {
-      path.push({ side: isRight ? 'L' : 'R', hash: level[sibling] });
-    } else if (variant.odd === 'DUPLICATE') {
-      path.push({ side: 'R', hash: level[position] });
+function toNodes(leafHashes: readonly string[]): Buffer[] {
+  return leafHashes.map((hex) => {
+    if (!/^[0-9a-f]{64}$/i.test(hex)) {
+      throw new Error('Hoja Merkle inválida: se espera un SHA-256 hexadecimal');
     }
+    return Buffer.from(hex, 'hex');
+  });
+}
+
+/** Raíz Merkle (hexadecimal) de las hojas en el orden dado. */
+export function merkleRoot(leafHashes: readonly string[]): string {
+  if (leafHashes.length === 0) return sha256('').toString('hex');
+  let level = toNodes(leafHashes);
+  while (level.length > 1) level = nextLevel(level);
+  return level[0].toString('hex');
+}
+
+/** Prueba de inclusión de la hoja `index` (de la hoja a la raíz). */
+export function merkleProof(
+  leafHashes: readonly string[],
+  index: number,
+): MerkleStep[] {
+  if (!Number.isInteger(index) || index < 0 || index >= leafHashes.length) {
+    throw new Error('Índice de hoja fuera del árbol');
+  }
+  const path: MerkleStep[] = [];
+  let level = toNodes(leafHashes);
+  let position = index;
+  while (level.length > 1) {
+    const sibling = position % 2 === 0 ? position + 1 : position - 1;
+    if (sibling < level.length) {
+      path.push({
+        side: position % 2 === 0 ? 'R' : 'L',
+        hash: level[sibling].toString('hex'),
+      });
+    }
+    level = nextLevel(level);
     position = Math.floor(position / 2);
   }
   return path;
 }
 
-/** Recalcula la raíz desde una hoja y su camino. */
+/** ¿La prueba lleva de la hoja a la raíz? */
 export function verifyMerkleProof(
-  leaf: string,
+  leafHash: string,
   path: readonly MerkleStep[],
   root: string,
-  concat: MerkleVariant['concat'],
 ): boolean {
-  let node = leaf;
+  if (!/^[0-9a-f]{64}$/i.test(leafHash)) return false;
+  let node: Buffer = Buffer.from(leafHash, 'hex');
   for (const step of path) {
+    if (!/^[0-9a-f]{64}$/i.test(step.hash)) return false;
+    const sibling = Buffer.from(step.hash, 'hex');
     node =
       step.side === 'L'
-        ? parent(step.hash, node, concat)
-        : parent(node, step.hash, concat);
+        ? sha256(Buffer.concat([sibling, node]))
+        : sha256(Buffer.concat([node, sibling]));
   }
-  return node === root.toLowerCase();
-}
-
-/** Construcción que reproduce la raíz guardada, o `null` si ninguna lo hace. */
-export function findMerkleVariant(
-  leaves: readonly string[],
-  root: string,
-): MerkleVariant | null {
-  const target = root.toLowerCase();
-  return (
-    MERKLE_VARIANTS.find((variant) => merkleRoot(leaves, variant) === target) ??
-    null
-  );
+  return node.toString('hex') === root.toLowerCase();
 }

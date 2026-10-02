@@ -1,10 +1,7 @@
 import { generateBottleCode } from '../domain/bottle-code';
 import { isLateEntry } from '../domain/late-entry';
 import {
-  bottleLeaf,
-  findMerkleVariant,
-  MERKLE_VARIANTS,
-  merkleLevels,
+  bottleLeafHash,
   merkleProof,
   merkleRoot,
   verifyMerkleProof,
@@ -127,6 +124,9 @@ describe('freno a la enumeración (S-24)', () => {
 });
 
 describe('prueba Merkle de una botella (contrato O2 §10 y §12.2)', () => {
+  // La construcción del árbol es una sola (`domain/merkle`, probada en
+  // `jcs-merkle.spec.ts`); aquí, lo que hace quien lee el pasaporte: calcular
+  // la hoja con el código de la etiqueta y la sal publicada, y subir el camino
   const units = (count: number) =>
     Array.from({ length: count }, (_, i) => ({
       serial: i + 1,
@@ -134,72 +134,44 @@ describe('prueba Merkle de una botella (contrato O2 §10 y §12.2)', () => {
       salt: (i + 1).toString(16).padStart(32, '0'),
     }));
   const leavesOf = (list: ReturnType<typeof units>) =>
-    list.map((u) => bottleLeaf(u.serial, u.code, u.salt));
+    list.map((u) => bottleLeafHash(u.serial, u.code, u.salt));
 
   it('la hoja es SHA-256("{serie}:{código}:{sal}")', () => {
-    expect(bottleLeaf(1, 'K7M2Q9XA', '00')).toBe(
+    expect(bottleLeafHash(1, 'K7M2Q9XA', '00')).toBe(
       'dde7644dd3aa44be0410cfd76238d2169f97f65217861d8274b5e417c67e3f3a',
     );
-    expect(bottleLeaf(1, 'K7M2Q9XA', '00')).not.toBe(
-      bottleLeaf(2, 'K7M2Q9XA', '00'),
-    );
-    expect(bottleLeaf(1, 'K7M2Q9XA', '00')).not.toBe(
-      bottleLeaf(1, 'K7M2Q9XA', '01'),
-    );
   });
 
-  it.each(MERKLE_VARIANTS)(
-    'con $odd/$concat cada botella reproduce la raíz, con cualquier número de hojas',
-    (variant) => {
-      for (const count of [1, 2, 3, 5, 8, 13, 100]) {
-        const list = units(count);
-        const leaves = leavesOf(list);
-        const levels = merkleLevels(leaves, variant);
-        const root = merkleRoot(leaves, variant) as string;
-        expect(root).toMatch(/^[0-9a-f]{64}$/);
-        list.forEach((_, index) => {
-          const path = merkleProof(levels, index, variant);
-          expect(
-            verifyMerkleProof(leaves[index], path, root, variant.concat),
-          ).toBe(true);
-        });
-      }
-    },
-  );
+  it('cada botella reproduce la raíz del expediente con su sal y su camino', () => {
+    for (const count of [1, 2, 3, 5, 8, 13, 100]) {
+      const list = units(count);
+      const leaves = leavesOf(list);
+      const root = merkleRoot(leaves);
+      list.forEach((unit, index) => {
+        const published = { salt: unit.salt, path: merkleProof(leaves, index) };
+        expect(
+          verifyMerkleProof(
+            bottleLeafHash(unit.serial, unit.code, published.salt),
+            published.path,
+            root,
+          ),
+        ).toBe(true);
+      });
+    }
+  });
 
-  it('una hoja, un camino o una raíz ajenos no verifican', () => {
-    const variant = MERKLE_VARIANTS[0];
+  it('una etiqueta falsificada (otro código en la misma serie) no verifica', () => {
     const list = units(7);
     const leaves = leavesOf(list);
-    const levels = merkleLevels(leaves, variant);
-    const root = merkleRoot(leaves, variant) as string;
-    const path = merkleProof(levels, 3, variant);
-    expect(verifyMerkleProof(leaves[3], path, root, 'BYTES')).toBe(true);
-    expect(verifyMerkleProof(leaves[4], path, root, 'BYTES')).toBe(false);
-    expect(verifyMerkleProof(leaves[3], path.slice(1), root, 'BYTES')).toBe(
-      false,
-    );
+    const root = merkleRoot(leaves);
+    const path = merkleProof(leaves, 3);
+    expect(verifyMerkleProof(leaves[3], path, root)).toBe(true);
+    const forged = bottleLeafHash(4, generateBottleCode(), list[3].salt);
+    expect(verifyMerkleProof(forged, path, root)).toBe(false);
+    // Ni la prueba de otra botella, ni contra la raíz de otro expediente
+    expect(verifyMerkleProof(leaves[4], path, root)).toBe(false);
     expect(
-      verifyMerkleProof(
-        leaves[3],
-        path,
-        merkleRoot(leaves.slice(1), variant) as string,
-        'BYTES',
-      ),
+      verifyMerkleProof(leaves[3], path, merkleRoot(leaves.slice(1))),
     ).toBe(false);
-    // Otro código en la misma serie (una etiqueta falsificada) tampoco
-    const forged = bottleLeaf(4, generateBottleCode(), list[3].salt);
-    expect(verifyMerkleProof(forged, path, root, 'BYTES')).toBe(false);
-  });
-
-  it('reconoce con qué construcción se hizo la raíz y no acepta una raíz ajena', () => {
-    const leaves = leavesOf(units(11));
-    for (const variant of MERKLE_VARIANTS) {
-      const root = merkleRoot(leaves, variant) as string;
-      expect(findMerkleVariant(leaves, root.toUpperCase())).toEqual(variant);
-    }
-    expect(findMerkleVariant(leaves, 'f'.repeat(64))).toBeNull();
-    expect(findMerkleVariant([], 'f'.repeat(64))).toBeNull();
-    expect(merkleRoot([], MERKLE_VARIANTS[0])).toBeNull();
   });
 });

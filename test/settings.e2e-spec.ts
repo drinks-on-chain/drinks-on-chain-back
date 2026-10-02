@@ -9,6 +9,7 @@ import { SettingsCatalogSync } from '../src/modules/settings/settings-catalog.sy
 import { SETTINGS_CATALOG } from '../src/modules/settings/settings.catalog';
 import { deleteIdentityData } from './helpers/identity';
 import { wineryWithOwner } from './helpers/staff-session';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 /**
  * Configuración con Postgres y Redis reales: catálogo sincronizado, valor
@@ -39,6 +40,7 @@ describe('Configuración (e2e)', () => {
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await resetLoopbackLoginLocks(app);
     prisma = app.get(PrismaService);
     settings = app.get(SettingsService);
 

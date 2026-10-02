@@ -7,6 +7,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,19 +16,23 @@ import {
   ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import {
   OrgType,
   PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
+import { DossierService } from '@modules/lots/dossier.service';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   ApiErrorCodes,
   ApiLotNotFound,
-  ApiNotImplemented,
   ApiPlatformReadOnly,
   ApiRuleErrors,
 } from './contract-responses';
@@ -54,22 +59,26 @@ const MEMBER_ROLES = [
 @PlatformReadOnly()
 @Controller('lots')
 export class DossierController {
+  constructor(private readonly dossier: DossierService) {}
+
   @Get(':id/dossier/preview')
   @Roles(...MEMBER_ROLES)
   @ApiOperation({
     summary: 'Requisitos del cierre del expediente',
     description:
       'Contrato O2 §10: `BOTTLED`, `LAB_CONFORMING`, `BOTTLE_CODES_READY`, `NO_OPEN_COMPLIANCE_ISSUES` y ' +
-      '`NO_OPEN_SOURCES`, con la huella que tendría el expediente si se cerrara ahora.',
+      '`NO_OPEN_SOURCES`. `hashPreview` es la huella del contenido canónico actual (el de ' +
+      '`GET …/dossier/canonical`, con `closedAt` y `closedBy` en `null`): no cambia mientras no cambien los ' +
+      'registros del lote; la huella definitiva incluye además la fecha y el autor del cierre. `null` si el ' +
+      'lote aún no está embotellado; con el expediente cerrado, la huella definitiva.',
   })
   @ApiOkResponse({ type: DossierPreviewDto })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.8')
   preview(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): DossierPreviewDto {
-    throw notImplemented('2.8');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<DossierPreviewDto> {
+    return this.dossier.preview(wineryId, id);
   }
 
   @Post(':id/dossier/close')
@@ -79,9 +88,9 @@ export class DossierController {
   @ApiOperation({
     summary: 'Cerrar el expediente del lote',
     description:
-      'Contrato O2 §10: calcula el hash SHA-256 del contenido canónico (JCS), pasa el lote a `CERTIFIED` y ' +
-      'emite `lot.certified` por el outbox (la Ola 3 lo ancla). Tras el cierre el lote solo admite anular ' +
-      'códigos sin sustituto.',
+      'Contrato O2 §10: calcula el hash SHA-256 del contenido canónico (JCS) y la raíz Merkle de los códigos ' +
+      'de botella activos, pasa el lote a `CERTIFIED` y emite `lot.certified` por el outbox (la Ola 3 lo ' +
+      'ancla). Tras el cierre el lote solo admite anular códigos sin sustituto.',
   })
   @ApiOkResponse({ type: LotDossierDto })
   @ApiLotNotFound()
@@ -91,13 +100,13 @@ export class DossierController {
     'TRC_LOT_TERMINAL',
   ])
   @ApiRuleErrors(['TRC_DOSSIER_NOT_READY (un detalle por requisito)'])
-  @ApiNotImplemented('2.8')
   close(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
+    @TenantId() wineryId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthenticatedUser,
     @Body() _dto: CloseDossierDto,
-  ): LotDossierDto {
-    throw notImplemented('2.8');
+  ): Promise<LotDossierDto> {
+    return this.dossier.close(wineryId, id, user.id);
   }
 
   @Get(':id/dossier')
@@ -110,12 +119,11 @@ export class DossierController {
   })
   @ApiOkResponse({ type: LotDossierDto })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.8')
   get(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): LotDossierDto {
-    throw notImplemented('2.8');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LotDossierDto> {
+    return this.dossier.get(wineryId, id);
   }
 
   @Get(':id/dossier/canonical')
@@ -124,7 +132,8 @@ export class DossierController {
     summary: 'Contenido canónico del expediente',
     description:
       'Contrato O2 §10: los **bytes exactos** que se hashearon (o se hashearían), sin el envoltorio `data`, ' +
-      'para recalcular la huella.',
+      'para recalcular la huella. La cabecera `X-Dossier-Status` dice si el expediente está `OPEN` (vista ' +
+      'previa) o `CLOSED`, y `X-Dossier-Hash` lleva el SHA-256 de estos bytes.',
   })
   @ApiProduces('application/json')
   @ApiOkResponse({
@@ -132,11 +141,25 @@ export class DossierController {
     content: { 'application/json': { schema: CANONICAL_DOSSIER_SCHEMA } },
   })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.8')
-  canonical(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): Record<string, unknown> {
-    throw notImplemented('2.8');
+  async canonical(
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const dossier = await this.dossier.canonical(wineryId, id);
+    const name = (dossier.lotCode ?? dossier.reference).replace(
+      /[^A-Za-z0-9._-]+/g,
+      '-',
+    );
+    res.status(200);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="expediente-${name}.json"`,
+    );
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('X-Dossier-Status', dossier.status);
+    res.setHeader('X-Dossier-Hash', dossier.hash);
+    res.end(Buffer.from(dossier.canonical, 'utf8'));
   }
 }

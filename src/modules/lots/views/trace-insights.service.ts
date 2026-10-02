@@ -230,7 +230,9 @@ export class TraceInsightsService {
             tankCode: true,
             lotId: true,
             startDate: true,
+            // Una lectura anulada no cuenta para las alertas (§9)
             logs: {
+              where: { voidedAt: null },
               orderBy: { recordedAt: 'desc' },
               take: 1,
               select: { temperatureCelsius: true, recordedAt: true },

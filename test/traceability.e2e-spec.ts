@@ -15,6 +15,7 @@ import {
   DestinationTypeEnum,
   TreatmentTypeEnum,
 } from '@prisma/client';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 /** Día de calendario de hace `n` días (fechas pasadas: ninguna puede ser futura). */
 function daysAgo(n: number): string {
@@ -51,6 +52,8 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
     configureApp(app);
 
     await app.init();
+
+    await resetLoopbackLoginLocks(app);
     prisma = app.get<PrismaService>(PrismaService);
 
     const login = async (email: string) =>

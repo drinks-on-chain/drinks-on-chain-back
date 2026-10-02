@@ -9,6 +9,7 @@ import { STORAGE_SERVICE } from '../src/shared/storage/storage.interface';
 import { createObjectStorage } from '../src/shared/storage/storage.module';
 import { deleteIdentityData } from './helpers/identity';
 import { wineryWithOwner } from './helpers/staff-session';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
@@ -23,7 +24,8 @@ const PDF = Buffer.from('%PDF-1.4 informe fitosanitario de prueba');
  */
 describe.each(
   [
-    ['local', {}],
+    // Explícito: el `.env` de desarrollo trae `STORAGE_DRIVER=s3`
+    ['local', { STORAGE_DRIVER: 'local' }],
     ...(process.env.S3_E2E === 'true'
       ? [['s3', { STORAGE_DRIVER: 's3' }] as const]
       : []),
@@ -58,6 +60,7 @@ describe.each(
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await resetLoopbackLoginLocks(app);
     prisma = app.get(PrismaService);
 
     // Dueña de una bodega (alta + invitación aceptada desde H1)

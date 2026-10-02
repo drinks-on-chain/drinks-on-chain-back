@@ -51,6 +51,29 @@ flowchart LR
 
 Los repositorios y `WalletsService` aceptan un `tx` opcional para participar en la transacción de quien los llama.
 
+## Eventos y tareas de los lotes (Ola 2)
+
+Procesadores en `src/modules/lots/jobs/` ([trazabilidad](trazabilidad.md#códigos-de-botella-paso-26)):
+
+| Trabajo | Cola | Qué hace |
+|---|---|---|
+| `trace.bottle-codes.export` | `default` | Lo escribe `POST /v1/lots/{id}/bottle-codes/exports` junto a la fila `PENDING` de `bottle_code_exports`. Genera el ZIP para la imprenta (CSV + un QR por código) en el almacenamiento privado y deja la fila `READY`; idempotente; en el último intento fallido (`JOB_ATTEMPTS`), `FAILED` |
+| `trace.bottle-codes.exports-cleanup` | `scheduled` | Cada hora (minuto 41): borra del almacenamiento los ZIP caducados (7 días) |
+| `lot.certified` | `chain` | Lo escribe el cierre del expediente con la huella del lote. Hoy solo deja constancia; la Ola 3 lo usará para anclar el hash |
+| `trace.locks.release` | `scheduled` | Cada día a las 00:05 de America/La_Paz y al arrancar el worker: persiste los candados de crianza y de reposo ya cumplidos (`LOCK_RELEASED` en la línea de tiempo y en la bitácora). Idempotente |
+
+El contrato O2 §15 nombra una cola `exports` para la primera tarea; mientras no exista como cola propia, va por `default`.
+
+**Eventos `lot.*` del contrato O2 §15.** De los seis que nombra (`lot.created`, `lot.stage_changed`, `lot.lock_released`, `lot.bottled`, `lot.certified`, `lot.discarded`), en la Ola 2 solo se emite **`lot.certified`**. Los demás tendrían como único consumidor la caché del pasaporte público, que no los necesita: cada lectura compara la marca de estado del lote y descarta la entrada si cambió. Como un evento sin procesador falla en el worker (y dos procesadores para la misma cola y nombre no lo dejan arrancar), cada evento se añadirá **junto con su consumidor**:
+
+| Evento | Llega con | Consumidor previsto |
+|---|---|---|
+| `lot.certified` | Ola 2 (hoy solo deja constancia) | Ola 3: anclaje de la huella del expediente en la red |
+| `lot.bottled`, `lot.discarded` | Ola 3 | Emisión y retirada de los NFT del lote (NFT ≤ códigos activos) |
+| `lot.created`, `lot.stage_changed`, `lot.lock_released` | Ola 4 | Avisos al comprador y a la bodega |
+
+La e2e del worker comprueba que cada evento que emite la API tiene un procesador, y solo uno.
+
 ## Cómo añadir un evento y su procesador
 
 1. En el servicio, dentro de la transacción:

@@ -66,7 +66,9 @@ export const PASSPORT_INCLUDE = {
     select: {
       startDate: true,
       endDate: true,
+      // Los registros anulados por una corrección no se publican (§9)
       treatments: {
+        where: { voidedAt: null },
         orderBy: { appliedAt: 'asc' },
         select: {
           treatmentType: true,
@@ -75,7 +77,7 @@ export const PASSPORT_INCLUDE = {
           appliedAt: true,
         },
       },
-      _count: { select: { logs: true } },
+      _count: { select: { logs: { where: { voidedAt: null } } } },
     },
   },
   wineAgingBatches: {
@@ -113,7 +115,7 @@ export const PASSPORT_INCLUDE = {
       packagingFormatCl: true,
       finalAlcoholAbv: true,
       labAnalyses: {
-        where: { supersededAt: null },
+        where: { supersededAt: null, voidedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 1,
         select: {
@@ -136,6 +138,7 @@ export const PASSPORT_INCLUDE = {
       actorMembershipId: true,
       data: true,
       corrected: true,
+      resourceId: true,
     },
   },
 } satisfies Prisma.LotInclude;
@@ -266,6 +269,12 @@ export interface PassportContext {
   /** Rol de cada membresía que aparece en la línea de tiempo. */
   roles: ReadonlyMap<string, string>;
   corrections: { count: number; lastAt: Date | null };
+  /**
+   * Registros anulados por una corrección `VOID` (§9): sus eventos no salen
+   * en la línea de tiempo pública (un dictamen o un análisis anulado deja de
+   * contar; de las correcciones se publica cuántas y cuándo, §12.3).
+   */
+  voidedRecordIds: ReadonlySet<string>;
   attachments: readonly { id: string; kind: string; title: string }[];
   /** URL pública de una ruta de la API (`/v1/public/lots/…`). */
   publicUrl: (path: string) => string;
@@ -546,6 +555,9 @@ export function buildLotPassport(
   const rawChecks = (lab?.conformity as { checks?: unknown } | null)?.checks;
 
   const closed = lot.dossier?.status === 'CLOSED' && !!lot.dossier.hash;
+  const timelineEvents = lot.events.filter(
+    (e) => !ctx.voidedRecordIds.has(e.resourceId),
+  );
   const lotPath = `/v1/public/lots/${encodeURIComponent(lotCode)}`;
 
   return {
@@ -688,7 +700,7 @@ export function buildLotPassport(
       origin: rules.origin,
       items: ruleItems(rules, productType),
     },
-    timeline: lot.events.map((e) => {
+    timeline: timelineEvents.map((e) => {
       const role = e.actorMembershipId
         ? ctx.roles.get(e.actorMembershipId)
         : undefined;

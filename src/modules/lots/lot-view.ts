@@ -78,8 +78,9 @@ export const LOT_VIEW_INCLUDE = {
     select: {
       id: true,
       totalBottlesPackaged: true,
+      // El vigente: ni sustituido por un reanálisis ni anulado (§9)
       labAnalyses: {
-        where: { supersededAt: null },
+        where: { supersededAt: null, voidedAt: null },
         orderBy: { createdAt: 'desc' },
         take: 1,
         select: { id: true, conformityStatus: true },

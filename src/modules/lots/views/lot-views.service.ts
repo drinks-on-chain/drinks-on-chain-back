@@ -104,12 +104,19 @@ const GRAPH_INCLUDE = {
     orderBy: [{ startDate: 'asc' }, { createdAt: 'asc' }],
     include: {
       inputs: { select: { harvestBatchId: true, kg: true } },
+      // Las lecturas y los tratamientos anulados no cuentan (§9)
       logs: {
+        where: { voidedAt: null },
         orderBy: { recordedAt: 'desc' },
         take: 1,
         select: { temperatureCelsius: true, recordedAt: true },
       },
-      _count: { select: { logs: true, treatments: true } },
+      _count: {
+        select: {
+          logs: { where: { voidedAt: null } },
+          treatments: { where: { voidedAt: null } },
+        },
+      },
     },
   },
   wineAgingBatches: { orderBy: { createdAt: 'asc' } },
@@ -243,10 +250,10 @@ export class LotViewsService {
             },
           ],
         },
-        select: { targetId: true },
+        select: { targetType: true, targetId: true },
       }),
     ]);
-    const corrected = new Set(corrections.map((c) => c.targetId));
+    const corrected = await this.correctedNodes(corrections);
     const nodes: LotGraphNode[] = [];
     const edges: LotGraphEdge[] = [];
 
@@ -541,9 +548,12 @@ export class LotViewsService {
               )
             : [],
           actor: actorOf(actors, lab.createdByMembershipId),
-          status: lab.supersededAt
-            ? 'SUPERSEDED'
-            : (lab.conformityStatus ?? 'NOT_RECORDED'),
+          // Anulado por una corrección: sigue en el grafo, marcado
+          status: lab.voidedAt
+            ? 'VOIDED'
+            : lab.supersededAt
+              ? 'SUPERSEDED'
+              : (lab.conformityStatus ?? 'NOT_RECORDED'),
           corrected: corrected.has(lab.id),
         });
         edges.push({ from: bottling.id, to: lab.id, quantity: null });
@@ -557,5 +567,50 @@ export class LotViewsService {
       nodes,
       edges,
     };
+  }
+
+  /**
+   * Nodos del grafo con alguna corrección (`trace_corrections`, §9). Los
+   * registros que no tienen nodo propio marcan el de su registro padre: un
+   * análisis de madurez o un dictamen, el pesaje; una lectura o un
+   * tratamiento, el tanque.
+   */
+  private async correctedNodes(
+    corrections: readonly { targetType: string; targetId: string }[],
+  ): Promise<Set<string>> {
+    const ids = (type: string) =>
+      corrections.filter((c) => c.targetType === type).map((c) => c.targetId);
+    const nodes = new Set(corrections.map((c) => c.targetId));
+    const [maturity, phyto, logs, treatments] = await Promise.all([
+      ids('MATURITY_ANALYSIS').length > 0
+        ? this.prisma.maturityAnalysis.findMany({
+            where: { id: { in: ids('MATURITY_ANALYSIS') } },
+            select: { harvestBatchId: true },
+          })
+        : [],
+      ids('PHYTO_DECISION').length > 0
+        ? this.prisma.phytoDecision.findMany({
+            where: { id: { in: ids('PHYTO_DECISION') } },
+            select: { harvestBatchId: true },
+          })
+        : [],
+      ids('FERMENTATION_LOG').length > 0
+        ? this.prisma.fermentationLog.findMany({
+            where: { id: { in: ids('FERMENTATION_LOG') } },
+            select: { fermentationTankId: true },
+          })
+        : [],
+      ids('TREATMENT').length > 0
+        ? this.prisma.enologicalTreatment.findMany({
+            where: { id: { in: ids('TREATMENT') } },
+            select: { fermentationTankId: true },
+          })
+        : [],
+    ]);
+    for (const row of [...maturity, ...phyto]) nodes.add(row.harvestBatchId);
+    for (const row of [...logs, ...treatments]) {
+      nodes.add(row.fermentationTankId);
+    }
+    return nodes;
   }
 }
