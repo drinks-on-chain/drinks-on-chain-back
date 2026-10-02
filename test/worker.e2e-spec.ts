@@ -20,8 +20,23 @@ import {
 import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { CorrelationIdMiddleware } from '../src/shared/middleware/correlation-id.middleware';
 import { WineryCreatedHandler } from '../src/modules/wineries/jobs/winery-created.handler';
+import { LotCertifiedHandler } from '../src/modules/lots/jobs/lot-certified.handler';
+import { BOTTLE_CODE_EXPORTS_CLEANUP_TASK } from '../src/modules/lots/jobs/bottle-code-exports-cleanup.task';
+import { TRACE_LOCKS_RELEASE_TASK } from '../src/modules/lots/jobs/locks-release.task';
+import {
+  BOTTLE_CODES_EXPORT_JOB,
+  LOT_CERTIFIED,
+} from '../src/modules/lots/lots.events';
+import { EMAIL_REQUESTED } from '../src/modules/mail/mail.events';
+import { SETTING_CHANGED } from '../src/modules/settings/settings.events';
+import { WINERY_ACTIVATED } from '../src/modules/wineries/wineries.events';
 import { heartbeatAgeMs } from '../src/worker-healthcheck';
-import { workerHeartbeatKey } from '../src/shared/queue/queue.constants';
+import {
+  QUEUE_CHAIN,
+  QUEUE_DEFAULT,
+  QUEUE_EMAIL,
+  workerHeartbeatKey,
+} from '../src/shared/queue/queue.constants';
 
 const run = `o0be3w-${Date.now()}`;
 
@@ -143,6 +158,63 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
         'scheduled/outbox.cleanup',
       ]),
     );
+  });
+
+  it('cada evento que emite la API tiene un procesador, y solo uno (contrato O2 §15)', () => {
+    // Dos procesadores para la misma cola y nombre no dejan arrancar el
+    // worker (JobDispatcher); un evento sin procesador falla sin reintentos
+    const registered = moduleRef.get(JobDispatcher).registeredJobs();
+    expect(new Set(registered).size).toBe(registered.length);
+    const emitted = [
+      `${QUEUE_CHAIN}/${LOT_CERTIFIED}`,
+      `${QUEUE_DEFAULT}/${BOTTLE_CODES_EXPORT_JOB}`,
+      `${QUEUE_CHAIN}/${WINERY_ACTIVATED}`,
+      `${QUEUE_EMAIL}/${EMAIL_REQUESTED}`,
+      `${QUEUE_DEFAULT}/${SETTING_CHANGED}`,
+    ];
+    expect(registered).toEqual(expect.arrayContaining(emitted));
+    // Tareas programadas de la trazabilidad
+    expect(registered).toEqual(
+      expect.arrayContaining([
+        `scheduled/${TRACE_LOCKS_RELEASE_TASK}`,
+        `scheduled/${BOTTLE_CODE_EXPORTS_CLEANUP_TASK}`,
+      ]),
+    );
+  });
+
+  it('lot.certified llega a su procesador de la cola chain y queda DONE', async () => {
+    const handler = moduleRef.get(LotCertifiedHandler);
+    const spy = jest.spyOn(handler, 'handle');
+    const event = await prisma.$transaction((tx) =>
+      outbox.add(tx, {
+        type: LOT_CERTIFIED,
+        aggregateType: 'lot',
+        aggregateId: `${run}-lot`,
+        queue: QUEUE_CHAIN,
+        payload: {
+          lotId: `${run}-lot`,
+          wineryId: `${run}-winery`,
+          lotCode: 'E2E-2026-SINGANI-001',
+          hash: 'a'.repeat(64),
+          bottleMerkleRoot: 'b'.repeat(64),
+          bottleCount: 2950,
+          closedAt: new Date().toISOString(),
+        },
+        correlationId: `${run}-lot-certified`,
+      }),
+    );
+    await waitFor(() =>
+      spy.mock.calls.some(
+        ([data]) => (data as OutboxJobData).outboxEventId === event.id,
+      ),
+    );
+    await waitFor(async () => {
+      const row = await prisma.outboxEvent.findUnique({
+        where: { id: event.id },
+      });
+      return row?.status === OutboxStatusEnum.DONE;
+    });
+    spy.mockRestore();
   });
 
   it('un evento escrito en la transacción llega a la cola y se procesa una sola vez con dos relays concurrentes', async () => {
