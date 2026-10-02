@@ -6,13 +6,14 @@ import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { MembershipRoleEnum, PrismaClient } from '@prisma/client';
+import {
+  MembershipRoleEnum,
+  PrismaClient,
+  WineryCategoryEnum,
+} from '@prisma/client';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
-import { loadMockFixtures } from '../src/seed/fixtures';
-import { mockId } from '../src/seed/ids';
-import { runSeed } from '../src/seed/run-seed';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
 import {
   formatBottleCode,
@@ -27,18 +28,26 @@ import {
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { STORAGE_SERVICE } from '../src/shared/storage/storage.interface';
 import { createObjectStorage } from '../src/shared/storage/storage.module';
-import { createMember, staffToken } from './helpers/staff-session';
+import {
+  addWineryMember,
+  staffToken,
+  wineryWithOwner,
+} from './helpers/staff-session';
 import { createPlatformUser } from './helpers/identity';
 import { loadOpenApiValidator } from './helpers/openapi-validator';
 
 /**
  * Ola 2 · bloque C (pasos 2.9 y 2.10 de la Etapa 2): vistas del lote (línea de
  * tiempo, balance, grafo, panel y reporte), archivos del lote y pasaporte
- * público, sobre la semilla de demostración en un esquema propio. Incluye las
- * pruebas de elusión del contrato O2 §18 de este alcance: grafo de otra
- * bodega (404), pasaporte inexistente (404) y enumeración (429), pasaporte sin
- * datos inventados, de botella anulada, de bodega suspendida y de lote
- * descartado. Fechas relativas a hoy.
+ * público, con dos bodegas propias en un esquema propio. Incluye las pruebas
+ * de elusión del contrato O2 §18 de este alcance: grafo de otra bodega (404),
+ * pasaporte inexistente (404) y enumeración (429), pasaporte sin datos
+ * inventados, de botella anulada, de bodega suspendida y de lote descartado.
+ * Fechas relativas a hoy.
+ *
+ * No usa la semilla de demostración: su transacción retiene el candado de la
+ * cadena de la bitácora (de toda la base) y hace esperar a las suites que
+ * corren a la vez.
  */
 process.env.TRUST_PROXY = '1';
 
@@ -60,8 +69,8 @@ function daysAgo(n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-const CINTI = mockId('winery:cintiviejo');
-const ALTOS = mockId('winery:altos');
+/** Bodega del recorrido (destilería en el Valle de Cinti); `altos` es otra, para el aislamiento. */
+let CINTI = '';
 const PNG = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d,
 ]);
@@ -139,18 +148,45 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     return t.id;
   }
 
-  async function tokenFor(
-    email: string,
-    wineryId: string,
-    role: MembershipRoleEnum,
-  ) {
-    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
-    return staffToken(app, {
-      userId: user.id,
+  /** Bodega activa con su dueña y el token de la dueña. */
+  async function wineryWithToken(name: string, region: string, key: string) {
+    const email = `duena-${key}-${run}@e2e.test`;
+    const { wineryId, ownerId } = await wineryWithOwner(app, {
+      name,
+      email,
+      password: 'Bloque-c-123!',
+      fullName: `Dueña de ${name}`,
+      category: WineryCategoryEnum.DISTILLERY,
+      region,
+    });
+    const token = await staffToken(app, {
+      userId: ownerId,
       email,
       organizationId: wineryId,
       organizationType: 'WINERY',
+      role: MembershipRoleEnum.OWNER,
+    });
+    return { wineryId, token };
+  }
+
+  /** Miembro de la bodega del recorrido con su token. */
+  async function memberToken(
+    role: 'OPERATOR' | 'ACCOUNTANT',
+    fullName: string,
+  ) {
+    const email = `${role.toLowerCase()}-c-${run}@e2e.test`;
+    const { userId } = await addWineryMember(app, {
+      wineryId: CINTI,
       role,
+      email,
+      fullName,
+    });
+    return staffToken(app, {
+      userId,
+      email,
+      organizationId: CINTI,
+      organizationType: 'WINERY',
+      role: MembershipRoleEnum[role],
     });
   }
 
@@ -318,50 +354,51 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();
-    await runSeed(
-      prisma,
-      {
-        superadmin: null,
-        demo: {
-          password: `demo-${randomBytes(8).toString('hex')}`,
-          totpSecret: null,
-        },
-        bcryptRounds: 4,
-        mfaKeys: { jwtSecret: null, mfaEncryptionKey: null },
-      },
-      undefined,
-      loadMockFixtures(),
+    const cinti = await wineryWithToken(
+      `Destilería del Bloque C ${run}`,
+      'Valle de Cinti',
+      'cinti',
     );
+    CINTI = cinti.wineryId;
+    tokens.cinti = cinti.token;
+    await prisma.winery.update({
+      where: { id: CINTI },
+      data: { slug: `destileria-bloque-c-${run}` },
+    });
+    tokens.cintiOperator = await memberToken(
+      'OPERATOR',
+      'Operario del Bloque C',
+    );
+    tokens.cintiAccountant = await memberToken(
+      'ACCOUNTANT',
+      'Contable del Bloque C',
+    );
+    const altos = await wineryWithToken(
+      `Bodega Vecina ${run}`,
+      'Valle Central de Tarija',
+      'altos',
+    );
+    tokens.altos = altos.token;
+    const parcel = (
+      parcelName: string,
+      altitudeMasl: number,
+      varietyName: string,
+    ) => ({
+      wineryId: CINTI,
+      parcelName,
+      surfaceHectares: 2.5,
+      altitudeMasl,
+      rawMaterialType: 'Uva',
+      varietyName,
+    });
+    await prisma.terroir.createMany({
+      data: [
+        parcel('Parcela 1 · Los Parrales', 2350, 'Moscatel de Alejandría'),
+        parcel('Parcela 4 · El Molino', 2320, 'Moscatel de Alejandría'),
+        parcel('Parcela 5 · San Roque', 2390, 'Negra Criolla'),
+      ],
+    });
 
-    tokens.cinti = await tokenFor(
-      'admin@cintiviejo.test',
-      CINTI,
-      MembershipRoleEnum.OWNER,
-    );
-    tokens.cintiOperator = await tokenFor(
-      'operario@cintiviejo.test',
-      CINTI,
-      MembershipRoleEnum.OPERATOR,
-    );
-    // La contable de la semilla está de baja: una propia para estas pruebas
-    const accountant = await createMember(app.get(PrismaService), {
-      email: `contable-c-${run}@cintiviejo.test`,
-      fullName: 'Contable del bloque C',
-      organizationId: CINTI,
-      role: MembershipRoleEnum.ACCOUNTANT,
-    });
-    tokens.cintiAccountant = await staffToken(app, {
-      userId: accountant.user.id,
-      email: accountant.user.email,
-      organizationId: CINTI,
-      organizationType: 'WINERY',
-      role: MembershipRoleEnum.ACCOUNTANT,
-    });
-    tokens.altos = await tokenFor(
-      'admin@altos.test',
-      ALTOS,
-      MembershipRoleEnum.OWNER,
-    );
     const admin = await createPlatformUser(prisma, {
       email: `admin-o2c-${run}@drinksonchain.test`,
       password: 'Plataforma-o2c-123',
@@ -1872,17 +1909,117 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       });
     });
 
-    it('vino migrado de la semilla: crianza registrada, sin destilación ni D.O., reglas fijadas al migrar', async () => {
+    it('vino: crianza registrada, sin destilación ni D.O.; balance y grafo con la crianza', async () => {
+      const year = Number(daysAgo(420).slice(0, 4));
+      const lot = await checked('post', 'cinti', '/v1/lots', 201, {
+        name: 'Tinto del bloque C',
+        harvestYear: year,
+        productType: 'WINE',
+        plannedFormatCl: 75,
+      });
+      const lotId = lot.body.data.id as string;
+      const harvest = await checked(
+        'post',
+        'cintiOperator',
+        '/v1/harvest-batches',
+        201,
+        {
+          lotId,
+          terroirId: await terroirId(CINTI, 'San Roque'),
+          intakeDate: daysAgo(420),
+          grossWeightKg: 3100,
+          tareWeightKg: 100,
+        },
+      );
+      await checked(
+        'post',
+        'cinti',
+        `/v1/harvest-batches/${harvest.body.data.id}/phyto-decisions`,
+        201,
+        { decision: 'APPROVED', decidedAt: `${daysAgo(419)}T12:00:00Z` },
+      );
+      const tank = await checked(
+        'post',
+        'cinti',
+        '/v1/fermentation-tanks',
+        201,
+        {
+          inputs: [{ harvestBatchId: harvest.body.data.id }],
+          tankCode: `TK-C-W-${run}`,
+          volumeFilledLiters: 2000,
+          destinationType: 'WINE_AGING',
+          startDate: `${daysAgo(418)}T10:00:00Z`,
+        },
+      );
+      const aging = await checked('post', 'cinti', '/v1/wine-aging', 201, {
+        fermentationTankId: tank.body.data.id,
+        containerType: 'Barrica',
+        containerMaterial: 'Roble francés',
+        volumeLiters: 1900,
+        plannedMonths: 12,
+        startDate: daysAgo(400),
+      });
+
+      // Antes de embotellar: el vino se proyecta desde la crianza (S-19)
+      const before = await checked(
+        'get',
+        'cinti',
+        `/v1/lots/${lotId}/balance`,
+        200,
+      );
+      expect(before.body.data).toMatchObject({
+        harvest: { netKg: 3000, approvedKg: 3000 },
+        must: { filledLiters: 2000, litersPerKg: 0.667 },
+        aging: { liters: 1900, lossLiters: 100 },
+        // 1.900 L × (1 − 5 %) ÷ 0,75 L
+        projection: { bottles: 2406, basis: 'BASE_WINE' },
+      });
+      expect(before.body.data.distillation).toBeUndefined();
+
+      const bottled = await checked('post', 'cinti', '/v1/bottling', 201, {
+        wineAgingBatchId: aging.body.data.id,
+        productType: 'WINE',
+        finalAlcoholAbv: 13.5,
+        totalBottlesPackaged: 2450,
+        packagingFormatCl: 75,
+        bottlingDate: daysAgo(2),
+      });
+      const lotCode = bottled.body.data.internationalLotCode as string;
+
+      const graph = await checked(
+        'get',
+        'cinti',
+        `/v1/lots/${lotId}/graph`,
+        200,
+      );
+      expect(
+        graph.body.data.nodes.map((n: { type: string }) => n.type),
+      ).toEqual(['TERROIR', 'HARVEST_BATCH', 'TANK', 'WINE_AGING', 'BOTTLING']);
+      expect(graph.body.data.edges).toEqual(
+        expect.arrayContaining([
+          {
+            from: tank.body.data.id,
+            to: aging.body.data.id,
+            quantity: { value: 1900, unit: 'L' },
+          },
+          {
+            from: aging.body.data.id,
+            to: bottled.body.data.id,
+            quantity: { value: 1900, unit: 'L' },
+          },
+        ]),
+      );
+
       const res = await checked(
         'get',
         'nobody',
-        '/v1/public/passports/ALT-2026-WINE-001',
+        `/v1/public/passports/${lotCode}`,
         200,
       );
       const passport = res.body.data;
       expect(passport).toMatchObject({
         kind: 'LOT',
-        lotCode: 'ALT-2026-WINE-001',
+        lotCode,
         productType: 'WINE',
         stage: 'BOTTLED',
         denomination: {
@@ -1891,11 +2028,28 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           rules: null,
           legalException: false,
         },
+        origin: {
+          status: 'RECORDED',
+          terroirs: [
+            {
+              parcelName: 'Parcela 5 · San Roque',
+              variety: 'Negra Criolla',
+              doStatus: 'NOT_APPLICABLE',
+            },
+          ],
+        },
+        // Sin análisis de madurez registrado: null, no un valor de relleno
+        harvest: {
+          status: 'RECORDED',
+          phytosanitary: 'APPROVED',
+          maturity: null,
+        },
         aging: {
           status: 'RECORDED',
-          containerType: expect.any(String),
-          plannedMonths: expect.any(Number),
-          startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          containerType: 'Barrica',
+          containerMaterial: 'Roble francés',
+          plannedMonths: 12,
+          startDate: daysAgo(400),
           unlockDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
         },
         distillation: {
@@ -1906,33 +2060,20 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           restMinDays: null,
           restUntil: null,
         },
-        bottling: { status: 'RECORDED', bottles: 5320, date: '2026-05-12' },
-        rules: { origin: 'MIGRATION' },
+        bottling: {
+          status: 'RECORDED',
+          bottles: 2450,
+          formatCl: 75,
+          finalAbv: 13.5,
+        },
+        lab: { status: 'NOT_RECORDED', checks: [] },
       });
-      expect(
-        passport.origin.terroirs.every(
-          (t: { doStatus: string }) => t.doStatus === 'NOT_APPLICABLE',
-        ),
-      ).toBe(true);
       const ruleKeys = passport.rules.items.map((i: { key: string }) => i.key);
       expect(ruleKeys).toContain('trazabilidad.vino.crianzaMinimaMeses');
       expect(ruleKeys).not.toContain('trazabilidad.singani.reposoMinimoDias');
-      // Quien no quedó registrado (datos anteriores a la Ola 2) va sin rol: no se inventa
-      const roles = (
-        passport.timeline as { type: string; actorRole: string | null }[]
-      ).map((e) => e.actorRole);
-      expect(roles.length).toBeGreaterThan(0);
-      expect(roles).toContain(null);
-      for (const role of roles) {
-        expect([
-          null,
-          'OWNER',
-          'ENOLOGIST',
-          'AGRONOMIST',
-          'OPERATOR',
-          'ACCOUNTANT',
-        ]).toContain(role);
-      }
+      expect(passport.timeline.map((e: { type: string }) => e.type)).toEqual(
+        expect.arrayContaining(['AGING_STARTED', 'BOTTLED']),
+      );
     });
 
     it('perfil público de bodega: activo responde, desconocido 404', async () => {
