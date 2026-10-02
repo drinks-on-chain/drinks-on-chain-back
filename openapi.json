@@ -3289,7 +3289,7 @@
     },
     "/v1/lots/{id}/attachments": {
       "get": {
-        "description": "Contrato O2 §11.5: incluye los informes de dictamen y laboratorio adjuntados en §3.4 y §8, cada uno con una URL firmada de 15 min. Plataforma con `?wineryId=`.",
+        "description": "Contrato O2 §11.5: incluye los informes de dictamen y laboratorio adjuntados en §3.4 y §8, cada uno con una URL firmada de 15 min, los más recientes primero. AGRONOMIST y OPERATOR solo ven los que adjuntaron (§14). Plataforma con `?wineryId=`.",
         "operationId": "LotAttachmentsController_list_v1",
         "parameters": [
           {
@@ -3395,16 +3395,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -3418,7 +3408,7 @@
         ]
       },
       "post": {
-        "description": "Contrato O2 §11.5: referencia un archivo ya subido con `POST /v1/uploads` por su `key`. Por defecto `PRIVATE`; la etiqueta (`LABEL`) nace `PUBLIC` (S-20). Queda en la línea de tiempo (`FILE_ATTACHED`).",
+        "description": "Contrato O2 §11.5: referencia un archivo ya subido con `POST /v1/uploads` por su `key`. Por defecto `PRIVATE`; la etiqueta (`LABEL`) nace `PUBLIC` (S-20). Queda en la línea de tiempo (`FILE_ATTACHED`). Pedir `PUBLIC` para otro tipo de archivo exige ser OWNER o ENOLOGIST (403).",
         "operationId": "LotAttachmentsController_create_v1",
         "parameters": [
           {
@@ -3500,16 +3490,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -3525,7 +3505,7 @@
     },
     "/v1/lots/{id}/attachments/{attachmentId}/visibility": {
       "post": {
-        "description": "Contrato O2 §11.5: solo inserción (el cambio se registra, no se edita el adjunto). `PUBLIC` lo muestra el pasaporte en `publicAttachments`.",
+        "description": "Contrato O2 §11.5: solo inserción (el cambio se registra en la línea de tiempo y la bitácora; no se edita el adjunto). `PUBLIC` lo muestra el pasaporte en `publicAttachments`. Solo los archivos adjuntados al lote (los informes de dictamen y laboratorio son siempre privados).",
         "operationId": "LotAttachmentsController_changeVisibility_v1",
         "parameters": [
           {
@@ -3605,16 +3585,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -3630,7 +3600,7 @@
     },
     "/v1/lots/{id}/balance": {
       "get": {
-        "description": "Contrato O2 §11.3: conciliación con mermas por etapa (`aging` solo en vino, `distillation` solo en singani), balance del embotellado y proyección de botellas (S-19): vino = litros de la última etapa × (1 − merma máxima) ÷ formato; singani = corazón × grado ÷ `targetAbvPercent` × (1 − merma máxima) ÷ formato; sin datos, la estimación declarada.",
+        "description": "Contrato O2 §11.3: conciliación con mermas por etapa (`aging` solo en vino, `distillation` solo en singani), balance del embotellado y proyección de botellas (S-19): vino = litros de la última etapa × (1 − merma máxima) ÷ formato; singani = corazón × grado ÷ `targetAbvPercent` × (1 − merma máxima) ÷ formato; sin datos, la estimación declarada. Las mermas sin los dos volúmenes registrados llegan en `null` (no se suponen en cero); `litersPerKg` usa los kilos que entraron a tanques.",
         "operationId": "LotViewsController_balance_v1",
         "parameters": [
           {
@@ -3655,16 +3625,6 @@
           },
           "404": {
             "description": "TRC_LOT_NOT_FOUND",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -4971,16 +4931,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -5257,16 +5207,6 @@
           },
           "404": {
             "description": "TRC_LOT_NOT_FOUND",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -10895,7 +10835,7 @@
     },
     "/v1/public/bottles/{code}": {
       "get": {
-        "description": "Contrato O2 §12.2: número de serie, estado del código (`VOIDED` = anulado por la bodega), prueba Merkle (con el expediente cerrado) y el pasaporte del lote. Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`).",
+        "description": "Contrato O2 §12.2: número de serie, estado del código (`VOIDED` = anulado por la bodega), prueba Merkle (con el expediente cerrado) y el pasaporte del lote. Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`; el de una botella se queda en 60 s porque su código se puede anular). Los 404 se cachean 30 s.",
         "operationId": "PublicPassportsController_bottle_v1",
         "parameters": [
           {
@@ -10956,16 +10896,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.10 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "summary": "Pasaporte público de una botella",
@@ -10977,7 +10907,7 @@
     },
     "/v1/public/lots/{lotCode}": {
       "get": {
-        "description": "Contrato O2 §12.2: solo lotes embotellados (con `lotCode`). Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`).",
+        "description": "Contrato O2 §12.2: solo lotes embotellados (con `lotCode`). Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`; el de una botella se queda en 60 s porque su código se puede anular). Los 404 se cachean 30 s.",
         "operationId": "PublicPassportsController_lot_v1",
         "parameters": [
           {
@@ -11032,16 +10962,6 @@
                 }
               }
             },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.10 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -11132,16 +11052,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.10 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "summary": "Descargar un adjunto público del lote",
@@ -11217,16 +11127,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.10 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "summary": "Expediente canónico público de un lote",
@@ -11238,7 +11138,7 @@
     },
     "/v1/public/passports/{code}": {
       "get": {
-        "description": "Contrato O2 §12.1: `PublicBottlePassport` (`kind: BOTTLE`) si es un código de botella válido (8 caracteres Crockford con control, normalizado: mayúsculas, sin espacios ni guiones, O → 0, I/L → 1), `PublicLotPassport` (`kind: LOT`) si es un código de lote. Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`).",
+        "description": "Contrato O2 §12.1: `PublicBottlePassport` (`kind: BOTTLE`) si es un código de botella válido (8 caracteres Crockford con control, normalizado: mayúsculas, sin espacios ni guiones, O → 0, I/L → 1), `PublicLotPassport` (`kind: LOT`) si es un código de lote. Sin sesión. Límite: 60 peticiones/min por IP real (`X-DOC-Client-IP` del proxy firmado); más de 20 códigos inexistentes en 10 min → 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After`. `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (lote `CERTIFIED`: `max-age=3600`; el de una botella se queda en 60 s porque su código se puede anular). Los 404 se cachean 30 s.",
         "operationId": "PublicPassportsController_passport_v1",
         "parameters": [
           {
@@ -11307,16 +11207,6 @@
                 }
               }
             },
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.10 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -12143,16 +12033,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -12212,7 +12092,7 @@
     },
     "/v1/traceability/reports/production": {
       "get": {
-        "description": "Contrato O2 §11.4: una fila por lote con la conciliación kilos → litros → botellas y las mermas por etapa, más totales por tipo de producto (`WINE`, `SINGANI` y `UNDECIDED` para los lotes aún sin tipo). `format=csv` devuelve `text/csv; charset=utf-8` con las mismas columnas (sin totales). Máximo 10 000 filas; más → 422 `TRC_REPORT_TOO_LARGE`.",
+        "description": "Contrato O2 §11.4: una fila por lote con la conciliación kilos → litros → botellas y las mermas por etapa, más totales por tipo de producto (`WINE`, `SINGANI` y `UNDECIDED` para los lotes aún sin tipo). `from`/`to` filtran por la fecha de creación del lote (America/La_Paz, inclusive). `format=csv` devuelve `text/csv; charset=utf-8` (UTF-8 con BOM, coma, CRLF) con las mismas columnas (sin totales). Máximo 10 000 filas; más → 422 `TRC_REPORT_TOO_LARGE`. `bottles` son las botellas embotelladas; `litersPerKg` de cada fila usa los kilos que entraron a tanques.",
         "operationId": "TraceabilityInsightsController_productionReport_v1",
         "parameters": [
           {
@@ -12301,21 +12181,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_REPORT_TOO_LARGE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              },
-              "text/csv": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.9 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -18339,7 +18204,14 @@
             "example": "2026-10-02T09:00:00.000Z"
           },
           "createdBy": {
-            "$ref": "#/components/schemas/TraceActorDto"
+            "nullable": true,
+            "description": "`null` = no registrado (informes de registros anteriores a la Ola 2)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceActorDto"
+              }
+            ]
           }
         },
         "required": [

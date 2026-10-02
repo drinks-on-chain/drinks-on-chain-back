@@ -97,6 +97,15 @@ export class LocalStorageService implements ObjectStorage {
     }
   }
 
+  async get(key: string): Promise<Buffer | null> {
+    try {
+      return await fs.readFile(this.resolvePath(key));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
   async delete(key: string): Promise<void> {
     try {
       await fs.unlink(this.resolvePath(key));

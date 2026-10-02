@@ -1,4 +1,4 @@
-import { Controller, Get, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Get, HttpStatus, Query, Req, Res } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiExtraModels,
@@ -14,19 +14,22 @@ import {
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
+import type { Request, Response } from 'express';
+import { laPazDate } from '@modules/lots/domain/dates';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { ApiErrorCodes, ApiNotImplemented } from './contract-responses';
+import {
+  PRODUCTION_REPORT_COLUMNS,
+  productionReportCsv,
+  TraceInsightsService,
+} from '../views/trace-insights.service';
+import { ApiErrorCodes } from './contract-responses';
 import {
   ProductionReportDto,
   ProductionReportQueryDto,
   TraceDashboardDto,
 } from './dto/traceability-insights.dto';
 
-const REPORT_CSV_HEADER =
-  'lotId,reference,lotCode,name,productType,harvestYear,stage,netKg,mustLiters,baseWineLiters,heartLiters,' +
-  'bottledLiters,bottles,formatCl,lossPercentFermentation,lossPercentTransfer,lossPercentDistillation,' +
-  'lossPercentBottling,litersPerKg,bottlesPerTonne,bottlingDate,labStatus';
+const REPORT_CSV_HEADER = PRODUCTION_REPORT_COLUMNS.join(',');
 
 /** Panel y reportes de la trazabilidad de la bodega (contrato O2 §11.2 y §11.4). */
 @ApiTags('Lotes (Ola 2)')
@@ -35,6 +38,8 @@ const REPORT_CSV_HEADER =
 @RequireActiveOrg()
 @Controller('traceability')
 export class TraceabilityInsightsController {
+  constructor(private readonly insights: TraceInsightsService) {}
+
   @Get('dashboard')
   // OPERATOR solo tiene la lectura mínima (lista, ficha, línea de tiempo; §14)
   @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')
@@ -53,9 +58,10 @@ export class TraceabilityInsightsController {
     description: 'Solo personal de plataforma: bodega sobre la que se consulta',
   })
   @ApiOkResponse({ type: TraceDashboardDto })
-  @ApiNotImplemented('2.9')
-  dashboard(@TenantId() _wineryId: string | undefined): TraceDashboardDto {
-    throw notImplemented('2.9');
+  dashboard(
+    @TenantId() wineryId: string | undefined,
+  ): Promise<TraceDashboardDto> {
+    return this.insights.dashboard(wineryId) as Promise<TraceDashboardDto>;
   }
 
   @Get('reports/production')
@@ -65,8 +71,10 @@ export class TraceabilityInsightsController {
     description:
       'Contrato O2 §11.4: una fila por lote con la conciliación kilos → litros → botellas y las mermas por ' +
       'etapa, más totales por tipo de producto (`WINE`, `SINGANI` y `UNDECIDED` para los lotes aún sin tipo). ' +
-      '`format=csv` devuelve `text/csv; charset=utf-8` con las mismas columnas (sin totales). Máximo 10 000 ' +
-      'filas; más → 422 `TRC_REPORT_TOO_LARGE`.',
+      '`from`/`to` filtran por la fecha de creación del lote (America/La_Paz, inclusive). `format=csv` devuelve ' +
+      '`text/csv; charset=utf-8` (UTF-8 con BOM, coma, CRLF) con las mismas columnas (sin totales). Máximo ' +
+      '10 000 filas; más → 422 `TRC_REPORT_TOO_LARGE`. `bottles` son las botellas embotelladas; ' +
+      '`litersPerKg` de cada fila usa los kilos que entraron a tanques.',
   })
   @ApiExtraModels(ProductionReportDto)
   @ApiProduces('application/json', 'text/csv')
@@ -83,11 +91,32 @@ export class TraceabilityInsightsController {
     'VALIDATION_ERROR',
     'TRC_REPORT_TOO_LARGE',
   ])
-  @ApiNotImplemented('2.9')
-  productionReport(
-    @TenantId() _wineryId: string | undefined,
-    @Query() _query: ProductionReportQueryDto,
-  ): ProductionReportDto {
-    throw notImplemented('2.9');
+  async productionReport(
+    @TenantId() wineryId: string | undefined,
+    @Query() query: ProductionReportQueryDto,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    const report = await this.insights.productionReport(wineryId, query);
+    res.status(HttpStatus.OK);
+    res.setHeader('Cache-Control', 'no-store');
+    if (query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="reporte-produccion-${laPazDate(new Date())}.csv"`,
+      );
+      res.setHeader('X-Export-Rows', String(report.rows.length));
+      res.send(productionReportCsv(report.rows));
+      return;
+    }
+    // Con `@Res()` la respuesta no pasa por el interceptor: mismo envoltorio
+    res.json({
+      success: true,
+      statusCode: HttpStatus.OK,
+      timestamp: new Date().toISOString(),
+      path: req.url,
+      data: report satisfies ProductionReportDto,
+    });
   }
 }

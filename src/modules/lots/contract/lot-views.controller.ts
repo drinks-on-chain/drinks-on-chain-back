@@ -10,9 +10,13 @@ import {
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { ApiLotNotFound, ApiNotImplemented } from './contract-responses';
+import { LotViewsService } from '../views/lot-views.service';
+import { ApiLotNotFound } from './contract-responses';
 import {
   LotBalanceDto,
   LotGraphDto,
@@ -26,6 +30,8 @@ import {
 @RequireActiveOrg()
 @Controller('lots')
 export class LotViewsController {
+  constructor(private readonly views: LotViewsService) {}
+
   @Get(':id/timeline')
   @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
   @ApiOperation({
@@ -37,31 +43,11 @@ export class LotViewsController {
   })
   @ApiOkResponse({ type: LotTimelineDto })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.9')
   timeline(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): LotTimelineDto {
-    throw notImplemented('2.9');
-  }
-
-  @Get(':id/graph')
-  @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'OPERATOR', 'ACCOUNTANT')
-  @ApiOperation({
-    summary: 'Grafo de trazabilidad del lote',
-    description:
-      'Contrato O2 §11.3: nodos (parcelas, pesajes, tanques, crianzas, destilaciones, embotellado, laboratorio) ' +
-      'con cantidades y métricas reales (`null` = no registrado) y aristas con lo transferido. ' +
-      'SE-07: solo miembros de la bodega dueña y personal de plataforma; cualquier otra sesión → 404.',
-  })
-  @ApiOkResponse({ type: LotGraphDto })
-  @ApiLotNotFound()
-  @ApiNotImplemented('2.9')
-  graph(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): LotGraphDto {
-    throw notImplemented('2.9');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LotTimelineDto> {
+    return this.views.timeline(wineryId, id);
   }
 
   @Get(':id/balance')
@@ -72,15 +58,40 @@ export class LotViewsController {
     description:
       'Contrato O2 §11.3: conciliación con mermas por etapa (`aging` solo en vino, `distillation` solo en singani), ' +
       'balance del embotellado y proyección de botellas (S-19): vino = litros de la última etapa × (1 − merma máxima) ÷ formato; ' +
-      'singani = corazón × grado ÷ `targetAbvPercent` × (1 − merma máxima) ÷ formato; sin datos, la estimación declarada.',
+      'singani = corazón × grado ÷ `targetAbvPercent` × (1 − merma máxima) ÷ formato; sin datos, la estimación declarada. ' +
+      'Las mermas sin los dos volúmenes registrados llegan en `null` (no se suponen en cero); `litersPerKg` usa los kilos que entraron a tanques.',
   })
   @ApiOkResponse({ type: LotBalanceDto })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.9')
   balance(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-  ): LotBalanceDto {
-    throw notImplemented('2.9');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LotBalanceDto> {
+    return this.views.balance(wineryId, id);
+  }
+
+  /**
+   * SE-07 exige **404** (no el 403 de `@OrgType`) a cualquier sesión que no
+   * sea de la bodega dueña ni del personal de plataforma: aquí se anulan el
+   * tipo de organización y los roles de la clase y el permiso lo comprueba el
+   * servicio.
+   */
+  @Get(':id/graph')
+  @OrgType()
+  @Roles()
+  @ApiOperation({
+    summary: 'Grafo de trazabilidad del lote',
+    description:
+      'Contrato O2 §11.3: nodos (parcelas, pesajes, tanques, crianzas, destilaciones, embotellado, laboratorio) ' +
+      'con cantidades y métricas reales (`null` = no registrado) y aristas con lo transferido. ' +
+      'SE-07: solo miembros de la bodega dueña y personal de plataforma; cualquier otra sesión → 404.',
+  })
+  @ApiOkResponse({ type: LotGraphDto })
+  @ApiLotNotFound()
+  graph(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<LotGraphDto> {
+    return this.views.graphForUser(user, id);
   }
 }
