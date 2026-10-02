@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import { PhytoStatusEnum } from '@prisma/client';
 import { TerroirResponseDto } from '@modules/terroirs/dto/terroir-response.dto';
 import { FermentationTankResponseDto } from '@modules/traceability/dto/fermentation-tank-response.dto';
@@ -26,7 +27,7 @@ export class TerroirSnapshotDto {
   takenAt!: string;
 }
 
-export class HarvestBatchResponseDto {
+export class HarvestBatchResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 

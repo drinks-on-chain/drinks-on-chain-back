@@ -39,6 +39,8 @@ describe('TerroirsService', () => {
     // Valores efectivos de la configuración (D.O. calculada, EA-03): el catálogo
     settingGlobalValue: { findMany: jest.fn().mockResolvedValue([]) },
     settingOverride: { findMany: jest.fn().mockResolvedValue([]) },
+    // Marcas de corrección de la parcela (contrato O2 §9)
+    traceCorrection: { findMany: jest.fn().mockResolvedValue([]) },
     terroir: {
       create: jest.fn(),
       findMany: jest.fn(),
@@ -68,6 +70,7 @@ describe('TerroirsService', () => {
     prisma = module.get<PrismaService>(PrismaService);
     jest.clearAllMocks();
     mockPrismaService.settingGlobalValue.findMany.mockResolvedValue([]);
+    mockPrismaService.traceCorrection.findMany.mockResolvedValue([]);
     mockPrismaService.settingOverride.findMany.mockResolvedValue([]);
   });
 

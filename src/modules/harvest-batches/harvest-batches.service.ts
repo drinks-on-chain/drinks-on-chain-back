@@ -53,6 +53,12 @@ import {
   violation,
 } from '@modules/lots/domain/trace-errors';
 import type { LotStage } from '@modules/lots/domain/lot-stage';
+import {
+  CorrectionMarks,
+  correctionMarks,
+  markRows,
+  withMarks,
+} from '@modules/lots/correction-marks';
 
 /** Etapas del lote que aún admiten pesajes (§3.2). */
 const HARVEST_STAGES: readonly LotStage[] = ['ORIGIN', 'HARVEST', 'FERMENTING'];
@@ -342,10 +348,7 @@ export class HarvestBatchesService {
     return this.findById(wineryId, id);
   }
 
-  async findAll(
-    wineryId: string | undefined,
-    query: QueryHarvestBatchesDto,
-  ): Promise<Paginated<HarvestView>> {
+  async findAll(wineryId: string | undefined, query: QueryHarvestBatchesDto) {
     const where: Prisma.HarvestBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.harvestYear && { harvestYear: query.harvestYear }),
@@ -372,7 +375,9 @@ export class HarvestBatchesService {
     const actors = await resolveTraceActors(this.prisma, actorIds(items));
     const now = new Date();
     return toPage(
-      items.map((row) => toHarvestView(row, actors, now)),
+      await this.withCorrections(
+        items.map((row) => toHarvestView(row, actors, now)),
+      ),
       total,
       query,
     );
@@ -396,10 +401,44 @@ export class HarvestBatchesService {
       );
     }
     const actors = await resolveTraceActors(this.prisma, actorIds([batch]));
-    return {
-      ...toHarvestView(batch, actors, new Date()),
-      fermentationTanks: batch.fermentationTanks,
-    };
+    const [view] = await this.withCorrections([
+      toHarvestView(batch, actors, new Date()),
+    ]);
+    return { ...view, fermentationTanks: batch.fermentationTanks };
+  }
+
+  /** Marcas de corrección del pesaje, de sus análisis y de sus dictámenes (§9). */
+  private async withCorrections(views: HarvestView[]): Promise<
+    (Omit<HarvestView, 'maturityAnalyses' | 'phytoDecisions'> &
+      CorrectionMarks & {
+        maturityAnalyses: (MaturityView & CorrectionMarks)[];
+        phytoDecisions: (PhytoDecisionView & CorrectionMarks)[];
+      })[]
+  > {
+    const [harvests, analyses, decisions] = await Promise.all([
+      correctionMarks(
+        this.prisma,
+        'HARVEST_BATCH',
+        views.map((v) => v.id),
+      ),
+      correctionMarks(
+        this.prisma,
+        'MATURITY_ANALYSIS',
+        views.flatMap((v) => v.maturityAnalyses.map((m) => m.id)),
+      ),
+      correctionMarks(
+        this.prisma,
+        'PHYTO_DECISION',
+        views.flatMap((v) => v.phytoDecisions.map((d) => d.id)),
+      ),
+    ]);
+    return views.map((view) => ({
+      ...withMarks(view, harvests),
+      maturityAnalyses: view.maturityAnalyses.map((m) =>
+        withMarks(m, analyses),
+      ),
+      phytoDecisions: view.phytoDecisions.map((d) => withMarks(d, decisions)),
+    }));
   }
 
   /** Ruta legada `PATCH …/phyto-status`: alias del dictamen (§3.4). */
@@ -596,7 +635,7 @@ export class HarvestBatchesService {
     wineryId: string | undefined,
     id: string,
     query: PaginationQueryDto,
-  ): Promise<Paginated<PhytoDecisionView>> {
+  ): Promise<Paginated<PhytoDecisionView & CorrectionMarks>> {
     await this.assertExists(wineryId, id);
     const where = { harvestBatchId: id };
     const [rows, total] = await Promise.all([
@@ -612,7 +651,11 @@ export class HarvestBatchesService {
       rows.map((r) => r.decidedByMembershipId),
     );
     return toPage(
-      rows.map((r) => toDecisionView(r, actors)),
+      await markRows(
+        this.prisma,
+        'PHYTO_DECISION',
+        rows.map((r) => toDecisionView(r, actors)),
+      ),
       total,
       query,
     );
@@ -708,7 +751,7 @@ export class HarvestBatchesService {
     wineryId: string | undefined,
     id: string,
     query: PaginationQueryDto,
-  ): Promise<Paginated<MaturityView>> {
+  ): Promise<Paginated<MaturityView & CorrectionMarks>> {
     await this.assertExists(wineryId, id);
     const where = { harvestBatchId: id, voidedAt: null };
     const [rows, total] = await Promise.all([
@@ -724,7 +767,11 @@ export class HarvestBatchesService {
       rows.map((r) => r.recordedByMembershipId),
     );
     return toPage(
-      rows.map((r) => toMaturityView(r, actors)),
+      await markRows(
+        this.prisma,
+        'MATURITY_ANALYSIS',
+        rows.map((r) => toMaturityView(r, actors)),
+      ),
       total,
       query,
     );
