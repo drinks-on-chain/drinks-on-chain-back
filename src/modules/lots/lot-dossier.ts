@@ -9,10 +9,15 @@ import {
   DossierSource,
   sealDossier,
 } from './domain/dossier';
-import { bottleLeafHash, merkleRoot } from './domain/merkle';
+import {
+  bottleLeafHash,
+  merkleProof,
+  merkleRoot,
+  MerkleStep,
+} from './domain/merkle';
 import { distillationHeart, num } from './domain/sources';
 import { stateError, violation } from './domain/trace-errors';
-import type { DbClient } from './trace-db';
+import type { DbClient, DbClock } from './trace-db';
 
 /** Todo lo que entra en el expediente de un lote (contrato O2 §10). */
 const DOSSIER_INCLUDE = {
@@ -288,6 +293,93 @@ export async function sealLotDossier(
     ...(closing.closedByMembershipId ? [closing.closedByMembershipId] : []),
   ]);
   return sealDossier(toDossierSource(data, roles, closing));
+}
+
+/**
+ * Reloj de la base **en este instante** (`clock_timestamp()`), para leerlo
+ * con la fila del lote ya bloqueada. `now()` es el inicio de la transacción,
+ * que puede ser anterior al de otra que tomó antes el bloqueo; con este
+ * reloj, el orden de las fechas del cierre del expediente y de las
+ * anulaciones de códigos coincide con el orden real en que ocurrieron (las
+ * dos operaciones bloquean el lote).
+ */
+export async function lockedClock(
+  tx: Prisma.TransactionClient,
+): Promise<DbClock> {
+  const rows = await tx.$queryRaw<{ now: Date; today: string }[]>`
+    SELECT clock_timestamp() AS now,
+           to_char(clock_timestamp() AT TIME ZONE 'America/La_Paz', 'YYYY-MM-DD') AS today`;
+  return { now: new Date(rows[0].now), today: rows[0].today };
+}
+
+export interface ClosedDossierLeaves {
+  /** Códigos que formaron la raíz, por serie (el orden de las hojas). */
+  units: { serial: number; code: string; salt: string }[];
+  leaves: string[];
+  merkleRoot: string;
+}
+
+/**
+ * Hojas de la raíz Merkle de un expediente **cerrado**: los códigos que
+ * estaban activos al cerrar (los activos hoy más los anulados después del
+ * cierre; tras el cierre no se emiten códigos nuevos, S-14), por serie.
+ * Comprueba que reproducen la raíz guardada: si no, `null` (nunca devuelve
+ * hojas que no lleven a la raíz del expediente).
+ */
+export async function closedDossierLeaves(
+  client: DbClient,
+  lotId: string,
+): Promise<ClosedDossierLeaves | null> {
+  const dossier = await client.lotDossier.findUnique({
+    where: { lotId },
+    select: { status: true, closedAt: true, bottleMerkleRoot: true },
+  });
+  if (
+    dossier?.status !== 'CLOSED' ||
+    !dossier.closedAt ||
+    !dossier.bottleMerkleRoot
+  ) {
+    return null;
+  }
+  const units = await client.bottleUnit.findMany({
+    where: {
+      lotId,
+      createdAt: { lte: dossier.closedAt },
+      OR: [{ status: 'ACTIVE' }, { voidedAt: { gt: dossier.closedAt } }],
+    },
+    select: { serial: true, code: true, salt: true },
+  });
+  units.sort((a, b) =>
+    a.serial !== b.serial ? a.serial - b.serial : a.code < b.code ? -1 : 1,
+  );
+  const leaves = units.map((u) => bottleLeafHash(u.serial, u.code, u.salt));
+  if (merkleRoot(leaves) !== dossier.bottleMerkleRoot) return null;
+  return { units, leaves, merkleRoot: dossier.bottleMerkleRoot };
+}
+
+/**
+ * Prueba Merkle de un código de botella contra la raíz de su expediente
+ * (`PublicBottlePassport.bottle.merkleProof`, contrato O2 §12.2): la sal de
+ * la hoja y el camino hasta la raíz. `null` si el expediente no está cerrado
+ * o el código no formó parte de la raíz (anulado antes del cierre).
+ *
+ * Verificación: `hoja = SHA-256("{serie}:{código}:{sal}")` y
+ * `verifyMerkleProof(hoja, path, raíz)` (`domain/merkle.ts`).
+ */
+export async function bottleMerkleProof(
+  client: DbClient,
+  lotId: string,
+  code: string,
+): Promise<{ salt: string; path: MerkleStep[]; merkleRoot: string } | null> {
+  const closed = await closedDossierLeaves(client, lotId);
+  if (!closed) return null;
+  const index = closed.units.findIndex((u) => u.code === code);
+  if (index < 0) return null;
+  return {
+    salt: closed.units[index].salt,
+    path: merkleProof(closed.leaves, index),
+    merkleRoot: closed.merkleRoot,
+  };
 }
 
 /**

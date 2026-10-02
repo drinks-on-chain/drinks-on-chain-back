@@ -16,13 +16,14 @@ import {
   assertDossierOpen,
   DossierData,
   loadDossierData,
+  lockedClock,
   sealLotDossier,
 } from './lot-dossier';
 import { appendLotEvent, formatQuantity } from './lot-events';
 import { assertWritable, lockLot, refreshLotStage } from './lot-records';
 import { LOT_CERTIFIED, LotCertifiedPayload } from './lots.events';
 import { actorOf, resolveTraceActors, TraceActor } from './trace-actors';
-import { actorMembership, dbClock } from './trace-db';
+import { actorMembership } from './trace-db';
 
 /** El cierre lee toda la cadena y hashea hasta 100 000 códigos de botella. */
 const DOSSIER_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 } as const;
@@ -227,7 +228,8 @@ export class DossierService {
           ),
         );
       }
-      const clock = await dbClock(tx);
+      // Reloj tras el bloqueo: un código anulado después tiene fecha posterior
+      const clock = await lockedClock(tx);
       const membership = await actorMembership(tx, userId, wineryId);
       const closedByMembershipId = membership?.id ?? null;
       const sealed = await sealLotDossier(tx, data, {

@@ -36,6 +36,7 @@ import {
   violation,
 } from './domain/trace-errors';
 import { appendLotEvent } from './lot-events';
+import { lockedClock } from './lot-dossier';
 import { lockLot } from './lot-records';
 import {
   BOTTLE_CODES_EXPORT_JOB,
@@ -57,6 +58,8 @@ export const BOTTLE_EXPORT_URL_TTL_SECONDS = 900;
 export const BOTTLE_ZIP_MAX_CODES = 20_000;
 /** Filas por consulta al enviar el CSV (streaming). */
 const CSV_BATCH_SIZE = 1_000;
+/** Registrar una exportación marca hasta 100 000 códigos (contadores). */
+const EXPORT_TX_OPTIONS = { maxWait: 10_000, timeout: 60_000 } as const;
 
 export interface BottleUnitView {
   code: string;
@@ -274,7 +277,7 @@ export class BottleCodesService {
         range,
         context: csvContext(lot, baseUrl),
       };
-    }, AUDIT_TX_OPTIONS);
+    }, EXPORT_TX_OPTIONS);
   }
 
   /** Códigos activos del rango, por serie, en tandas (para el streaming). */
@@ -330,7 +333,7 @@ export class BottleCodesService {
         },
       });
       return { exportId: exported.id, status: 'PENDING' as const };
-    }, AUDIT_TX_OPTIONS);
+    }, EXPORT_TX_OPTIONS);
   }
 
   async getExport(
@@ -538,7 +541,8 @@ export class BottleCodesService {
           ],
         );
       }
-      const clock = await dbClock(tx);
+      // Con el lote bloqueado: la fecha de la anulación ordena frente al cierre
+      const clock = await lockedClock(tx);
       const membership = await actorMembership(tx, userId, wineryId);
       const replacement = replace ? await createReplacement(tx, unit) : null;
       const voided = await tx.bottleUnit.update({
