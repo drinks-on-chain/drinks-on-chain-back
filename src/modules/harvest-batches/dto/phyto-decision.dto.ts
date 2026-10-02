@@ -63,7 +63,8 @@ export class InspectionReportDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'URL firmada de corta vida (`GET /v1/uploads/signed-url`)',
+    description:
+      'URL firmada de corta vida del informe (`null` si el almacenamiento no responde)',
   })
   url!: string | null;
 }

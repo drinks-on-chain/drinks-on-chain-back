@@ -1467,13 +1467,37 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
         },
       );
       const harvestId = harvest.body.data.id as string;
-      await checked(
+
+      // El informe del dictamen va por su key: de la bodega y existente
+      const decisions = `/v1/harvest-batches/${harvestId}/phyto-decisions`;
+      const decision = {
+        decision: 'APPROVED',
+        decidedAt: `${daysAgo(449)}T12:00:00Z`,
+      };
+      const missing = await checked('post', 'cintiAgronomist', decisions, 422, {
+        ...decision,
+        inspectionReportKey: `org/${CINTI}/inspections/2026/10/no-existe.pdf`,
+      });
+      expect(missing.body.error.code).toBe('TRC_FILE_NOT_FOUND');
+      const upload = await http()
+        .post('/v1/uploads?folder=inspections')
+        .set('Authorization', `Bearer ${tokens.cintiAgronomist}`)
+        .set('X-Forwarded-For', nextIp())
+        .attach('file', PDF, 'inspeccion.pdf')
+        .expect(201);
+      const approved = await checked(
         'post',
         'cintiAgronomist',
-        `/v1/harvest-batches/${harvestId}/phyto-decisions`,
+        decisions,
         201,
-        { decision: 'APPROVED', decidedAt: `${daysAgo(449)}T12:00:00Z` },
+        {
+          ...decision,
+          inspectionReportKey: upload.body.data.key,
+        },
       );
+      expect(
+        approved.body.data.phytoDecisions[0].inspectionReport,
+      ).toMatchObject({ key: upload.body.data.key, url: expect.any(String) });
       const tank = (code: string, kg: number, liters: number) =>
         checked('post', 'cinti', '/v1/fermentation-tanks', 201, {
           inputs: [{ harvestBatchId: harvestId, kg }],

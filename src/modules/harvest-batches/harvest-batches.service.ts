@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
 import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
@@ -53,6 +53,11 @@ import {
   violation,
 } from '@modules/lots/domain/trace-errors';
 import type { LotStage } from '@modules/lots/domain/lot-stage';
+import { assertWineryFile, signedFileUrl } from '@modules/lots/trace-files';
+import {
+  ObjectStorage,
+  STORAGE_SERVICE,
+} from '@shared/storage/storage.interface';
 import {
   CorrectionMarks,
   correctionMarks,
@@ -99,6 +104,7 @@ export class HarvestBatchesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
   ) {}
 
   /**
@@ -407,6 +413,23 @@ export class HarvestBatchesService {
     return { ...view, fermentationTanks: batch.fermentationTanks };
   }
 
+  /** URL firmada de corta vida del informe de cada dictamen (§3.4). */
+  private async signReports(
+    decisions: PhytoDecisionView[],
+  ): Promise<PhytoDecisionView[]> {
+    await Promise.all(
+      decisions.map(async (decision) => {
+        if (decision.inspectionReport) {
+          decision.inspectionReport.url = await signedFileUrl(
+            this.storage,
+            decision.inspectionReport.key,
+          );
+        }
+      }),
+    );
+    return decisions;
+  }
+
   /** Marcas de corrección del pesaje, de sus análisis y de sus dictámenes (§9). */
   private async withCorrections(views: HarvestView[]): Promise<
     (Omit<HarvestView, 'maturityAnalyses' | 'phytoDecisions'> &
@@ -432,6 +455,7 @@ export class HarvestBatchesService {
         views.flatMap((v) => v.phytoDecisions.map((d) => d.id)),
       ),
     ]);
+    await this.signReports(views.flatMap((v) => v.phytoDecisions));
     return views.map((view) => ({
       ...withMarks(view, harvests),
       maturityAnalyses: view.maturityAnalyses.map((m) =>
@@ -489,18 +513,13 @@ export class HarvestBatchesService {
         'Indica el motivo del rechazo o de la cuarentena',
       );
     }
-    if (
-      dto.inspectionReportKey &&
-      !dto.inspectionReportKey.startsWith(`org/${wineryId}/`)
-    ) {
-      throw ruleError(
-        ErrorCode.TRC_FILE_NOT_FOUND,
+    if (dto.inspectionReportKey) {
+      await assertWineryFile(
+        this.storage,
+        wineryId,
+        dto.inspectionReportKey,
+        'inspectionReportKey',
         'El informe de inspección no existe o no es de esta bodega',
-        [
-          violation(ErrorCode.TRC_FILE_NOT_FOUND, 'Archivo no encontrado', {
-            field: 'inspectionReportKey',
-          }),
-        ],
       );
     }
     await this.prisma.$transaction(async (tx) => {
@@ -654,7 +673,7 @@ export class HarvestBatchesService {
       await markRows(
         this.prisma,
         'PHYTO_DECISION',
-        rows.map((r) => toDecisionView(r, actors)),
+        await this.signReports(rows.map((r) => toDecisionView(r, actors))),
       ),
       total,
       query,

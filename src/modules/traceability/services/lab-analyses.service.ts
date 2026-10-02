@@ -10,7 +10,6 @@ import {
 } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import {
-  isSafeStorageKey,
   ObjectStorage,
   STORAGE_SERVICE,
 } from '@shared/storage/storage.interface';
@@ -45,9 +44,9 @@ import {
 import type { LotProductType } from '@modules/lots/domain/lot-stage';
 import { calendarDay, dateOnly } from '@modules/lots/domain/dates';
 import { assertDayNotFuture, assertNotBefore } from '@modules/lots/date-rules';
+import { assertWineryFile, signedFileUrl } from '@modules/lots/trace-files';
 import {
   lotNotFound,
-  ruleError,
   stateError,
   violation,
 } from '@modules/lots/domain/trace-errors';
@@ -167,10 +166,12 @@ export class LabAnalysesService {
       );
     }
     if (dto.laboratoryReportKey) {
-      await this.assertOwnFile(
+      await assertWineryFile(
+        this.storage,
         wineryId,
         dto.laboratoryReportKey,
         'laboratoryReportKey',
+        'El informe del laboratorio no existe o no es de esta bodega',
       );
     }
     const id = await this.prisma.$transaction(async (tx) => {
@@ -412,26 +413,6 @@ export class LabAnalysesService {
     return created.id;
   }
 
-  /** `key` de la bodega y existente → si no, 422 `TRC_FILE_NOT_FOUND`. */
-  private async assertOwnFile(
-    wineryId: string,
-    key: string,
-    field: string,
-  ): Promise<void> {
-    const own = isSafeStorageKey(key) && key.startsWith(`org/${wineryId}/`);
-    if (own && (await this.storage.exists(key))) return;
-    throw ruleError(
-      ErrorCode.TRC_FILE_NOT_FOUND,
-      'El informe del laboratorio no existe o no es de esta bodega',
-      [
-        violation(ErrorCode.TRC_FILE_NOT_FOUND, 'Archivo no encontrado', {
-          field,
-          meta: { field },
-        }),
-      ],
-    );
-  }
-
   private async findView(id: string): Promise<LabAnalysisView> {
     const row = await this.prisma.batchLabAnalysis.findUniqueOrThrow({
       where: { id },
@@ -456,23 +437,14 @@ export class LabAnalysesService {
       rows.map(async (row) => {
         const view = withMarks(toLabView(row, actors), marks);
         if (view.report && row.laboratoryReportKey) {
-          view.report.url = await this.signedUrl(row.laboratoryReportKey);
+          view.report.url = await signedFileUrl(
+            this.storage,
+            row.laboratoryReportKey,
+          );
         }
         return view;
       }),
     );
-  }
-
-  /** URL firmada de corta vida; `null` si el almacenamiento no responde. */
-  private async signedUrl(key: string): Promise<string | null> {
-    try {
-      return (await this.storage.getSignedUrl(key)).url;
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo firmar la URL del informe: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      return null;
-    }
   }
 }
 
