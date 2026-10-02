@@ -282,7 +282,16 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     execFileSync(
       process.execPath,
       [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
-      { env: { ...process.env, DATABASE_URL: databaseUrl }, stdio: 'pipe' },
+      {
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+          // Esquema propio: sin el candado de migraciones de toda la base, que
+          // hace esperar (y caducar) a las suites que migran a la vez
+          PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: '1',
+        },
+        stdio: 'pipe',
+      },
     );
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     process.env.DATABASE_URL = databaseUrl;
@@ -1861,6 +1870,69 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         bottle: { serial: 10, status: 'VOIDED', merkleProof: null },
         lot: { stage: 'DISCARDED' },
       });
+    });
+
+    it('vino migrado de la semilla: crianza registrada, sin destilación ni D.O., reglas fijadas al migrar', async () => {
+      const res = await checked(
+        'get',
+        'nobody',
+        '/v1/public/passports/ALT-2026-WINE-001',
+        200,
+      );
+      const passport = res.body.data;
+      expect(passport).toMatchObject({
+        kind: 'LOT',
+        lotCode: 'ALT-2026-WINE-001',
+        productType: 'WINE',
+        stage: 'BOTTLED',
+        denomination: {
+          applies: false,
+          status: 'NOT_APPLICABLE',
+          rules: null,
+          legalException: false,
+        },
+        aging: {
+          status: 'RECORDED',
+          containerType: expect.any(String),
+          plannedMonths: expect.any(Number),
+          startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          unlockDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+        },
+        distillation: {
+          status: 'NOT_APPLICABLE',
+          startDate: null,
+          endDate: null,
+          heartAbvPercent: null,
+          restMinDays: null,
+          restUntil: null,
+        },
+        bottling: { status: 'RECORDED', bottles: 5320, date: '2026-05-12' },
+        rules: { origin: 'MIGRATION' },
+      });
+      expect(
+        passport.origin.terroirs.every(
+          (t: { doStatus: string }) => t.doStatus === 'NOT_APPLICABLE',
+        ),
+      ).toBe(true);
+      const ruleKeys = passport.rules.items.map((i: { key: string }) => i.key);
+      expect(ruleKeys).toContain('trazabilidad.vino.crianzaMinimaMeses');
+      expect(ruleKeys).not.toContain('trazabilidad.singani.reposoMinimoDias');
+      // Quien no quedó registrado (datos anteriores a la Ola 2) va sin rol: no se inventa
+      const roles = (
+        passport.timeline as { type: string; actorRole: string | null }[]
+      ).map((e) => e.actorRole);
+      expect(roles.length).toBeGreaterThan(0);
+      expect(roles).toContain(null);
+      for (const role of roles) {
+        expect([
+          null,
+          'OWNER',
+          'ENOLOGIST',
+          'AGRONOMIST',
+          'OPERATOR',
+          'ACCOUNTANT',
+        ]).toContain(role);
+      }
     });
 
     it('perfil público de bodega: activo responde, desconocido 404', async () => {
