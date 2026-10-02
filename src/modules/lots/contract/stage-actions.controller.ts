@@ -19,14 +19,17 @@ import {
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
 import { ProductionBatchResponseDto } from '@modules/traceability/dto/production-batch-response.dto';
 import { WineAgingResponseDto } from '@modules/traceability/dto/wine-aging-response.dto';
+import { StageActionsService } from '@modules/traceability/services/stage-actions.service';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   ApiErrorCodes,
-  ApiNotImplemented,
   ApiPlatformReadOnly,
   ApiRuleErrors,
 } from './contract-responses';
@@ -44,6 +47,8 @@ import {
 @PlatformReadOnly()
 @Controller('wine-aging')
 export class WineAgingActionsController {
+  constructor(private readonly actions: StageActionsService) {}
+
   @Post(':id/discard')
   @HttpCode(HttpStatus.OK)
   @Idempotent()
@@ -61,13 +66,13 @@ export class WineAgingActionsController {
   @ApiPlatformReadOnly()
   @ApiErrorCodes(HttpStatus.CONFLICT, ['TRC_INVALID_STAGE', 'TRC_LOT_TERMINAL'])
   @ApiRuleErrors(['TRC_VOLUME_EXCEEDS_AVAILABLE'])
-  @ApiNotImplemented('2.4')
   discard(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: DiscardWineAgingDto,
-  ): WineAgingResponseDto {
-    throw notImplemented('2.4');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DiscardWineAgingDto,
+  ) {
+    return this.actions.discardAging(wineryId, user.id, id, dto);
   }
 }
 
@@ -79,6 +84,8 @@ export class WineAgingActionsController {
 @PlatformReadOnly()
 @Controller('production-batches')
 export class ProductionActionsController {
+  constructor(private readonly actions: StageActionsService) {}
+
   @Post(':id/close')
   @HttpCode(HttpStatus.OK)
   @Idempotent()
@@ -88,7 +95,8 @@ export class ProductionActionsController {
     description:
       'Contrato O2 §5.2: **balance de masa** cabezas + corazón + colas (+ vinaza) ≤ `inputVolumeLiters`. ' +
       'Abre el reposo: `mandatoryRestUntil = processEndDate + rules.singani.minRestDays` (instantánea del lote) ' +
-      'y `restStatus: RESTING`. Con todas las destilaciones cerradas, el lote pasa a `RESTING`.',
+      'y `restStatus: RESTING` (`READY` si la fecha declarada ya cumple el reposo). Con todas las destilaciones ' +
+      'cerradas, el lote pasa a `RESTING`.',
   })
   @ApiOkResponse({ type: ProductionBatchResponseDto })
   @ApiErrorCodes(HttpStatus.NOT_FOUND, [
@@ -97,20 +105,22 @@ export class ProductionActionsController {
   @ApiPlatformReadOnly()
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'TRC_DISTILLATION_ALREADY_CLOSED',
+    'TRC_INVALID_STAGE (descartada o embotellada)',
     'TRC_LOT_TERMINAL',
   ])
   @ApiRuleErrors([
     'TRC_MASS_BALANCE_EXCEEDED',
+    'TRC_VOLUME_MISSING (sin volumen de entrada registrado)',
     'TRC_DATE_IN_FUTURE',
     'TRC_DATE_BEFORE_PREVIOUS_STAGE',
   ])
-  @ApiNotImplemented('2.4')
   close(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CloseDistillationDto,
-  ): ProductionBatchResponseDto {
-    throw notImplemented('2.4');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CloseDistillationDto,
+  ) {
+    return this.actions.closeDistillation(wineryId, user.id, id, dto);
   }
 
   @Post(':id/discard')
@@ -129,12 +139,12 @@ export class ProductionActionsController {
   @ApiPlatformReadOnly()
   @ApiErrorCodes(HttpStatus.CONFLICT, ['TRC_INVALID_STAGE', 'TRC_LOT_TERMINAL'])
   @ApiRuleErrors()
-  @ApiNotImplemented('2.4')
   discard(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: DiscardProductionBatchDto,
-  ): ProductionBatchResponseDto {
-    throw notImplemented('2.4');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DiscardProductionBatchDto,
+  ) {
+    return this.actions.discardDistillation(wineryId, user.id, id, dto);
   }
 }
