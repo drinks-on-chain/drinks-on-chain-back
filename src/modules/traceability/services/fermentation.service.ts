@@ -23,7 +23,6 @@ import {
   DestinationTypeEnum,
 } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
-import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { createLotFromBody } from '@modules/lots/lots.service';
 import {
   createLotRecord,
@@ -41,6 +40,7 @@ import {
   ensureHarvestLot,
 } from '@modules/lots/chain';
 import { laPazDate } from '@modules/lots/domain/dates';
+import { TANK_VOLUME_INCLUDE, toTankViews } from '@modules/lots/tank-view';
 import { LOT_RULE_KEYS } from '@modules/lots/domain/lot-rules';
 import {
   ruleError,
@@ -75,7 +75,7 @@ export class FermentationService {
     wineryId: string,
     user: { id: string; role: string | null },
     dto: CreateFermentationTankDto,
-  ): Promise<FermentationTank> {
+  ) {
     const inputs =
       dto.inputs ??
       (dto.harvestBatchId ? [{ harvestBatchId: dto.harvestBatchId }] : []);
@@ -438,10 +438,7 @@ export class FermentationService {
     return this.findTankById(wineryId, tankId);
   }
 
-  async findTanks(
-    wineryId: string | undefined,
-    query: QueryTanksDto,
-  ): Promise<Paginated<FermentationTank>> {
+  async findTanks(wineryId: string | undefined, query: QueryTanksDto) {
     const where: Prisma.FermentationTankWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.status && { status: query.status }),
@@ -457,12 +454,13 @@ export class FermentationService {
         include: {
           harvestBatch: true,
           inputs: { select: { harvestBatchId: true, kg: true } },
+          ...TANK_VOLUME_INCLUDE,
         },
       }),
       this.prisma.fermentationTank.count({ where }),
     ]);
 
-    return toPage(items, total, query);
+    return toPage(await toTankViews(this.prisma, items), total, query);
   }
 
   async findTankById(wineryId: string | undefined, id: string) {
@@ -480,6 +478,7 @@ export class FermentationService {
         treatments: {
           orderBy: { appliedAt: 'asc' },
         },
+        ...TANK_VOLUME_INCLUDE,
       },
     });
 
@@ -489,7 +488,7 @@ export class FermentationService {
       );
     }
 
-    return tank;
+    return (await toTankViews(this.prisma, [tank]))[0];
   }
 
   /** Lectura (§4.4): solo en tanques activos, fecha entre el inicio y ahora. */

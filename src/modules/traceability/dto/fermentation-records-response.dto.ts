@@ -1,8 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import { TreatmentTypeEnum } from '@prisma/client';
 
 /** Registro térmico y de densidad de una cuba (`POST …/logs`). */
-export class FermentationLogResponseDto {
+export class FermentationLogResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 
@@ -33,10 +34,18 @@ export class FermentationLogResponseDto {
 
   @ApiPropertyOptional({ type: String, nullable: true })
   notes?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Anulado por una corrección `VOID` (contrato O2 §9)',
+  })
+  voidedAt?: Date | null;
 }
 
 /** Tratamiento enológico aplicado a una cuba (`POST …/treatments`). */
-export class EnologicalTreatmentResponseDto {
+export class EnologicalTreatmentResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 
@@ -69,4 +78,12 @@ export class EnologicalTreatmentResponseDto {
 
   @ApiPropertyOptional({ type: String, nullable: true })
   notes?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Anulado por una corrección `VOID` (contrato O2 §9)',
+  })
+  voidedAt?: Date | null;
 }

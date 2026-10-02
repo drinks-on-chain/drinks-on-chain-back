@@ -1,10 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import { LotLockDto } from '@modules/lots/dto/lot.dto';
 import { AgingStatusEnum } from '@prisma/client';
 import { FermentationTankResponseDto } from './fermentation-tank-response.dto';
 import { BottlingBatchResponseDto } from './bottling-batch-response.dto';
 
-export class WineAgingResponseDto {
+export class WineAgingResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 

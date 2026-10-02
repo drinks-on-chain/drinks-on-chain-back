@@ -72,7 +72,8 @@ export class ProductionBatchesController {
   @ApiResponse({
     status: HttpStatus.CONFLICT,
     type: ApiErrorResponseDto,
-    description: 'TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
+    description:
+      'TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
   })
   async createDistillationBatch(
     @TenantId() wineryId: string,
