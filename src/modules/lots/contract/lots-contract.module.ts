@@ -2,16 +2,15 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { TraceabilityModule } from '@modules/traceability/traceability.module';
 import { LotBottlingService } from '../lot-bottling.service';
+import { LotViewsModule } from '../views/lot-views.module';
 import { BottleCodesController } from './bottle-codes.controller';
 import {
   CorrectionsController,
   TerroirCorrectionsController,
 } from './corrections.controller';
 import { DossierController } from './dossier.controller';
-import { LotAttachmentsController } from './lot-attachments.controller';
 import { LotBottlingController } from './lot-bottling.controller';
 import { LotLabAnalysesController } from './lot-lab-analyses.controller';
-import { LotViewsController } from './lot-views.controller';
 import { PublicPassportsController } from './public-passports.controller';
 import { PublicWineriesDirectoryController } from './public-wineries.controller';
 import { PublicWineriesDirectoryService } from './public-wineries-directory.service';
@@ -20,7 +19,6 @@ import {
   WineAgingActionsController,
 } from './stage-actions.controller';
 import { TankTransitionsController } from './tank-transitions.controller';
-import { TraceabilityInsightsController } from './traceability-insights.controller';
 
 /**
  * Rutas del contrato de la Ola 2 publicadas en la apertura (contrato O2
@@ -28,20 +26,18 @@ import { TraceabilityInsightsController } from './traceability-insights.controll
  * NOT_IMPLEMENTED` hasta que llega su paso de la Etapa 2 (2.3–2.10). Al
  * implementar una, se mueve a su módulo y se retira de aquí. Ya son reales el
  * directorio público de bodegas (`GET /v1/public/wineries`) y el embotellado
- * del lote (`POST /v1/lots/{id}/bottling[/preview]`).
+ * del lote (`POST /v1/lots/{id}/bottling[/preview]`). Las vistas del lote y
+ * sus archivos (paso 2.9) ya viven en `LotViewsModule`.
  */
 @Module({
-  imports: [PrismaModule, TraceabilityModule],
+  imports: [PrismaModule, TraceabilityModule, LotViewsModule],
   controllers: [
-    LotViewsController,
     LotBottlingController,
     BottleCodesController,
     LotLabAnalysesController,
     CorrectionsController,
     TerroirCorrectionsController,
     DossierController,
-    TraceabilityInsightsController,
-    LotAttachmentsController,
     TankTransitionsController,
     WineAgingActionsController,
     ProductionActionsController,

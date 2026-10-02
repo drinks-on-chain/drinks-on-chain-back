@@ -88,6 +88,11 @@ export class LotAttachmentDto {
   @ApiProperty({ example: '2026-10-02T09:00:00.000Z' })
   createdAt!: string;
 
-  @ApiProperty({ type: () => TraceActorDto })
-  createdBy!: TraceActorDto;
+  @ApiProperty({
+    type: () => TraceActorDto,
+    nullable: true,
+    description:
+      '`null` = no registrado (informes de registros anteriores a la Ola 2)',
+  })
+  createdBy!: TraceActorDto | null;
 }
