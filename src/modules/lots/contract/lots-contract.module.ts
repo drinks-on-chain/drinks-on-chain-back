@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { TraceabilityModule } from '@modules/traceability/traceability.module';
 import { LotBottlingService } from '../lot-bottling.service';
+import { LotCertificationModule } from '../lot-certification.module';
 import { BottleCodesController } from './bottle-codes.controller';
 import {
   CorrectionsController,
@@ -31,7 +32,7 @@ import { TraceabilityInsightsController } from './traceability-insights.controll
  * del lote (`POST /v1/lots/{id}/bottling[/preview]`).
  */
 @Module({
-  imports: [PrismaModule, TraceabilityModule],
+  imports: [PrismaModule, TraceabilityModule, LotCertificationModule],
   controllers: [
     LotViewsController,
     LotBottlingController,

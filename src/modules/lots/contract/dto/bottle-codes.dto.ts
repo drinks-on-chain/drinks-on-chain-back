@@ -28,8 +28,12 @@ export class BottleUnitVoidedDto {
   @ApiProperty({ example: '2026-10-05T12:00:00.000Z' })
   at!: string;
 
-  @ApiProperty({ type: () => TraceActorDto })
-  by!: TraceActorDto;
+  @ApiProperty({
+    type: () => TraceActorDto,
+    nullable: true,
+    description: '`null` = no registrado (membresía que ya no existe)',
+  })
+  by!: TraceActorDto | null;
 
   @ApiProperty({ example: 'Etiqueta dañada en la línea' })
   reason!: string;
@@ -113,6 +117,21 @@ export class QueryBottleCodesDto extends WineryScopedPaginationQueryDto {
   @IsInt()
   @Min(1)
   toSerial?: number;
+
+  @ApiPropertyOptional({
+    maxLength: 20,
+    example: 'K7M2-Q9',
+    description:
+      'Busca por un fragmento del código (se normaliza: mayúsculas, sin espacios ni guiones, O → 0, I/L → 1) ' +
+      'o por el número de serie exacto',
+  })
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  @IsString()
+  @Length(1, 20)
+  q?: string;
 }
 
 export class ExportBottleCodesCsvQueryDto {
@@ -137,7 +156,9 @@ export class ExportBottleCodesCsvQueryDto {
 
   @ApiPropertyOptional({
     format: 'uuid',
-    description: 'Solo personal de plataforma: bodega sobre la que se consulta',
+    description:
+      'Solo personal de plataforma: bodega de la petición. La plataforma no exporta códigos (403): ' +
+      'solo los lista (contrato O2 §14)',
   })
   @IsOptional()
   @IsUUID('all', { message: 'wineryId debe ser un UUID' })
@@ -215,19 +236,33 @@ export class BottleCodeExportDto {
   @ApiProperty({ enum: BOTTLE_CODE_EXPORT_STATUSES })
   status!: (typeof BOTTLE_CODE_EXPORT_STATUSES)[number];
 
+  @ApiProperty({ enum: ['CSV', 'ZIP'] })
+  format!: 'CSV' | 'ZIP';
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 1 })
+  fromSerial!: number;
+
+  @ApiProperty({ type: 'integer', minimum: 1, example: 2950 })
+  toSerial!: number;
+
   @ApiProperty({ type: 'integer', minimum: 0, example: 2950 })
   rows!: number;
 
   @ApiProperty({ example: '2026-10-02T09:00:00.000Z' })
   createdAt!: string;
 
-  @ApiProperty({ type: () => TraceActorDto })
-  createdBy!: TraceActorDto;
+  @ApiProperty({
+    type: () => TraceActorDto,
+    nullable: true,
+    description: '`null` = no registrado (membresía que ya no existe)',
+  })
+  createdBy!: TraceActorDto | null;
 
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'URL firmada de 15 min (solo `READY`)',
+    description:
+      'URL firmada de 15 min del ZIP (solo `READY` y sin caducar; una exportación CSV se descarga al pedirla)',
   })
   downloadUrl!: string | null;
 
