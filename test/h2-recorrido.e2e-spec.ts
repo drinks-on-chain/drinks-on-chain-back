@@ -47,10 +47,11 @@ import { readZipEntries } from './helpers/zip';
  * correcciones visibles en el grafo y el pasaporte; `TRC_DOSSIER_CLOSED` tras
  * el cierre; y la prueba Merkle del pasaporte contra la raíz del expediente.
  *
- * Pruebas negativas de §18 que viven en las suites de los bloques: destilar
- * con `isDoEligible: true` uva no apta (`traceability-o2`), crianza bajo el
- * mínimo (`bloque-a`), dos embotellados simultáneos de bodegas distintas
- * (`bloque-b`) y enumeración de códigos con 429 (`bloque-c`).
+ * Pruebas negativas de §18 que viven en las suites de los bloques: destino
+ * singani con uva no apta (`traceability-o2`), crianza bajo el mínimo
+ * (`bloque-a`), dos embotellados simultáneos de bodegas distintas
+ * (`bloque-b`) y enumeración de códigos con 429 (`bloque-c`). Las rutas y
+ * los campos legados se retiraron en H2: aquí se comprueba que ya no existen.
  *
  * Corre en un esquema propio, con bodegas propias (sin la semilla).
  */
@@ -225,6 +226,7 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
   ): Promise<Res> {
     return checked('post', who, `/v1/lots/${lotId}/corrections`, status, body);
   }
+  let labReportKey: string | undefined;
   function labBody(extra: Record<string, unknown> = {}) {
     return {
       certifiedLaboratoryName: 'Laboratorio H2 ISO 17025',
@@ -234,8 +236,8 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
       totalAcidityTartaricGl: 4.8,
       volatileAcidityAceticGl: 0.22,
       copperContentMgL: 0.02,
-      laboratoryReportPdfUrl: 'https://laboratorio.h2.test/informe.pdf' as
-        string | undefined,
+      // El informe subido por la enóloga (paso 6c): los análisis lo citan por su `key`
+      laboratoryReportKey: labReportKey,
       ...extra,
     };
   }
@@ -298,7 +300,6 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = PASSPORT;
     process.env.API_PUBLIC_URL = API;
-    process.env.LOT_BACKFILL_ON_BOOT = 'false';
     const storageEnv: Record<string, string> = {
       STORAGE_DRIVER: 'local',
       STORAGE_LOCAL_PATH: storageDir,
@@ -363,7 +364,6 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
     delete process.env.API_PUBLIC_URL;
-    delete process.env.LOT_BACKFILL_ON_BOOT;
   });
 
   // ── 1 · Lote ───────────────────────────────────────────────────────────────
@@ -379,9 +379,17 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
         altitudeMasl,
         rawMaterialType: 'Uva',
         varietyName,
-        // El valor declarado se ignora: la aptitud se calcula (EA-03)
-        isDoEligible: true,
       });
+    // La aptitud D.O. no se declara: se calcula (EA-03) y el campo ya no existe
+    const declared = await checked('post', 'owner', '/v1/terroirs', 422, {
+      parcelName: 'Parcela con D.O. declarada',
+      surfaceHectares: 1,
+      altitudeMasl: 1540,
+      rawMaterialType: 'Uva',
+      varietyName: 'Moscatel de Alejandría',
+      isDoEligible: true,
+    });
+    expect(details(declared)[0].field).toBe('isDoEligible');
     const apt = await parcel(
       'Parcela Cinti 02',
       2350,
@@ -806,13 +814,20 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
       rule: 'trazabilidad.singani.reposoMinimoDias',
       meta: { sourceId: productionId, kind: 'REST', unlockDate: UNLOCK },
     });
-    // Declarando vino por la ruta legada: el tipo se deriva del origen (EA-01)
-    const asWine = await checked('post', 'enologist', '/v1/bottling', 422, {
+    // Declarando vino: el tipo se deriva del origen (EA-01), no es un campo,
+    // y la ruta legada del embotellado ya no existe
+    const asWine = await checked('post', 'enologist', path, 422, {
+      ...BOTTLING,
+      productType: 'WINE',
+    });
+    expect(asWine.body.error.code).toBe('VALIDATION_ERROR');
+    expect(details(asWine)[0].field).toBe('productType');
+    const legacy = await call('post', 'enologist', '/v1/bottling', {
       ...BOTTLING,
       productionBatchId: productionId,
       productType: 'WINE',
     });
-    expect(codes(asWine)).toContain('TRC_PRODUCT_TYPE_MISMATCH');
+    expect(legacy.status).toBe(404);
     // Más botellas que litros
     const tooMany = await checked('post', 'enologist', path, 422, {
       ...BOTTLING,
@@ -957,6 +972,21 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
 
   it('6c · laboratorio: incompleto no cierra el expediente; un análisis anulado deja de contar; conforme con metanol en mg/100 mL a.a.', async () => {
     const path = `/v1/lots/${lotId}/lab-analyses`;
+    // Informe por su `key` (la URL, alias hasta H2, ya no es un campo)
+    const upload = await http()
+      .post('/v1/uploads?folder=lab')
+      .set('Authorization', `Bearer ${tokens.enologist}`)
+      .set('X-Forwarded-For', nextIp())
+      .attach('file', PDF, 'informe-laboratorio.pdf')
+      .expect(201);
+    const byUrl = await checked('post', 'enologist', path, 422, {
+      ...labBody(),
+      laboratoryReportPdfUrl: 'https://laboratorio.h2.test/informe.pdf',
+    });
+    expect(details(byUrl).map((d) => d.field)).toEqual(
+      expect.arrayContaining(['laboratoryReportKey', 'laboratoryReportPdfUrl']),
+    );
+    labReportKey = upload.body.data.key as string;
     // Sin metanol: nunca conforme por omisión (EA-08)
     const incomplete = await checked('post', 'enologist', path, 201, labBody());
     incompleteLabId = incomplete.body.data.id;
@@ -1022,19 +1052,9 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
     const ids = (list: { id: string }[]) => list.map((l) => l.id);
     expect(ids(dashboard.body.data.readyToClose)).not.toContain(lotId);
 
-    // Informe por su `key` y metanol en mg/100 mL de alcohol anhidro
-    const upload = await http()
-      .post('/v1/uploads?folder=lab')
-      .set('Authorization', `Bearer ${tokens.enologist}`)
-      .set('X-Forwarded-For', nextIp())
-      .attach('file', PDF, 'informe-laboratorio.pdf')
-      .expect(201);
+    // Metanol en mg/100 mL de alcohol anhidro
     const conforming = await checked('post', 'enologist', path, 201, {
-      ...labBody({
-        methanolMg100mlAa: 12,
-        laboratoryReportPdfUrl: undefined,
-        laboratoryReportKey: upload.body.data.key,
-      }),
+      ...labBody({ methanolMg100mlAa: 12 }),
     });
     conformingLabId = conforming.body.data.id;
     expect(conforming.body.data).toMatchObject({
@@ -1228,14 +1248,12 @@ describe('Recorrido H2: Singani Gran Reserva de la parcela al pasaporte (e2e)', 
       labBody({ methanolMg100mlAa: 12 }),
     );
     expect(lab.body.error.code).toBe('TRC_DOSSIER_CLOSED');
-    const legacyLab = await checked(
-      'post',
-      'enologist',
-      '/v1/lab-analyses',
-      409,
-      { ...labBody({ methanolMg100mlAa: 12 }), bottlingBatchId: bottlingId },
-    );
-    expect(legacyLab.body.error.code).toBe('TRC_DOSSIER_CLOSED');
+    // La ruta legada del laboratorio ya no existe
+    const legacyLab = await call('post', 'enologist', '/v1/lab-analyses', {
+      ...labBody({ methanolMg100mlAa: 12 }),
+      bottlingBatchId: bottlingId,
+    });
+    expect(legacyLab.status).toBe(404);
 
     const upload = await http()
       .post('/v1/uploads?folder=lotes')

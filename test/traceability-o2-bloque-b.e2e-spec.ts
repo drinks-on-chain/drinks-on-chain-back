@@ -49,6 +49,7 @@ import {
   wineryWithOwner,
 } from './helpers/staff-session';
 import { readZipEntries } from './helpers/zip';
+import { uploadTraceFile } from './helpers/trace-files';
 
 /**
  * Ola 2 · bloque B (O2-BE-1, pasos 2.5, 2.6 y 2.8): embotellado seguro,
@@ -409,12 +410,14 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
     return { lotId, productionId };
   }
 
+  /** Informe de laboratorio subido una vez: los análisis lo citan por su `key`. */
+  let reportKey: string | undefined;
   async function labAnalysis(
-    bottlingBatchId: string,
+    lotId: string,
     overrides: Record<string, unknown> = {},
   ): Promise<Res> {
-    return call('post', 'owner', '/v1/lab-analyses', {
-      bottlingBatchId,
+    reportKey ??= await uploadTraceFile(app, tokens.owner, { ip: nextIp() });
+    return call('post', 'owner', `/v1/lots/${lotId}/lab-analyses`, {
       certifiedLaboratoryName: 'Laboratorio e2e ISO 17025',
       accreditedLabCertificationCode: `LAB-${run}`,
       testPerformedAt: daysAgo(2),
@@ -423,7 +426,7 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
       volatileAcidityAceticGl: 0.22,
       copperContentMgL: 0.02,
       methanolContentMgL: 48,
-      laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf',
+      laboratoryReportKey: reportKey,
       ...overrides,
     });
   }
@@ -447,7 +450,6 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
     );
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = PASSPORT;
-    process.env.LOT_BACKFILL_ON_BOOT = 'false';
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(STORAGE_SERVICE)
       .useFactory({
@@ -527,7 +529,6 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
     rmSync(storageDir, { recursive: true, force: true });
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
-    delete process.env.LOT_BACKFILL_ON_BOOT;
   });
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -866,10 +867,8 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
         packagingFormatCl: 75,
         bottlingDate: daysAgo(2),
       });
-      expect([legacy.status, legacy.body.error?.code]).toEqual([
-        409,
-        'TRC_LOT_ALREADY_BOTTLED',
-      ]);
+      // La ruta legada se retiró en H2: el embotellado es el del lote
+      expect(legacy.status).toBe(404);
 
       // Fuente y lote en estados terminales, con sus eventos y la bitácora
       const production = await prisma.productionBatch.findUniqueOrThrow({
@@ -1639,7 +1638,6 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
   describe('expediente del lote (§10)', () => {
     let lotId: string;
     let lotCode: string;
-    let bottlingId: string;
     let hash: string;
     let merkle: string;
     /** Códigos anulados antes del cierre (no entran en la raíz) y el sustituto. */
@@ -1717,7 +1715,6 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
         `/v1/lots/${lotId}/bottling`,
         SINGANI_BOTTLING,
       ).expect(201);
-      bottlingId = bottled.body.data.id as string;
       lotCode = bottled.body.data.lotCode as string;
 
       const noLab = await checked(
@@ -1735,7 +1732,7 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
       });
 
       // Sin metanol (exigido en singani): incompleto, nunca conforme por omisión
-      const incomplete = await labAnalysis(bottlingId, {
+      const incomplete = await labAnalysis(lotId, {
         methanolContentMgL: undefined,
       });
       expect(incomplete.status).toBe(201);
@@ -1758,7 +1755,7 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
     });
 
     it('una incidencia de cumplimiento abierta bloquea el cierre', async () => {
-      expect((await labAnalysis(bottlingId)).status).toBe(201);
+      expect((await labAnalysis(lotId)).status).toBe(201);
       const issue = await prisma.lotComplianceIssue.create({
         data: {
           lotId,
@@ -2282,9 +2279,8 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
       });
       expect(new Set(units.map((u) => u.code)).size).toBe(5000);
       expect(new Set(units.map((u) => u.serial)).size).toBe(5000);
-      expect((await labAnalysis(bottled.body.data.id as string)).status).toBe(
-        201,
-      );
+      expect(bottled.body.data.id).toEqual(expect.any(String));
+      expect((await labAnalysis(lotId)).status).toBe(201);
     });
 
     it('exporta los 5.000 por CSV y por ZIP (SVG) sin agotar el tiempo', async () => {

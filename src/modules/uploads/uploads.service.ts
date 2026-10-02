@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { AppException } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
@@ -111,6 +111,7 @@ export class UploadsService {
     ].join('/');
 
     await this.storage.put(key, file.buffer, detected.mimeType);
+    const sha256 = createHash('sha256').update(file.buffer).digest('hex');
     const originalName = (file.originalname ?? 'archivo')
       .replace(/[\r\n"]/g, '')
       .slice(0, 255);
@@ -123,6 +124,7 @@ export class UploadsService {
         key,
         mimeType: detected.mimeType,
         sizeBytes: file.buffer.length,
+        sha256,
         originalName,
       },
     });
@@ -141,6 +143,7 @@ export class UploadsService {
       originalName,
       mimeType: detected.mimeType,
       sizeBytes: file.buffer.length,
+      sha256,
     };
   }
 

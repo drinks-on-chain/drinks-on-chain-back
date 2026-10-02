@@ -124,8 +124,6 @@ export const envValidationSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .allow('')
     .optional(),
-  // Relleno de lotes de la migración de la Ola 2 al arrancar la API (false = no)
-  LOT_BACKFILL_ON_BOOT: Joi.string().valid('true', 'false').optional(),
 
   // IP real detrás de nginx (SE-06): número de saltos de proxy (1) o lista de Express
   TRUST_PROXY: Joi.string().allow('').invalid('true').optional().messages({

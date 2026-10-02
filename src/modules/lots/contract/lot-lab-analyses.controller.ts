@@ -59,8 +59,8 @@ export class LotLabAnalysesController {
       'Contrato O2 §8.1–§8.3: un análisis nuevo sustituye al anterior (reanálisis). La conformidad se calcula ' +
       'contra `rules.lab.limits` de la instantánea del lote (singani: metanol, cobre y grado; vino: acidez ' +
       'volátil y grado); falta alguno → `INCOMPLETE`. Unidades de §8.2. El informe va por su `key` de ' +
-      '`POST /v1/uploads` (de la bodega y existente; si no, 422 `TRC_FILE_NOT_FOUND`) o por su URL (alias ' +
-      'hasta H2); el ensayo no puede ser anterior al embotellado.',
+      '`POST /v1/uploads` (de la bodega y existente; si no, 422 `TRC_FILE_NOT_FOUND`) y se guarda con su ' +
+      'huella SHA-256 (`report.sha256`); el ensayo no puede ser anterior al embotellado.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,

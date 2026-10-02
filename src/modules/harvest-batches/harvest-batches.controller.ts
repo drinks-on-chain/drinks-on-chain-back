@@ -2,7 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
   Body,
   Param,
   Query,
@@ -20,7 +19,6 @@ import {
 } from '@nestjs/swagger';
 import { HarvestBatchesService } from './harvest-batches.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
-import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
 import { QueryHarvestBatchesDto } from './dto/query-harvest-batches.dto';
 import { HarvestBatchResponseDto } from './dto/harvest-batch-response.dto';
 import {
@@ -69,7 +67,7 @@ export class HarvestBatchesController {
   @ApiOperation({
     summary: 'Registrar ingreso y pesaje de uva en vendimia',
     description:
-      'Pesaje neto con lote existente (`lotId`), nuevo (`newLot`, solo OWNER y ENOLOGIST) o sin lote (uva recibida). El análisis de madurez es opcional (`maturity`) y el dictamen va aparte: un `phytosanitaryStatus` distinto de `PENDING_INSPECTION` → 422 `TRC_PHYTO_IN_CREATE` (EA-04). El código `HARV-{año}-{parcela}-{NNN}` sale de la secuencia de la bodega (EA-07). Contrato O2 §3.2.',
+      'Pesaje neto con lote existente (`lotId`), nuevo (`newLot`, solo OWNER y ENOLOGIST) o sin lote (uva recibida). El análisis de madurez es opcional (`maturity`) y el dictamen va aparte (`POST …/phyto-decisions`): el alta no tiene `phytosanitaryStatus` y enviarlo → 422 `TRC_PHYTO_IN_CREATE` (EA-04). El código `HARV-{año}-{parcela}-{NNN}` sale de la secuencia de la bodega (EA-07). Contrato O2 §3.2.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -235,43 +233,5 @@ export class HarvestBatchesController {
     @Query() query: PaginationQueryDto,
   ) {
     return this.harvestBatchesService.listMaturityAnalyses(wineryId, id, query);
-  }
-
-  @Patch(':id/phyto-status')
-  @Roles('OWNER', 'AGRONOMIST', 'ENOLOGIST')
-  @ApiOperation({
-    summary: 'Dictaminar estado fitosanitario del lote (legado)',
-    deprecated: true,
-    description:
-      'Alias de `POST /v1/harvest-batches/{id}/phyto-decisions` hasta H2 (contrato O2 §3.4): mismas reglas y ya no sobrescribe las notas del pesaje.',
-  })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: 'Estado fitosanitario actualizado',
-    type: HarvestBatchResponseDto,
-  })
-  @ApiResponse({
-    status: HttpStatus.CONFLICT,
-    type: ApiErrorResponseDto,
-    description: 'TRC_PHYTO_DECISION_FINAL · TRC_LOT_TERMINAL',
-  })
-  @ApiUnprocessableEntityResponse({
-    type: ApiErrorResponseDto,
-    description:
-      'VALIDATION_ERROR (motivo obligatorio en REJECTED y QUARANTINE)',
-  })
-  @ApiNotFoundResponse({ description: 'Lote de vendimia no encontrado' })
-  async updatePhytoStatus(
-    @TenantId() wineryId: string,
-    @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: UpdatePhytoStatusDto,
-  ) {
-    return this.harvestBatchesService.updatePhytoStatus(
-      wineryId,
-      id,
-      user.id,
-      dto,
-    );
   }
 }

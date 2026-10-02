@@ -2,32 +2,27 @@ import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import {
-  MembershipRoleEnum,
-  PhytoStatusEnum,
-  Prisma,
-  PrismaClient,
-} from '@prisma/client';
+import { MembershipRoleEnum, Prisma, PrismaClient } from '@prisma/client';
 import * as request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { loadMockFixtures } from '../src/seed/fixtures';
-import { mockId } from '../src/seed/ids';
+import { lotIdOfHarvest, mockId } from '../src/seed/ids';
 import { runSeed } from '../src/seed/run-seed';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
-import { LotBackfillRunner } from '../src/modules/lots/lot-backfill.runner';
-import { migratedLotId } from '../src/modules/lots/lot-backfill';
 import { isValidBottleCode } from '../src/modules/lots/domain/bottle-code';
 import { staffToken } from './helpers/staff-session';
 import { createPlatformUser } from './helpers/identity';
 import { loadOpenApiValidator } from './helpers/openapi-validator';
+import { sha256Of, TEST_PDF, uploadTraceFile } from './helpers/trace-files';
 
 /**
- * Apertura de la Ola 2 (O2-BE-1) sobre la semilla de demostración en un
- * esquema propio: relleno de la migración (§2.6), lote del servidor, pruebas
- * de elusión (candados, D.O., dictamen, número de botellas, tipo), secuencias
- * sin carreras, SE-07, plataforma de solo lectura (S-25) y respuestas contra
- * `openapi.json`.
+ * Lote del servidor (O2-BE-1) sobre la semilla de demostración en un esquema
+ * propio: lotes sembrados, pruebas de elusión (candados, D.O., dictamen,
+ * número de botellas, tanque sin completar), secuencias sin carreras, SE-07,
+ * plataforma de solo lectura (S-25) y respuestas contra `openapi.json`. Tras
+ * el cierre H2 todo va por las rutas del contrato: las legadas ya no existen
+ * (la migración *contract* tiene su propia suite, `migration-contract`).
  */
 process.env.TRUST_PROXY = '1';
 
@@ -63,7 +58,7 @@ type Detail = {
 const codes = (res: Res): string[] =>
   ((res.body.error?.details ?? []) as Detail[]).map((d) => d.code as string);
 
-describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () => {
+describe('Ola 2 · lote del servidor y cierres de seguridad (e2e)', () => {
   const openapi = loadOpenApiValidator();
   let prisma: PrismaClient;
   let app: INestApplication;
@@ -115,6 +110,28 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
     return t.id;
   }
 
+  /** `FILLING → FERMENTING → COMPLETED` con su destino (§4.2, §4.3). */
+  async function completeTank(
+    tankId: string,
+    endDate: string,
+    finalVolumeLiters: number,
+    destination: 'WINE_AGING' | 'SINGANI_DIST',
+  ): Promise<Res> {
+    await checked(
+      'post',
+      'cinti',
+      `/v1/fermentation-tanks/${tankId}/start`,
+      200,
+    );
+    return checked(
+      'post',
+      'cinti',
+      `/v1/fermentation-tanks/${tankId}/complete`,
+      200,
+      { endDate, finalVolumeLiters, destination },
+    );
+  }
+
   async function tokenFor(
     email: string,
     wineryId: string,
@@ -142,7 +159,6 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = 'https://pasaporte.e2e.test';
-    process.env.LOT_BACKFILL_ON_BOOT = 'false';
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -214,16 +230,21 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
     }
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
-    delete process.env.LOT_BACKFILL_ON_BOOT;
   });
 
   // ───────────────────────────────────────────────────────────────────────────
-  describe('relleno de la migración (§2.6) sobre la semilla', () => {
-    it('un lote por pesaje con UUID v5, instantánea MIGRATION, códigos y sin incidencias', async () => {
+  describe('lotes de demostración de la semilla (§2.6)', () => {
+    it('lotes migrados con su id (UUID v5 del pesaje), instantánea, códigos y sin incidencias', async () => {
+      // Los lotes migrados (uno por pesaje, como `LotView`) conservan el id
+      // que derivó la apertura: UUID v5 de `lot:{pesaje}`, el de los mocks
       const harvests = await prisma.harvestBatch.findMany({
+        where: { lot: { rulesOrigin: 'MIGRATION' } },
         select: { id: true, lotId: true },
       });
-      expect(harvests.every((h) => h.lotId === migratedLotId(h.id))).toBe(true);
+      expect(harvests).toHaveLength(12);
+      expect(harvests.every((h) => h.lotId === lotIdOfHarvest(h.id))).toBe(
+        true,
+      );
 
       const list = await checked('get', 'cinti', '/v1/lots?limit=100', 200);
       expect(
@@ -265,116 +286,6 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         where: { lotId: bottled.id, serial: 1 },
       });
       expect(isValidBottleCode(unit.code)).toBe(true);
-    });
-
-    it('datos anteriores que no cumplen quedan como incidencias MIGRATION (no se borran ni se corrigen)', async () => {
-      const portillo = await terroirId(ALTOS, 'El Portillo');
-      const harvest = await prisma.harvestBatch.create({
-        data: {
-          wineryId: ALTOS,
-          terroirId: portillo,
-          harvestBatchCode: `HARV-2024-LEGADO-${run}`,
-          intakeDate: new Date('2024-03-01T00:00:00Z'),
-          harvestYear: 2024,
-          grossWeightKg: 1600,
-          tareWeightKg: 100,
-          netWeightKg: 1500,
-          brixDegrees: 22,
-          initialPh: 3.4,
-          initialAcidityGl: 6,
-          phytosanitaryStatus: PhytoStatusEnum.APPROVED,
-        },
-      });
-      const tank = await prisma.fermentationTank.create({
-        data: {
-          wineryId: ALTOS,
-          harvestBatchId: harvest.id,
-          tankCode: `TK-LEG-${run}`,
-          volumeFilledLiters: 1000,
-          destinationType: 'SINGANI_DIST',
-          status: 'TRANSFERRED',
-          startDate: new Date('2024-03-02T00:00:00Z'),
-        },
-      });
-      const production = await prisma.productionBatch.create({
-        data: {
-          wineryId: ALTOS,
-          fermentationTankId: tank.id,
-          processType: 'SINGANI_DISTILLATION',
-          equipmentIdentifier: 'AL-LEG',
-          processStartDate: new Date('2024-04-01T00:00:00Z'),
-          processEndDate: new Date('2024-04-02T00:00:00Z'),
-          inputVolumeLiters: 1000,
-          outputVolumeLiters: 150,
-          initialAlcoholPercentage: 65,
-          isDoEligible: true,
-          restStatus: 'BOTTLED',
-        },
-      });
-      await prisma.bottlingBatch.create({
-        data: {
-          wineryId: ALTOS,
-          productionBatchId: production.id,
-          productType: 'SINGANI',
-          internationalLotCode: 'ALT-2024-SINGANI-777',
-          finalAlcoholAbv: 40,
-          waterDilutionLiters: 20,
-          totalBottlesPackaged: 300,
-          packagingFormatCl: 75,
-          bottlingDate: new Date('2025-01-10T00:00:00Z'),
-          qrBatchUrl:
-            'https://drinksonchain.com/trace/batch/ALT-2024-SINGANI-777',
-        },
-      });
-      await prisma.lotBackfillPending.create({
-        data: { harvestBatchId: harvest.id },
-      });
-
-      const results = await app.get(LotBackfillRunner).run();
-      const result = results.find((r) => r.harvestBatchId === harvest.id)!;
-      expect(result.lotId).toBe(migratedLotId(harvest.id));
-      expect(result.issues.sort()).toEqual(
-        ['TRC_BOTTLING_EXCEEDS_VOLUME', 'TRC_DO_NOT_ELIGIBLE'].sort(),
-      );
-      expect(result.bottleCodes).toBe(300);
-      await expect(
-        prisma.lotBackfillPending.count({
-          where: { harvestBatchId: harvest.id },
-        }),
-      ).resolves.toBe(0);
-
-      const lot = await checked(
-        'get',
-        'altos',
-        `/v1/lots/${result.lotId}`,
-        200,
-      );
-      expect(lot.body.data).toMatchObject({
-        stage: 'BOTTLED',
-        complianceIssuesOpen: 2,
-        lotCode: 'ALT-2024-SINGANI-777',
-      });
-      const doIssue = lot.body.data.complianceIssues.find(
-        (i: { code: string }) => i.code === 'TRC_DO_NOT_ELIGIBLE',
-      );
-      expect(doIssue).toMatchObject({ source: 'MIGRATION', resolvedAt: null });
-      expect(doIssue.details[0]).toMatchObject({
-        rule: 'trazabilidad.singani.altitudMinimaMsnm',
-        expected: 1600,
-        actual: 1540,
-      });
-      const qr = await prisma.bottlingBatch.findFirstOrThrow({
-        where: { internationalLotCode: 'ALT-2024-SINGANI-777' },
-      });
-      expect(qr.qrBatchUrl).toBe(
-        'https://pasaporte.e2e.test/b/ALT-2024-SINGANI-777',
-      );
-
-      // Idempotente: una segunda pasada no toca nada
-      expect(await app.get(LotBackfillRunner).run()).toEqual([]);
-      await expect(
-        prisma.lot.count({ where: { id: result.lotId! } }),
-      ).resolves.toBe(1);
     });
   });
 
@@ -669,6 +580,7 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         {
           inputs: [{ harvestBatchId: harvestId }],
           tankCode: `TK-E2E-${run}`,
+          volumeFilledLiters: 100,
           startDate: `${daysAgo(197)}T14:00:00Z`,
         },
       );
@@ -678,10 +590,42 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         fermentationTankId: tankId,
         equipmentIdentifier: 'Alambique AL-E2E',
         processStartDate: daysAgo(190),
-        processEndDate: daysAgo(185),
-        initialAlcoholPercentage: 60,
-        isDoEligible: false,
       };
+      // Sin completar la fermentación no hay destilación (H2: sin tolerancia)
+      const notCompleted = await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        409,
+        { ...base, inputVolumeLiters: 12100 },
+      );
+      expect(notCompleted.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+      expect(notCompleted.body.error.details[0].meta).toMatchObject({
+        status: 'FILLING',
+        tankId,
+      });
+      const completed = await completeTank(
+        tankId,
+        daysAgo(192),
+        12100,
+        'SINGANI_DIST',
+      );
+      expect(completed.body.data).toMatchObject({
+        status: 'COMPLETED',
+        destinationType: 'SINGANI_DIST',
+      });
+
+      // La D.O. no se declara: el campo ya no existe (EA-03)
+      const declared = await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        422,
+        { ...base, inputVolumeLiters: 12100, isDoEligible: true },
+      );
+      expect(declared.body.error.code).toBe('VALIDATION_ERROR');
+      expect(declared.body.error.details[0].field).toBe('isDoEligible');
+
       const tooMuch = await checked(
         'post',
         'cinti',
@@ -693,43 +637,36 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         },
       );
       expect(tooMuch.body.error.code).toBe('TRC_VOLUME_EXCEEDS_AVAILABLE');
-      const cuts = await checked(
-        'post',
-        'cinti',
-        '/v1/production-batches/distillation',
-        422,
-        {
-          ...base,
-          inputVolumeLiters: 12100,
-          outputVolumeLiters: 12000,
-          additionalParams: {
-            headDiscardLiters: 120,
-            heartYieldLiters: 12000,
-            tailDiscardLiters: 210,
-          },
-        },
-      );
-      expect(cuts.body.error.code).toBe('TRC_MASS_BALANCE_EXCEEDED');
 
       const distillation = await checked(
         'post',
         'cinti',
         '/v1/production-batches/distillation',
         201,
-        {
-          ...base,
-          inputVolumeLiters: 12100,
-          outputVolumeLiters: 1500,
-          wasteVolumeLiters: 330,
-          additionalParams: {
-            headDiscardLiters: 120,
-            heartYieldLiters: 1500,
-            tailDiscardLiters: 210,
-          },
-        },
+        { ...base, inputVolumeLiters: 12100 },
       );
       productionId = distillation.body.data.id;
       expect(distillation.body.data).toMatchObject({
+        lotId,
+        processEndDate: null,
+        isDoEligible: true,
+        lock: null,
+      });
+
+      const close = `/v1/production-batches/${productionId}/close`;
+      const cuts = await checked('post', 'cinti', close, 422, {
+        processEndDate: daysAgo(185),
+        cuts: { headsLiters: 120, heartLiters: 12000, tailsLiters: 210 },
+        heartAbvPercent: 60,
+      });
+      expect(cuts.body.error.code).toBe('TRC_MASS_BALANCE_EXCEEDED');
+
+      const closed = await checked('post', 'cinti', close, 200, {
+        processEndDate: daysAgo(185),
+        cuts: { headsLiters: 120, heartLiters: 1500, tailsLiters: 210 },
+        heartAbvPercent: 60,
+      });
+      expect(closed.body.data).toMatchObject({
         lotId,
         heartLiters: 1500,
         heartAbvPercent: 60,
@@ -759,26 +696,29 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
     });
 
     it('embotellado: tipo derivado, balance de volumen y de alcohol (EA-01, EA-02)', async () => {
+      const path = `/v1/lots/${lotId}/bottling`;
       const body = {
-        productionBatchId: productionId,
-        productType: 'SINGANI',
         finalAlcoholAbv: 40,
         waterDilutionLiters: 750,
         totalBottlesPackaged: 2950,
         packagingFormatCl: 75,
         bottlingDate: daysAgo(2),
       };
-      const asWine = await checked('post', 'cinti', '/v1/bottling', 422, {
+      // El tipo se deriva del origen: no es un campo, y la ruta legada no existe
+      const asWine = await checked('post', 'cinti', path, 422, {
         ...body,
         productType: 'WINE',
       });
-      expect(asWine.body.error.code).toBe('TRC_PRODUCT_TYPE_MISMATCH');
-      expect(asWine.body.error.details[0]).toMatchObject({
-        expected: 'SINGANI',
-        actual: 'WINE',
+      expect(asWine.body.error.code).toBe('VALIDATION_ERROR');
+      expect(asWine.body.error.details[0].field).toBe('productType');
+      const legacy = await call('post', 'cinti', '/v1/bottling', {
+        ...body,
+        productionBatchId: productionId,
+        productType: 'WINE',
       });
+      expect(legacy.status).toBe(404);
 
-      const moreBottles = await checked('post', 'cinti', '/v1/bottling', 422, {
+      const moreBottles = await checked('post', 'cinti', path, 422, {
         ...body,
         totalBottlesPackaged: 3100,
       });
@@ -787,14 +727,14 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         maxBottles: 3000,
       });
 
-      const watered = await checked('post', 'cinti', '/v1/bottling', 422, {
+      const watered = await checked('post', 'cinti', path, 422, {
         ...body,
         waterDilutionLiters: 1100,
         totalBottlesPackaged: 3400,
       });
       expect(codes(watered)).toContain('TRC_ALCOHOL_BALANCE_EXCEEDED');
 
-      const lossy = await checked('post', 'cinti', '/v1/bottling', 422, {
+      const lossy = await checked('post', 'cinti', path, 422, {
         ...body,
         totalBottlesPackaged: 2700,
       });
@@ -804,7 +744,7 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         expected: 5,
       });
 
-      const bottled = await checked('post', 'cinti', '/v1/bottling', 201, body);
+      const bottled = await checked('post', 'cinti', path, 201, body);
       bottlingId = bottled.body.data.id;
       lotCode = bottled.body.data.internationalLotCode;
       expect(lotCode).toMatch(
@@ -830,8 +770,6 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         },
       });
 
-      const second = await checked('post', 'cinti', '/v1/bottling', 409, body);
-      expect(second.body.error.code).toBe('TRC_LOT_ALREADY_BOTTLED');
       const secondByLot = await checked(
         'post',
         'cinti',
@@ -860,8 +798,9 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
     });
 
     it('laboratorio: conformidad calculada con unidades y reanálisis (EA-08)', async () => {
+      const path = `/v1/lots/${lotId}/lab-analyses`;
+      const key = await uploadTraceFile(app, tokens.cinti, { ip: nextIp() });
       const base = {
-        bottlingBatchId: bottlingId,
         certifiedLaboratoryName: 'Laboratorio e2e ISO 17025',
         accreditedLabCertificationCode: `LAB-${run}`,
         testPerformedAt: daysAgo(2),
@@ -869,23 +808,34 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         totalAcidityTartaricGl: 4.8,
         volatileAcidityAceticGl: 0.22,
         copperContentMgL: 0.02,
-        laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf',
-        conformsToSenasagStandards: true,
+        laboratoryReportKey: key,
       };
-      const incomplete = await checked(
-        'post',
-        'cinti',
-        '/v1/lab-analyses',
-        201,
-        base,
-      );
+      // La conformidad no se declara y el informe no viaja por URL (H2)
+      const declared = await checked('post', 'cinti', path, 422, {
+        ...base,
+        conformsToSenasagStandards: true,
+        laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf',
+      });
+      expect(
+        (declared.body.error.details as { field: string }[])
+          .map((d) => d.field)
+          .sort(),
+      ).toEqual(['conformsToSenasagStandards', 'laboratoryReportPdfUrl']);
+      const legacy = await call('post', 'cinti', '/v1/lab-analyses', {
+        ...base,
+        bottlingBatchId: bottlingId,
+      });
+      expect(legacy.status).toBe(404);
+
+      const incomplete = await checked('post', 'cinti', path, 201, base);
       expect(incomplete.body.data).toMatchObject({
         conformsToSenasagStandards: false,
         conformityStatus: 'INCOMPLETE',
         current: true,
         conformity: { status: 'INCOMPLETE' },
+        report: { key, sha256: sha256Of(TEST_PDF) },
       });
-      const complete = await checked('post', 'cinti', '/v1/lab-analyses', 201, {
+      const complete = await checked('post', 'cinti', path, 201, {
         ...base,
         methanolContentMgL: 48,
       });
@@ -905,7 +855,7 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
       expect(lot.body.data.labStatus).toBe('CONFORMING');
     });
 
-    it('candado sin cumplir: el embotellado prematuro falla aunque se declare otro tipo (EA-01)', async () => {
+    it('candado sin cumplir: el embotellado prematuro falla (EA-01)', async () => {
       const early = await checked('post', 'cinti', '/v1/lots', 201, {
         name: 'Singani joven e2e',
         harvestYear: year,
@@ -944,6 +894,7 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
           startDate: `${daysAgo(38)}T10:00:00Z`,
         },
       );
+      await completeTank(tank.body.data.id, daysAgo(22), 1000, 'SINGANI_DIST');
       const distillation = await checked(
         'post',
         'cinti',
@@ -953,27 +904,34 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
           fermentationTankId: tank.body.data.id,
           equipmentIdentifier: 'AL-B',
           processStartDate: daysAgo(20),
-          processEndDate: daysAgo(10),
           inputVolumeLiters: 1000,
-          outputVolumeLiters: 150,
-          initialAlcoholPercentage: 65,
         },
       );
-      const res = await checked('post', 'cinti', '/v1/bottling', 422, {
-        productionBatchId: distillation.body.data.id,
-        productType: 'WINE',
-        finalAlcoholAbv: 40,
-        waterDilutionLiters: 50,
-        totalBottlesPackaged: 100,
-        packagingFormatCl: 75,
-        bottlingDate: daysAgo(2),
-      });
-      expect(codes(res)).toEqual(
-        expect.arrayContaining([
-          'TRC_PRODUCT_TYPE_MISMATCH',
-          'TRC_LOCK_NOT_RELEASED',
-        ]),
+      await checked(
+        'post',
+        'cinti',
+        `/v1/production-batches/${distillation.body.data.id}/close`,
+        200,
+        {
+          processEndDate: daysAgo(10),
+          cuts: { headsLiters: 10, heartLiters: 150, tailsLiters: 20 },
+          heartAbvPercent: 65,
+        },
       );
+      const res = await checked(
+        'post',
+        'cinti',
+        `/v1/lots/${earlyLot}/bottling`,
+        422,
+        {
+          finalAlcoholAbv: 40,
+          waterDilutionLiters: 50,
+          totalBottlesPackaged: 100,
+          packagingFormatCl: 75,
+          bottlingDate: daysAgo(2),
+        },
+      );
+      expect(codes(res)).toContain('TRC_LOCK_NOT_RELEASED');
       const lock = (res.body.error.details as Detail[]).find(
         (d) => d.code === 'TRC_LOCK_NOT_RELEASED',
       )!;
@@ -1067,6 +1025,22 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
           startDate: `${daysAgo(98)}T10:00:00Z`,
         },
       );
+      // Sin completar la fermentación no hay crianza (H2: sin tolerancia)
+      const notCompleted = await checked(
+        'post',
+        'cinti',
+        '/v1/wine-aging',
+        409,
+        {
+          fermentationTankId: tank.body.data.id,
+          containerType: 'Barrica',
+          volumeLiters: 1900,
+          plannedMonths: 12,
+          startDate: daysAgo(90),
+        },
+      );
+      expect(notCompleted.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+      await completeTank(tank.body.data.id, daysAgo(92), 1950, 'WINE_AGING');
       const short = await checked('post', 'cinti', '/v1/wine-aging', 422, {
         fermentationTankId: tank.body.data.id,
         containerType: 'Barrica',
@@ -1091,15 +1065,20 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         kind: 'AGING',
         released: false,
       });
-      const res = await checked('post', 'cinti', '/v1/bottling', 422, {
-        wineAgingBatchId: aging.body.data.id,
-        productType: 'WINE',
-        finalAlcoholAbv: 13.5,
-        waterDilutionLiters: 10,
-        totalBottlesPackaged: 2000,
-        packagingFormatCl: 75,
-        bottlingDate: daysAgo(2),
-      });
+      const res = await checked(
+        'post',
+        'cinti',
+        `/v1/lots/${wine.body.data.id}/bottling`,
+        422,
+        {
+          sources: [{ wineAgingBatchId: aging.body.data.id, liters: 1900 }],
+          finalAlcoholAbv: 13.5,
+          waterDilutionLiters: 10,
+          totalBottlesPackaged: 2000,
+          packagingFormatCl: 75,
+          bottlingDate: daysAgo(2),
+        },
+      );
       expect(codes(res)).toEqual(
         expect.arrayContaining([
           'TRC_LOCK_NOT_RELEASED',
@@ -1107,7 +1086,7 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
         ]),
       );
 
-      // La ruta nueva del lote aplica el mismo motor: vista previa sin escribir
+      // Vista previa: las mismas reglas, sin escribir
       const lotBody = {
         bottlingDate: daysAgo(2),
         packagingFormatCl: 75,
@@ -1224,47 +1203,52 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
       ).toEqual([3000, 2950]);
     });
 
-    it('SE-07: el grafo solo lo ven la bodega dueña y la plataforma; el pasaporte legado solo por código', async () => {
-      await checked('get', 'cinti', `/v1/traceability/dag/${bottlingId}`, 200);
-      await checked(
+    it('SE-07: el grafo solo lo ven la bodega dueña y la plataforma; el grafo y el pasaporte legados ya no existen', async () => {
+      const graph = await checked(
         'get',
-        'platform',
-        `/v1/traceability/dag/${bottlingId}`,
+        'cinti',
+        `/v1/lots/${lotId}/graph`,
         200,
       );
+      const nodes = graph.body.data.nodes as {
+        type: string;
+        metrics: { key: string; value: unknown }[];
+        actor: { role: string } | null;
+      }[];
+      expect(nodes.map((n) => n.type)).toEqual(
+        expect.arrayContaining([
+          'TERROIR',
+          'HARVEST_BATCH',
+          'TANK',
+          'DISTILLATION',
+          'BOTTLING',
+          'LAB_ANALYSIS',
+        ]),
+      );
+      // EA-05: quien embotelló sale de su membresía, no un nombre genérico
+      expect(nodes.find((n) => n.type === 'BOTTLING')?.actor).toMatchObject({
+        role: 'OWNER',
+      });
+      await checked('get', 'platform', `/v1/lots/${lotId}/graph`, 200);
       for (const who of ['altos', 'consumer'] as const) {
-        const res = await call(
+        const res = await call('get', who, `/v1/lots/${lotId}/graph`);
+        expect(res.status).toBe(404);
+      }
+      // Retirados en H2: el grafo por embotellado y el pasaporte legado
+      for (const who of ['cinti', 'platform', 'consumer'] as const) {
+        const dag = await call(
           'get',
           who,
           `/v1/traceability/dag/${bottlingId}`,
         );
-        expect(res.status).toBe(404);
+        expect(dag.status).toBe(404);
       }
-      const byId = await call(
-        'get',
-        'consumer',
-        `/v1/traceability/public/${bottlingId}`,
-      );
-      expect(byId.status).toBe(404);
-      const byCode = await checked(
+      const legacy = await call(
         'get',
         'consumer',
         `/v1/traceability/public/${lotCode}`,
-        200,
       );
-      const nodes = byCode.body.data.nodes as {
-        stageName: string;
-        metrics: number[];
-        isCertified: boolean;
-        operator: { name: string };
-      }[];
-      expect(
-        nodes.find((n) => n.stageName === 'Vinification')?.metrics,
-      ).toEqual([]);
-      expect(nodes.every((n) => n.isCertified === false)).toBe(true);
-      expect(
-        nodes.find((n) => n.stageName === 'Bottling')?.operator.name,
-      ).not.toBe('Supervisor de Envasado');
+      expect(legacy.status).toBe(404);
     });
 
     it('la plataforma solo lee la trazabilidad (S-25): 403 TRC_PLATFORM_READ_ONLY', async () => {
@@ -1283,10 +1267,8 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
           },
         ],
         [
-          `/v1/bottling?wineryId=${CINTI}`,
+          `/v1/lots/${lotId}/bottling?wineryId=${CINTI}`,
           {
-            productionBatchId: productionId,
-            productType: 'SINGANI',
             finalAlcoholAbv: 40,
             totalBottlesPackaged: 1,
             packagingFormatCl: 75,

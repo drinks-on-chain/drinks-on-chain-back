@@ -1,13 +1,10 @@
 import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CreateHarvestBatchDto } from './dto/create-harvest-batch.dto';
-import { UpdatePhytoStatusDto } from './dto/update-phyto-status.dto';
 import { QueryHarvestBatchesDto } from './dto/query-harvest-batches.dto';
 import {
   CreateMaturityAnalysisDto,
   CreatePhytoDecisionDto,
-  PHYTO_DECISIONS,
-  PhytoDecisionValue,
 } from './dto/phyto-decision.dto';
 import { Prisma, PhytoStatusEnum } from '@prisma/client';
 import {
@@ -118,10 +115,9 @@ export class HarvestBatchesService {
     user: { id: string; role: string | null },
     dto: CreateHarvestBatchDto,
   ) {
-    if (
-      dto.phytosanitaryStatus !== undefined &&
-      dto.phytosanitaryStatus !== PhytoStatusEnum.PENDING_INSPECTION
-    ) {
+    // El alta no tiene dictamen (EA-04): enviarlo, con cualquier valor, es el
+    // intento de autoaprobación que el contrato rechaza con su código propio
+    if (dto.phytosanitaryStatus !== undefined) {
       throw ruleError(
         ErrorCode.TRC_PHYTO_IN_CREATE,
         'El dictamen fitosanitario no se registra en el alta del pesaje: usa POST /v1/harvest-batches/{id}/phyto-decisions',
@@ -129,11 +125,7 @@ export class HarvestBatchesService {
           violation(
             ErrorCode.TRC_PHYTO_IN_CREATE,
             'Dictamen en el alta del pesaje',
-            {
-              field: 'phytosanitaryStatus',
-              expected: PhytoStatusEnum.PENDING_INSPECTION,
-              actual: dto.phytosanitaryStatus,
-            },
+            { field: 'phytosanitaryStatus', actual: dto.phytosanitaryStatus },
           ),
         ],
       );
@@ -157,7 +149,7 @@ export class HarvestBatchesService {
         'El peso bruto debe ser estrictamente mayor al peso tara',
       );
     }
-    const maturity = maturityOf(dto);
+    const maturity: Maturity | null = dto.maturity ?? null;
     const netWeight = dto.grossWeightKg - dto.tareWeightKg;
 
     const id = await this.prisma.$transaction(async (tx) => {
@@ -465,33 +457,6 @@ export class HarvestBatchesService {
     }));
   }
 
-  /** Ruta legada `PATCH …/phyto-status`: alias del dictamen (§3.4). */
-  async updatePhytoStatus(
-    wineryId: string,
-    id: string,
-    userId: string | null,
-    dto: UpdatePhytoStatusDto,
-  ) {
-    if (
-      !(PHYTO_DECISIONS as readonly string[]).includes(dto.phytosanitaryStatus)
-    ) {
-      throw ValidationException.forField(
-        'phytosanitaryStatus',
-        `Un dictamen es ${PHYTO_DECISIONS.join(', ')}: PENDING_INSPECTION no es un dictamen`,
-      );
-    }
-    return this.decide(
-      wineryId,
-      id,
-      userId,
-      {
-        decision: dto.phytosanitaryStatus as PhytoDecisionValue,
-        notes: dto.notes,
-      },
-      { legacyPdfUrl: dto.phytoInspectionPdfUrl },
-    );
-  }
-
   /**
    * Dictamen fitosanitario (§3.4, EA-04): solo inserción; `APPROVED` y
    * `REJECTED` son finales y nada cambia una vez que la uva entró a un tanque.
@@ -501,7 +466,6 @@ export class HarvestBatchesService {
     id: string,
     userId: string | null,
     dto: CreatePhytoDecisionDto,
-    options: { legacyPdfUrl?: string } = {},
   ) {
     const notes = dto.notes?.trim() || null;
     if (
@@ -513,8 +477,9 @@ export class HarvestBatchesService {
         'Indica el motivo del rechazo o de la cuarentena',
       );
     }
+    let reportSha256: string | null = null;
     if (dto.inspectionReportKey) {
-      await assertWineryFile(
+      reportSha256 = await assertWineryFile(
         this.storage,
         wineryId,
         dto.inspectionReportKey,
@@ -591,6 +556,7 @@ export class HarvestBatchesService {
           decidedAt,
           decidedByMembershipId: membership?.id ?? null,
           inspectionReportKey: dto.inspectionReportKey ?? null,
+          inspectionReportSha256: reportSha256,
           notes,
           source: 'ERP',
         },
@@ -601,9 +567,6 @@ export class HarvestBatchesService {
           phytosanitaryStatus: dto.decision,
           // `certifiedByMemberId` = autor del último dictamen (§3.4)
           certifiedByMemberId: legacyMember?.id ?? null,
-          ...(options.legacyPdfUrl && {
-            phytoInspectionPdfUrl: options.legacyPdfUrl,
-          }),
         },
       });
       if (lot) {
@@ -641,7 +604,7 @@ export class HarvestBatchesService {
           phytosanitaryStatus: updated.phytosanitaryStatus,
           decisionId: decision.id,
           inspectionReportKey: decision.inspectionReportKey,
-          phytoInspectionPdfUrl: updated.phytoInspectionPdfUrl,
+          inspectionReportSha256: decision.inspectionReportSha256,
           certifiedByMemberId: updated.certifiedByMemberId,
         },
         reason: notes,
@@ -951,28 +914,6 @@ export function toHarvestView(
         row.intakeDate.toISOString().slice(0, 10),
         laPazDate(row.createdAt),
       ) > LATE_ENTRY_DAYS,
-  };
-}
-
-/** Análisis de la entrada: `maturity` o los campos planos legados (los tres juntos). */
-function maturityOf(dto: CreateHarvestBatchDto): Maturity | null {
-  if (dto.maturity) return dto.maturity;
-  const flat = [dto.brixDegrees, dto.initialPh, dto.initialAcidityGl];
-  if (flat.every((v) => v === undefined)) return null;
-  if (flat.some((v) => v === undefined)) {
-    throw new ValidationException(
-      (['brixDegrees', 'initialPh', 'initialAcidityGl'] as const)
-        .filter((k) => dto[k] === undefined)
-        .map((field) => ({
-          field,
-          message: 'Brix, pH y acidez van juntos (o usa `maturity`)',
-        })),
-    );
-  }
-  return {
-    brixDegrees: dto.brixDegrees as number,
-    ph: dto.initialPh as number,
-    acidityGl: dto.initialAcidityGl as number,
   };
 }
 

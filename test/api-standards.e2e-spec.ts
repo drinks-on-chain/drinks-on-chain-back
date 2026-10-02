@@ -257,9 +257,7 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
           harvestYear: 2026,
           grossWeightKg: 100,
           tareWeightKg: 150,
-          brixDegrees: 22,
-          initialPh: 3.4,
-          initialAcidityGl: 6.5,
+          maturity: { brixDegrees: 22, ph: 3.4, acidityGl: 6.5 },
         })
         .expect(422);
 

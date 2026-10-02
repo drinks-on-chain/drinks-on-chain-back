@@ -74,7 +74,7 @@ export class TerroirsService {
     this.logger.log(
       `Registrando parcela "${dto.parcelName}" para la bodega ${wineryId}`,
     );
-    // `isDoEligible` de la entrada se ignora (§3.1): se calcula en el servidor
+    // La aptitud D.O. no es un dato de la entrada (§3.1): se calcula aquí
     const rules = await effectiveDoRules(this.prisma, wineryId);
     const computed = terroirDo(
       {
@@ -253,7 +253,7 @@ export class TerroirsService {
       ...(dto.irrigationSystem !== undefined && {
         irrigationSystem: dto.irrigationSystem,
       }),
-      // `isDoEligible` de la entrada se ignora: se recalcula (EA-03)
+      // La aptitud D.O. se recalcula con cada edición (EA-03)
       isDoEligible: computed.isDoEligible,
       ...(dto.doType !== undefined && { doType: dto.doType }),
       ...(dto.doCertificateUrl !== undefined && {

@@ -37,8 +37,6 @@ export interface BottlingSourceRef {
 
 export interface BottlingRequest {
   sources: BottlingSourceRef[];
-  /** Ruta legada: el tipo enviado (se compara con el derivado, EA-01). */
-  declaredProductType?: string;
   bottlingDate: string;
   packagingFormatCl: number;
   totalBottlesPackaged: number;
@@ -51,7 +49,6 @@ export interface BottlingRequest {
   };
   bottleType?: string;
   labelDesignKey?: string;
-  labelDesignUrl?: string;
 }
 
 export interface BottlingEvaluation {
@@ -244,23 +241,6 @@ export async function evaluateBottling(
           field: 'sources',
           expected: lot.productType,
           actual: productType,
-        },
-      ),
-    );
-  }
-  if (
-    request.declaredProductType !== undefined &&
-    productType &&
-    request.declaredProductType !== productType
-  ) {
-    violations.push(
-      violation(
-        ErrorCode.TRC_PRODUCT_TYPE_MISMATCH,
-        `El tipo de producto se deriva del origen: ${productType === 'WINE' ? 'crianza → WINE' : 'destilación → SINGANI'}`,
-        {
-          field: 'productType',
-          expected: productType,
-          actual: request.declaredProductType,
         },
       ),
     );
@@ -483,7 +463,8 @@ export async function executeBottling(
     clock: DbClock;
     membershipId: string | null;
     passportBaseUrl: string;
-    legacy: { wineAgingBatchId?: string; productionBatchId?: string };
+    /** Primera fuente de cada tipo (claves anteriores a la Ola 2 del embotellado). */
+    primary: { wineAgingBatchId?: string; productionBatchId?: string };
   },
 ): Promise<string> {
   const productType = evaluation.productType as LotProductType;
@@ -498,8 +479,8 @@ export async function executeBottling(
   const created = await tx.bottlingBatch.create({
     data: {
       wineryId: lot.wineryId,
-      wineAgingBatchId: context.legacy.wineAgingBatchId ?? null,
-      productionBatchId: context.legacy.productionBatchId ?? null,
+      wineAgingBatchId: context.primary.wineAgingBatchId ?? null,
+      productionBatchId: context.primary.productionBatchId ?? null,
       productType: productType as BeverageTypeEnum,
       internationalLotCode: lotCode,
       finalAlcoholAbv: new Prisma.Decimal(request.finalAlcoholAbv),
@@ -510,7 +491,6 @@ export async function executeBottling(
       totalBottlesPackaged: request.totalBottlesPackaged,
       packagingFormatCl: request.packagingFormatCl,
       bottleType: request.bottleType,
-      labelDesignUrl: request.labelDesignUrl,
       labelDesignKey: request.labelDesignKey,
       bottlingDate: toDbDate(evaluation.bottlingDay),
       releasedByMemberId: legacyMember?.id ?? null,

@@ -28,7 +28,6 @@ import {
 import { agingLock, nextLock, restLock } from '../domain/locks';
 import { buildLotRules, parseLotRules, LotRules } from '../domain/lot-rules';
 import { deriveLotStage } from '../domain/lot-stage';
-import { migratedLotId } from '../lot-backfill';
 
 function rules(
   overrides: Partial<Record<string, unknown>> = {},
@@ -418,14 +417,6 @@ describe('instantánea y etapa del lote', () => {
     expect(deriveLotStage({ ...empty, bottled: true })).toBe('BOTTLED');
     expect(deriveLotStage({ ...empty, bottled: true, discarded: true })).toBe(
       'DISCARDED',
-    );
-  });
-
-  it('el id del lote migrado es el UUID v5 del pesaje (determinista, como los mocks)', () => {
-    const a = migratedLotId('2a643ce2-0000-4000-8000-000000000000');
-    expect(a).toBe(migratedLotId('2a643ce2-0000-4000-8000-000000000000'));
-    expect(a).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
     );
   });
 });

@@ -246,7 +246,6 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
       varietyName: 'Moscatel de Alejandría',
       soilType: null,
       irrigationSystem: null,
-      isDoEligible: null,
       doType: null,
       doCertificateUrl: null,
     }).expect(201);
@@ -297,11 +296,8 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
       harvestYear: now.getUTCFullYear(),
       grossWeightKg: 1200.5,
       tareWeightKg: 200,
-      brixDegrees: 22.5,
-      initialPh: 3.4,
-      initialAcidityGl: 5.2,
+      maturity: { brixDegrees: 22.5, ph: 3.4, acidityGl: 5.2 },
       temperatureAtIntakeC: null,
-      phytosanitaryStatus: null,
       notes: null,
     }).expect(201);
     openapi.expectResponse('post', '/v1/harvest-batches', harvest);
@@ -379,7 +375,7 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
     await get('cintiviejo', `/v1/production-batches/${batch.id}/rest-status`);
   });
 
-  it('embotellados, laboratorio, DAG y pasaporte público', async () => {
+  it('embotellados, laboratorio, grafo del lote y pasaporte público', async () => {
     for (const who of ['altos', 'cintiviejo'] as const) {
       const list = await get(who, '/v1/bottling');
       const bottlings = list.body.data.items as Item[];
@@ -387,10 +383,10 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
       for (const bottling of bottlings) {
         expect(typeof bottling.finalAlcoholAbv).toBe('number');
         await get(who, `/v1/bottling/${bottling.id}`);
-        await get(who, `/v1/traceability/dag/${bottling.id}`);
+        await get(who, `/v1/lots/${String(bottling.lotId)}/graph`);
         await get(
           null,
-          `/v1/traceability/public/${encodeURIComponent(String(bottling.internationalLotCode))}`,
+          `/v1/public/passports/${encodeURIComponent(String(bottling.internationalLotCode))}`,
         );
       }
     }
@@ -448,8 +444,8 @@ describe('Contrato OpenAPI de las respuestas del ERP (e2e)', () => {
       '/v1/production-batches/{id}',
       '/v1/bottling/{id}',
       '/v1/lab-analyses/batch/{bottlingBatchId}',
-      '/v1/traceability/dag/{bottlingBatchId}',
-      '/v1/traceability/public/{lotCode}',
+      '/v1/lots/{id}/graph',
+      '/v1/public/passports/{code}',
     ]) {
       expect(templates).toContain(expected);
     }

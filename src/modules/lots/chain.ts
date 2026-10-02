@@ -1,7 +1,5 @@
 import { Prisma } from '@prisma/client';
 import { ErrorCode } from '@shared/exceptions/error-codes';
-import { backfillHarvestChain } from './lot-backfill';
-import { resolvePassportBaseUrl } from './bottle-units';
 import { fixProductType, LockedLot } from './lot-records';
 import { appendLotEvent } from './lot-events';
 import {
@@ -15,28 +13,6 @@ import { parseTankTransitions } from './domain/tank-transitions';
 import { ruleError, stateError, violation } from './domain/trace-errors';
 
 type Tx = Prisma.TransactionClient;
-
-/**
- * Lote de un pesaje anterior a la Ola 2 que aún no se rellenó (p. ej. si el
- * relleno del arranque falló o el registro se creó fuera de la API): se
- * rellena en el momento con la misma lógica que la migración (§2.6).
- */
-export async function ensureHarvestLot(
-  tx: Tx,
-  harvestBatchId: string,
-): Promise<string | null> {
-  const harvest = await tx.harvestBatch.findUnique({
-    where: { id: harvestBatchId },
-    select: { lotId: true },
-  });
-  if (!harvest) return null;
-  if (harvest.lotId) return harvest.lotId;
-  const result = await backfillHarvestChain(tx, harvestBatchId, {
-    passportBaseUrl: resolvePassportBaseUrl(),
-  });
-  await tx.lotBackfillPending.deleteMany({ where: { harvestBatchId } });
-  return result.lotId;
-}
 
 /** Litros que aún quedan en un tanque (final o llenado − crianza − destilaciones). */
 export async function tankAvailableLiters(
@@ -64,26 +40,32 @@ export async function tankAvailableLiters(
 }
 
 /**
- * Un tanque `TRANSFERRED` o `CLEANED` ya no es origen de una crianza ni de
- * una destilación → 409 `TRC_TANK_NOT_COMPLETED` (§5.1, §5.2). Hasta H2 se
- * admite también el tanque sin completar (`FILLING`/`FERMENTING`) del flujo
- * anterior a las transiciones: la crianza o la última destilación lo dan por
- * transferido.
+ * Solo un tanque `COMPLETED` es origen de una crianza o de una destilación
+ * (§5.1, §5.2): sin completar (`FILLING`/`FERMENTING`) aún no tiene volumen
+ * final ni destino decidido, y `TRANSFERRED`/`CLEANED` ya no tiene volumen que
+ * transferir → 409 `TRC_TANK_NOT_COMPLETED`.
  */
 export function assertTankIsSource(tank: {
   id: string;
   tankCode: string;
   status: string;
 }): void {
-  if (tank.status !== 'TRANSFERRED' && tank.status !== 'CLEANED') return;
+  if (tank.status === 'COMPLETED') return;
+  const pending = tank.status === 'FILLING' || tank.status === 'FERMENTING';
   throw stateError(
     ErrorCode.TRC_TANK_NOT_COMPLETED,
-    `El tanque ${tank.tankCode} está ${tank.status}: ya no tiene volumen que transferir`,
+    pending
+      ? `El tanque ${tank.tankCode} está ${tank.status}: completa la fermentación antes de transferirlo`
+      : `El tanque ${tank.tankCode} está ${tank.status}: ya no tiene volumen que transferir`,
     [
-      violation(ErrorCode.TRC_TANK_NOT_COMPLETED, 'Tanque ya transferido', {
-        field: 'fermentationTankId',
-        meta: { status: tank.status, tankId: tank.id },
-      }),
+      violation(
+        ErrorCode.TRC_TANK_NOT_COMPLETED,
+        pending ? 'Tanque sin completar' : 'Tanque ya transferido',
+        {
+          field: 'fermentationTankId',
+          meta: { status: tank.status, tankId: tank.id },
+        },
+      ),
     ],
   );
 }

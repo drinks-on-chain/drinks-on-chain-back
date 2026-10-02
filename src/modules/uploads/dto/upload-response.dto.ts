@@ -46,4 +46,12 @@ export class UploadResponseDto extends SignedUrlResponseDto {
 
   @ApiProperty({ description: 'Tamaño en bytes del archivo', example: 204850 })
   sizeBytes!: number;
+
+  @ApiProperty({
+    description:
+      'Huella SHA-256 (hexadecimal) del contenido: la que guardan los registros de la trazabilidad junto a la `key` (contrato O2 §0)',
+    example: '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08',
+    pattern: '^[0-9a-f]{64}$',
+  })
+  sha256!: string;
 }

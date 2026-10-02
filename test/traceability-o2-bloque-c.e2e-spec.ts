@@ -248,6 +248,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       startDate: `${daysAgo(start - 2)}T14:00:00Z`,
     });
     const tankId = tank.body.data.id as string;
+    await completeTank(tankId, daysAgo(restDays + 7), 12100, 'SINGANI_DIST');
     const distillation = await checked(
       'post',
       'cinti',
@@ -257,16 +258,18 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         fermentationTankId: tankId,
         equipmentIdentifier: 'Alambique AL-C',
         processStartDate: daysAgo(restDays + 5),
-        processEndDate: daysAgo(restDays),
-        initialAlcoholPercentage: 60,
         inputVolumeLiters: 12100,
-        outputVolumeLiters: 1500,
-        wasteVolumeLiters: 330,
-        additionalParams: {
-          headDiscardLiters: 120,
-          heartYieldLiters: 1500,
-          tailDiscardLiters: 210,
-        },
+      },
+    );
+    await checked(
+      'post',
+      'cinti',
+      `/v1/production-batches/${distillation.body.data.id}/close`,
+      200,
+      {
+        processEndDate: daysAgo(restDays),
+        cuts: { headsLiters: 120, heartLiters: 1500, tailsLiters: 210 },
+        heartAbvPercent: 60,
       },
     );
     return {
@@ -278,16 +281,42 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     };
   }
 
-  async function bottle(productionId: string, bottles: number) {
-    const res = await checked('post', 'cinti', '/v1/bottling', 201, {
-      productionBatchId: productionId,
-      productType: 'SINGANI',
-      finalAlcoholAbv: 40,
-      waterDilutionLiters: 750,
-      totalBottlesPackaged: bottles,
-      packagingFormatCl: 75,
-      bottlingDate: daysAgo(2),
-    });
+  /** `FILLING → FERMENTING → COMPLETED` con su destino (§4.2, §4.3). */
+  async function completeTank(
+    tankId: string,
+    endDate: string,
+    finalVolumeLiters: number,
+    destination: 'WINE_AGING' | 'SINGANI_DIST',
+  ) {
+    await checked(
+      'post',
+      'cinti',
+      `/v1/fermentation-tanks/${tankId}/start`,
+      200,
+    );
+    await checked(
+      'post',
+      'cinti',
+      `/v1/fermentation-tanks/${tankId}/complete`,
+      200,
+      { endDate, finalVolumeLiters, destination },
+    );
+  }
+
+  async function bottle(lotId: string, bottles: number) {
+    const res = await checked(
+      'post',
+      'cinti',
+      `/v1/lots/${lotId}/bottling`,
+      201,
+      {
+        finalAlcoholAbv: 40,
+        waterDilutionLiters: 750,
+        totalBottlesPackaged: bottles,
+        packagingFormatCl: 75,
+        bottlingDate: daysAgo(2),
+      },
+    );
     return {
       bottlingId: res.body.data.id as string,
       lotCode: res.body.data.internationalLotCode as string,
@@ -333,7 +362,6 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = 'https://pasaporte.e2e.test';
     process.env.API_PUBLIC_URL = 'https://api.e2e.test';
-    process.env.LOT_BACKFILL_ON_BOOT = 'false';
     const storageEnv: Record<string, string> = {
       STORAGE_DRIVER: 'local',
       STORAGE_LOCAL_PATH: storageDir,
@@ -437,7 +465,6 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
     delete process.env.API_PUBLIC_URL;
-    delete process.env.LOT_BACKFILL_ON_BOOT;
   });
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -457,11 +484,11 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           pendingKg: 0,
         },
         must: { filledLiters: 12100, litersPerKg: 0.658 },
-        // El tanque no registró su volumen final: la merma no se supone en cero
+        // El volumen final es el declarado al completar la fermentación
         fermentation: {
-          finalLiters: null,
-          lossLiters: null,
-          lossPercent: null,
+          finalLiters: 12100,
+          lossLiters: 0,
+          lossPercent: 0,
         },
         distillation: {
           inputLiters: 12100,
@@ -503,7 +530,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     });
 
     it('embotellado: balance con el del embotellado y proyección = códigos activos', async () => {
-      Object.assign(main, await bottle(main.productionId, 2950));
+      Object.assign(main, await bottle(main.lotId, 2950));
       const res = await checked(
         'get',
         'cinti',
@@ -632,8 +659,8 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         status: 'APPROVED',
       });
       expect(metricOf('HARVEST_BATCH', 'brixDegrees')).toBe(23.5);
+      expect(metricOf('TANK', 'finalVolumeLiters')).toBe(12100);
       // No registrado = null (nunca un valor de relleno, EA-05)
-      expect(metricOf('TANK', 'finalVolumeLiters')).toBeNull();
       expect(metricOf('TANK', 'lastTemperatureC')).toBeNull();
       expect(metricOf('HARVEST_BATCH', 'temperatureAtIntakeC')).toBeNull();
       expect(node('DISTILLATION')).toMatchObject({
@@ -870,18 +897,29 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
     });
 
     it('con el laboratorio conforme el lote queda listo para cerrar', async () => {
-      await checked('post', 'cinti', '/v1/lab-analyses', 201, {
-        bottlingBatchId: main.bottlingId,
-        certifiedLaboratoryName: 'Laboratorio bloque C ISO 17025',
-        accreditedLabCertificationCode: `LAB-C-${run}`,
-        testPerformedAt: daysAgo(2),
-        actualAlcoholAbv: 40.05,
-        totalAcidityTartaricGl: 4.8,
-        volatileAcidityAceticGl: 0.22,
-        copperContentMgL: 0.02,
-        methanolContentMgL: 48,
-        laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf',
-      });
+      const report = await upload(
+        'cinti',
+        PDF,
+        'informe.pdf',
+        'application/pdf',
+      );
+      await checked(
+        'post',
+        'cinti',
+        `/v1/lots/${main.lotId}/lab-analyses`,
+        201,
+        {
+          certifiedLaboratoryName: 'Laboratorio bloque C ISO 17025',
+          accreditedLabCertificationCode: `LAB-C-${run}`,
+          testPerformedAt: daysAgo(2),
+          actualAlcoholAbv: 40.05,
+          totalAcidityTartaricGl: 4.8,
+          volatileAcidityAceticGl: 0.22,
+          copperContentMgL: 0.02,
+          methanolContentMgL: 48,
+          laboratoryReportKey: report,
+        },
+      );
       const res = await checked(
         'get',
         'cinti',
@@ -907,13 +945,13 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         stage: 'BOTTLED',
         netKg: 18400,
         mustLiters: 12100,
-        baseWineLiters: null,
+        baseWineLiters: 12100,
         heartLiters: 1500,
         bottledLiters: 2212.5,
         bottles: 2950,
         formatCl: 75,
         lossPercentByStage: {
-          fermentation: null,
+          fermentation: 0,
           transfer: 0,
           distillation: 84.88,
           bottling: 1.67,
@@ -971,7 +1009,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       expect(lines).toHaveLength(rows.length + 1);
       const mainLine = lines.find((l) => l.startsWith(main.lotId));
       expect(mainLine).toContain(`,${main.lotCode},`);
-      expect(mainLine).toContain(',18400,12100,,1500,2212.5,2950,75,');
+      expect(mainLine).toContain(',18400,12100,12100,1500,2212.5,2950,75,');
 
       for (const query of [
         'stage=NOPE',
@@ -1121,10 +1159,20 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         `/v1/lots/${main.lotId}/attachments`,
         200,
       );
-      expect(all.body.data.total).toBe(2);
-      expect(
-        all.body.data.items.map((a: { id: string }) => a.id).sort(),
-      ).toEqual([labelId, photoId].sort());
+      // La etiqueta, la foto y el informe del análisis de laboratorio (por su `key`)
+      expect(all.body.data.total).toBe(3);
+      const items = all.body.data.items as {
+        id: string;
+        kind: string;
+        sha256: string | null;
+      }[];
+      expect(items.map((a) => a.id)).toEqual(
+        expect.arrayContaining([labelId, photoId]),
+      );
+      expect(items.find((a) => a.kind === 'LAB_REPORT')).toMatchObject({
+        visibility: 'PRIVATE',
+        sha256: expect.stringMatching(/^[0-9a-f]{64}$/),
+      });
       const signed = new URL(all.body.data.items[0].url);
       const file = await http()
         .get(`${signed.pathname}${signed.search}`)
@@ -1152,7 +1200,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           `/v1/lots/${main.lotId}/attachments${query}`,
           200,
         );
-        expect(read.body.data.total).toBe(2);
+        expect(read.body.data.total).toBe(3);
       }
       await checked('get', 'altos', `/v1/lots/${main.lotId}/attachments`, 404);
     });
@@ -1289,10 +1337,11 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           phytosanitary: 'APPROVED',
           maturity: { brixDegrees: 23.5, ph: 3.5, acidityGl: 5.8 },
         },
-        // El tanque no registró el fin de la fermentación ni lecturas: nada inventado
+        // El fin de la fermentación es el declarado al completarla; sin
+        // lecturas ni tratamientos registrados, nada inventado
         fermentation: {
           status: 'RECORDED',
-          endDate: null,
+          endDate: expect.stringContaining(daysAgo(192)),
           readingsCount: 0,
           treatments: [],
         },
@@ -1865,7 +1914,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
 
     it('lote descartado: el pasaporte sigue respondiendo con su aviso y sus códigos anulados (S-23)', async () => {
       const lot = await singaniLot('Singani descartado bloque C', 186);
-      const { lotCode } = await bottle(lot.productionId, 2900);
+      const { lotCode } = await bottle(lot.lotId, 2900);
       const unit = await prisma.bottleUnit.findFirstOrThrow({
         where: { lotId: lot.lotId, serial: 10 },
       });
@@ -1951,6 +2000,7 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
           startDate: `${daysAgo(418)}T10:00:00Z`,
         },
       );
+      await completeTank(tank.body.data.id, daysAgo(405), 2000, 'WINE_AGING');
       const aging = await checked('post', 'cinti', '/v1/wine-aging', 201, {
         fermentationTankId: tank.body.data.id,
         containerType: 'Barrica',
@@ -1976,14 +2026,19 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       });
       expect(before.body.data.distillation).toBeUndefined();
 
-      const bottled = await checked('post', 'cinti', '/v1/bottling', 201, {
-        wineAgingBatchId: aging.body.data.id,
-        productType: 'WINE',
-        finalAlcoholAbv: 13.5,
-        totalBottlesPackaged: 2450,
-        packagingFormatCl: 75,
-        bottlingDate: daysAgo(2),
-      });
+      expect(aging.body.data.lotId).toBe(lotId);
+      const bottled = await checked(
+        'post',
+        'cinti',
+        `/v1/lots/${lotId}/bottling`,
+        201,
+        {
+          finalAlcoholAbv: 13.5,
+          totalBottlesPackaged: 2450,
+          packagingFormatCl: 75,
+          bottlingDate: daysAgo(2),
+        },
+      );
       const lotCode = bottled.body.data.internationalLotCode as string;
 
       const graph = await checked(

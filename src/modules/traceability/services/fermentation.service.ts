@@ -37,7 +37,6 @@ import {
   assertLotDo,
   assertStage,
   decideProductType,
-  ensureHarvestLot,
 } from '@modules/lots/chain';
 import { laPazDate } from '@modules/lots/domain/dates';
 import { TANK_VOLUME_INCLUDE, toTankViews } from '@modules/lots/tank-view';
@@ -76,15 +75,7 @@ export class FermentationService {
     user: { id: string; role: string | null },
     dto: CreateFermentationTankDto,
   ) {
-    const inputs =
-      dto.inputs ??
-      (dto.harvestBatchId ? [{ harvestBatchId: dto.harvestBatchId }] : []);
-    if (inputs.length === 0) {
-      throw ValidationException.forField(
-        'inputs',
-        'Indica al menos un pesaje (`inputs` o `harvestBatchId`)',
-      );
-    }
+    const inputs = dto.inputs;
     if (new Set(inputs.map((i) => i.harvestBatchId)).size !== inputs.length) {
       throw ValidationException.forField(
         'inputs',
@@ -109,7 +100,6 @@ export class FermentationService {
     }
     if (
       dto.capacityLiters !== undefined &&
-      dto.volumeFilledLiters !== undefined &&
       dto.volumeFilledLiters > dto.capacityLiters
     ) {
       throw ruleError(
@@ -136,7 +126,7 @@ export class FermentationService {
       assertNotFuture('startDate', startDate, clock);
       const membership = await actorMembership(tx, user.id, wineryId);
 
-      // Pesajes de la bodega (los anteriores a la Ola 2 se rellenan al vuelo)
+      // Pesajes de la bodega, bloqueados: sus kilos disponibles no cambian
       for (const input of inputs) {
         const exists = await tx.harvestBatch.findFirst({
           where: { id: input.harvestBatchId, wineryId },
@@ -148,7 +138,6 @@ export class FermentationService {
           );
         }
         await tx.$queryRaw`SELECT id FROM harvest_batches WHERE id = ${input.harvestBatchId}::uuid FOR UPDATE`;
-        await ensureLegacyLot(tx, input.harvestBatchId);
       }
       const harvests = await tx.harvestBatch.findMany({
         where: { id: { in: inputs.map((i) => i.harvestBatchId) } },
@@ -186,7 +175,6 @@ export class FermentationService {
         lot = await lockLot(tx, inputLots[0], wineryId, { writable: true });
       } else if (inputLots.length === 0) {
         // Uva recibida sin lote y ninguno indicado: se crea el lote del tanque
-        // (como hacía el ERP con su lote derivado por pesaje)
         const first = harvests[0];
         const created = await createLotRecord(tx, {
           wineryId,
@@ -348,7 +336,7 @@ export class FermentationService {
         );
       }
 
-      // Bifurcación predeclarada (legado): coherente con el lote y D.O. si es singani
+      // Bifurcación predeclarada: coherente con el lote y D.O. si es singani
       const product = assertDestination(lot, dto.destinationType);
 
       for (const h of harvests) {
@@ -387,10 +375,7 @@ export class FermentationService {
               ? new Prisma.Decimal(dto.capacityLiters)
               : null,
           material: dto.material,
-          volumeFilledLiters:
-            dto.volumeFilledLiters !== undefined
-              ? new Prisma.Decimal(dto.volumeFilledLiters)
-              : null,
+          volumeFilledLiters: new Prisma.Decimal(dto.volumeFilledLiters),
           destinationType: (dto.destinationType ??
             null) as DestinationTypeEnum | null,
           status:
@@ -417,11 +402,11 @@ export class FermentationService {
         summary: `Tanque ${dto.tankCode} lleno con ${formatQuantity(
           kgByInput.reduce((s, i) => s + i.kg, 0),
           3,
-        )} kg${dto.volumeFilledLiters ? ` (${formatQuantity(dto.volumeFilledLiters, 2)} L de mosto)` : ''}`,
+        )} kg (${formatQuantity(dto.volumeFilledLiters, 2)} L de mosto)`,
         data: {
           tankCode: dto.tankCode,
           inputs: kgByInput,
-          volumeFilledLiters: dto.volumeFilledLiters ?? null,
+          volumeFilledLiters: dto.volumeFilledLiters,
           unit: 'L',
         },
         resource: { type: 'fermentation_tank', id: created.id },
@@ -637,11 +622,7 @@ export class FermentationService {
         `Cuba de fermentación con ID ${tankId} no encontrada en esta bodega`,
       );
     }
-    const lotId =
-      tank.lotId ?? (await ensureLegacyLot(tx, tank.harvestBatchId));
-    const lot = lotId
-      ? await lockLot(tx, lotId, wineryId, { writable: true })
-      : null;
+    const lot = await lockLot(tx, tank.lotId, wineryId, { writable: true });
     if (!ACTIVE_TANK_STATUSES.includes(tank.status)) {
       throw stateError(
         ErrorCode.TRC_TANK_NOT_ACTIVE,
@@ -709,25 +690,6 @@ export class FermentationService {
       data: { updatedAt: new Date() },
     });
   }
-}
-
-/** Lote de un pesaje anterior a la Ola 2 sin rellenar todavía (§2.6). */
-async function ensureLegacyLot(
-  tx: Prisma.TransactionClient,
-  harvestBatchId: string,
-): Promise<string | null> {
-  const pending = await tx.lotBackfillPending.findUnique({
-    where: { harvestBatchId },
-    select: { harvestBatchId: true },
-  });
-  const harvest = await tx.harvestBatch.findUnique({
-    where: { id: harvestBatchId },
-    select: { lotId: true, _count: { select: { fermentationTanks: true } } },
-  });
-  if (!harvest || harvest.lotId) return harvest?.lotId ?? null;
-  // Uva sin lote de la Ola 2 (sin tanques): se queda sin lote hasta el tanque
-  if (!pending && harvest._count.fermentationTanks === 0) return null;
-  return ensureHarvestLot(tx, harvestBatchId);
 }
 
 function mixedLots(lotIds: string[]) {

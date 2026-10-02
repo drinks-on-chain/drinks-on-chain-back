@@ -9,13 +9,16 @@ import {
   IsPositive,
   IsOptional,
   IsString,
-  IsEnum,
+  Allow,
   ValidateNested,
   MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PhytoStatusEnum } from '@prisma/client';
+import {
+  ApiHideProperty,
+  ApiProperty,
+  ApiPropertyOptional,
+} from '@nestjs/swagger';
 import { CreateLotDto } from '@modules/lots/dto/lot.dto';
 
 /** Análisis de madurez (§3.3): Brix 0–40, pH 2–5, acidez 0–30 g/L. */
@@ -131,49 +134,15 @@ export class CreateHarvestBatchDto {
   @Type(() => MaturityInputDto)
   maturity?: MaturityInputDto;
 
-  @ApiPropertyOptional({
-    example: 22.4,
-    deprecated: true,
-    description:
-      'Compatibilidad hasta H2: con `initialPh` e `initialAcidityGl` se convierte en `maturity`',
-  })
+  /**
+   * No es un campo del alta (retirado en H2; fuera del OpenAPI): se declara
+   * solo para responder 422 `TRC_PHYTO_IN_CREATE` a quien intente dictaminar
+   * al pesar (EA-04), en lugar de un error genérico de campo desconocido.
+   */
+  @ApiHideProperty()
   @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(40)
-  brixDegrees?: number;
-
-  @ApiPropertyOptional({
-    example: 3.45,
-    deprecated: true,
-    description: 'Compatibilidad hasta H2',
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(2)
-  @Max(5)
-  initialPh?: number;
-
-  @ApiPropertyOptional({
-    example: 6.8,
-    deprecated: true,
-    description: 'Compatibilidad hasta H2',
-  })
-  @IsOptional()
-  @IsNumber()
-  @Min(0)
-  @Max(30)
-  initialAcidityGl?: number;
-
-  @ApiPropertyOptional({
-    enum: PhytoStatusEnum,
-    deprecated: true,
-    description:
-      'Solo se admite `PENDING_INSPECTION`: el dictamen va aparte (`POST …/phyto-decisions`). Otro valor → 422 `TRC_PHYTO_IN_CREATE` (EA-04). Sale en H2',
-  })
-  @IsOptional()
-  @IsEnum(PhytoStatusEnum)
-  phytosanitaryStatus?: PhytoStatusEnum;
+  @Allow()
+  phytosanitaryStatus?: unknown;
 
   @ApiPropertyOptional({
     example:
