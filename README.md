@@ -235,7 +235,8 @@ Se ejecutan en la CI (`.github/workflows/ci.yml`) en cada push y PR a `dev` y `m
 pnpm lint            # ESLint 9 (flat config) + Prettier, sin --fix (pnpm lint:fix para corregir)
 pnpm typecheck       # tsc --noEmit en modo estricto
 pnpm test            # unitarias (incluye la prueba del contrato OpenAPI)
-pnpm test:e2e        # e2e contra Postgres, Redis y Mailpit reales (docker compose up -d y el .env; S3_E2E=true añade MinIO)
+pnpm test:e2e        # e2e contra Postgres, Redis y Mailpit reales (docker compose up -d y el .env; S3_E2E=true añade MinIO); en serie
+pnpm test:e2e:parallel  # lo mismo con varias suites a la vez: más rápido, pide una máquina holgada
                      # incluye el contrato: las respuestas del ERP validan contra openapi.json (tipos incluidos)
 pnpm build
 pnpm openapi:generate   # si cambió la API: regenera openapi.json y se versiona en el mismo commit

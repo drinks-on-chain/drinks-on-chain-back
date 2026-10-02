@@ -23,7 +23,8 @@ const PDF = Buffer.from('%PDF-1.4 informe fitosanitario de prueba');
  */
 describe.each(
   [
-    ['local', {}],
+    // Explícito: el `.env` de desarrollo trae `STORAGE_DRIVER=s3`
+    ['local', { STORAGE_DRIVER: 'local' }],
     ...(process.env.S3_E2E === 'true'
       ? [['s3', { STORAGE_DRIVER: 's3' }] as const]
       : []),
