@@ -41,10 +41,10 @@ flowchart LR
 ```
 
 ### 📈 Métricas de Calidad Actuales
-- **Pruebas Unitarias:** `301/301` tests pasando (42 suites).
-- **Pruebas E2E:** `109/109` tests pasando (8 suites completas).
+- **Pruebas Unitarias:** `686/686` tests pasando (73 suites).
+- **Pruebas E2E:** `326/326` tests pasando (24 suites, contra Postgres, Redis y Mailpit reales).
 - **Compilación TypeScript:** modo estricto (`strict: true`) sin errores; ESLint 9 sin errores (CI en cada push y PR).
-- **Base de Datos:** 18 modelos relacionales y 21 enums migrados y sincronizados en PostgreSQL (incluidos el outbox, las organizaciones, las membresías y las sesiones).
+- **Base de Datos:** 47 modelos relacionales y 36 enums migrados y sincronizados en PostgreSQL (incluidos el outbox, las organizaciones, las membresías, las sesiones y el lote con su cadena).
 
 ---
 
@@ -120,8 +120,8 @@ drinks-on-chain-backend/
    - Sin rol global desde H1: `users.user_role` y los campos de compatibilidad (`user.userRole`, `wineryId`, `memberRole`, `tokens.refreshToken`) se retiraron al cerrar la Ola 1. `winery_members` sigue como autoría de la trazabilidad y matrícula (mismo id que la membresía).
    > 🔒 El endpoint público `POST /v1/auth/signup` solo crea **consumidores**; el superadministrador sale de la semilla (`SUPERADMIN_*`, membresía `SUPERADMIN` de la organización de plataforma) y el personal de bodega entra por invitación. Login con bloqueo progresivo por correo e IP (429 `AUTH_TOO_MANY_ATTEMPTS`).
    - **Alta de bodegas y equipo** (Ola 1 · 1.3–1.6, detalle en [`docs/arquitectura/organizaciones.md`](docs/arquitectura/organizaciones.md)): solicitud pública con captcha y verificación del correo (`/v1/public/winery-applications`) o alta directa (`/v1/platform/wineries`); la bodega nace `INVITED` con la invitación del dueño y pasa a `ACTIVE` —con su **prefijo de lote único**— cuando él acepta. Suspender, reactivar, revocar y transferir la titularidad desde el back office. **SE-05 activo**: el ERP responde 403 `ORG_NOT_ACTIVE` a una bodega no `ACTIVE` (el perfil y la bitácora propia se leen suspendida). Equipo del dueño y del back office con bloqueos que cierran las sesiones al instante.
-5. **Trazabilidad confiable con el lote del servidor** (Ola 2 · apertura, detalle en [`docs/arquitectura/trazabilidad.md`](docs/arquitectura/trazabilidad.md)): el **lote** (`/v1/lots`) agrupa la cadena y guarda la **instantánea de reglas** con la que se valida siempre; los datos anteriores se migran con un lote por pesaje (UUID v5) y lo que no cumple queda como incidencia. Reglas en el servidor con el reloj de la base, sin elusión posible: dictamen fuera del alta y exigido para fermentar (EA-04), tipo del embotellado derivado del origen y candados de la instantánea (EA-01), un embotellado por lote con balance de volumen y alcohol y un código por botella (EA-02), D.O. calculada (EA-03), secuencias sin carreras (EA-07), conformidad de laboratorio con unidades (EA-08), grafo solo para la bodega dueña y la plataforma (SE-07) y **plataforma de solo lectura** (403 `TRC_PLATFORM_READ_ONLY`). Errores `TRC_…` con `details` ampliado (`code`, `rule`, `expected`, `actual`, `meta`); ya no queda ninguna ruta del contrato con 501 `NOT_IMPLEMENTED`. Las transiciones del tanque, el cierre de la destilación, los descartes, el laboratorio por lote y las **correcciones compensatorias** (pasos 2.3, 2.4 y 2.7), los **códigos de botella** (listado, CSV, ZIP para la imprenta, anular y sustituir; paso 2.6) y el **expediente** con hash canónico (JCS + SHA-256) y raíz Merkle de los códigos (paso 2.8) tienen su lógica. Las **vistas del lote** (línea de tiempo, balance, grafo, panel, reporte de producción y archivos) y el **pasaporte público** de lotes y botellas (`/v1/public/passports/{code}`: solo datos registrados, roles y no nombres, 404 uniforme, freno a la enumeración y caché; la botella trae la prueba Merkle que reproduce la raíz del expediente cerrado) también (pasos 2.9 y 2.10).
-6. **Grafo DAG de Trazabilidad (legado hasta H2):** Reconstrucción de linaje acíclico (`Stage::Plot` $\rightarrow$ `Stage::Harvest` $\rightarrow$ `Stage::Vinification` $\rightarrow$ `Stage::Distillation` / `Aging` $\rightarrow$ `Stage::Bottling`) con métricas escaladas ($\times 100$) y hashes `BytesN<32>` listos para el smart contract Soroban.
+5. **Trazabilidad confiable con el lote del servidor** (Ola 2, `v0.2.0`; detalle en [`docs/arquitectura/trazabilidad.md`](docs/arquitectura/trazabilidad.md) y cambios incompatibles en [`CHANGELOG.md`](CHANGELOG.md)): el **lote** (`/v1/lots`) agrupa la cadena y guarda la **instantánea de reglas** con la que se valida siempre; los datos anteriores se migran con un lote por pesaje (UUID v5) y lo que no cumple queda como incidencia. Reglas en el servidor con el reloj de la base, sin elusión posible: dictamen fuera del alta y exigido para fermentar (EA-04), tipo del embotellado derivado del origen y candados de la instantánea (EA-01), un embotellado por lote con balance de volumen y alcohol y un código por botella (EA-02), D.O. calculada (EA-03), secuencias sin carreras (EA-07), conformidad de laboratorio con unidades (EA-08), grafo solo para la bodega dueña y la plataforma (SE-07) y **plataforma de solo lectura** (403 `TRC_PLATFORM_READ_ONLY`). Errores `TRC_…` con `details` ampliado (`code`, `rule`, `expected`, `actual`, `meta`); ya no queda ninguna ruta del contrato con 501 `NOT_IMPLEMENTED`. Las transiciones del tanque, el cierre de la destilación, los descartes, el laboratorio por lote y las **correcciones compensatorias** (pasos 2.3, 2.4 y 2.7), los **códigos de botella** (listado, CSV, ZIP para la imprenta, anular y sustituir; paso 2.6) y el **expediente** con hash canónico (JCS + SHA-256) y raíz Merkle de los códigos (paso 2.8) tienen su lógica. Las **vistas del lote** (línea de tiempo, balance, grafo, panel, reporte de producción y archivos) y el **pasaporte público** de lotes y botellas (`/v1/public/passports/{code}`: solo datos registrados, roles y no nombres, 404 uniforme, freno a la enumeración y caché; la botella trae la prueba Merkle que reproduce la raíz del expediente cerrado) también (pasos 2.9 y 2.10). **Cierre H2**: las rutas y los campos legados se retiraron, toda la cadena lleva su lote (`lot_id NOT NULL`), las claves foráneas son `RESTRICT` (nada se borra por arrastre) y hay un solo código activo por serie de botella, también en la base.
+6. **Grafo del lote** (`GET /v1/lots/{id}/graph`): linaje acíclico parcela → vendimia → vinificación → destilación o crianza → embotellado, con los datos registrados (`null` = no registrado), solo para la bodega dueña y la plataforma (SE-07). El grafo DAG anterior (`/v1/traceability/dag/…` y `/v1/traceability/public/…`) se retiró en H2; el público es el pasaporte (`/v1/public/passports/{code}`).
 7. **Formato Estándar de Respuesta API:**
    ```json
    // Respuesta Exitosa
@@ -220,7 +220,7 @@ Variables nuevas de la Ola 2 (trazabilidad confiable; ver [`docs/arquitectura/tr
 | Variable | Proceso | Uso |
 |---|---|---|
 | `PASSPORT_BASE_URL` | api, semilla | Base del QR del lote y de cada botella: `{PASSPORT_BASE_URL}/b/{código}` (OP-06). Por defecto `APP_URL_MARKETPLACE`; si tampoco, `http://localhost:3005`. En desarrollo, la URL del Marketplace de desarrollo |
-| `LOT_BACKFILL_ON_BOOT` | api | Relleno de lotes de la migración de la Ola 2 al arrancar (por defecto activo; `false` lo desactiva) |
+| `MIGRATE_DATABASE_URL` | imagen (`docker/entrypoint.sh`) | Opcional. Conexión del dueño de la base para `prisma migrate deploy` cuando la API se conecta con un rol sin `DELETE` sobre la trazabilidad ([`deploy/README.md`](deploy/README.md#cierre-h2-v020-antes-y-después-del-despliegue)). Sin definir: se migra con `DATABASE_URL` |
 | `API_PUBLIC_URL` | api | Origen público de la API para los enlaces del pasaporte (expediente canónico y adjuntos públicos). Vacío: rutas relativas (`/v1/public/lots/…`) que la app resuelve contra su proxy |
 | `RATE_LIMIT_PASSPORT_PER_MINUTE`, `RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE` | api | Peticiones por minuto e IP real en el pasaporte público (60) y en `/v1/public/wineries` (120) |
 | `PASSPORT_MISS_LIMIT`, `PASSPORT_MISS_WINDOW_SECONDS` | api | Freno a la enumeración de códigos: códigos inexistentes por IP (20) en la ventana (600 s) antes del 429 `PUB_TOO_MANY_LOOKUPS` |
@@ -326,7 +326,7 @@ Captación de interesados desde la landing (consumidores) y el sitio de bodegas 
 
 ### 🌱 Datos de demostración (0.10, OPS-09)
 
-La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se puede ejecutar las veces que haga falta sin duplicar nada. Escribe cada fila con `upsert` por su id fijo (o por su clave natural: correo, persona + organización) y las lecturas de fermentación con `createMany({ skipDuplicates })`; volver a ejecutarla devuelve los datos de demostración a su estado inicial y no toca lo creado aparte. Va compilada en la imagen (`dist/seed.js` y los fixtures en `dist/seed/fixtures/`), así que no necesita `ts-node`.
+La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se puede ejecutar las veces que haga falta sin duplicar nada. Los datos maestros (personas, bodegas, membresías, parcelas) se escriben con `upsert` por su id fijo (o por su clave natural: correo, persona + organización): volver a ejecutarla los devuelve a su estado inicial. La **trazabilidad es de solo inserción**: cada lote de demostración se crea entero la primera vez y, si ya existe, no se toca (ni él ni sus registros). Nunca toca lo creado aparte. Va compilada en la imagen (`dist/seed.js` y los fixtures en `dist/seed/fixtures/`), así que no necesita `ts-node`.
 
 | Dónde | Comando |
 |---|---|
@@ -341,7 +341,7 @@ La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se p
 | `SEED_DEMO_PASSWORD` | Contraseña de **todas** las personas de demostración; obligatoria con `SEED_DEMO=true` |
 | `SEED_DEMO_TOTP_SECRET` | Secreto TOTP (base32) del personal interno inscrito en los mocks (administración, operaciones, soporte); se cifra como en la API (necesita `JWT_SECRET` y, si la API la usa, `MFA_ENCRYPTION_KEY`). Sin él quedan sin inscribir y lo inscriben en su primer inicio de sesión |
 
-Desde la Ola 2 la semilla también crea los **lotes** de la trazabilidad sembrada con la misma función que la migración (un lote por pesaje, UUID v5 de `lot:{harvestBatchId}`, códigos de botella, instantánea `MIGRATION`) y aplica **correcciones de realismo** documentadas en `src/seed/corrections.ts` a cuatro registros de los fixtures que incumplían las reglas nuevas (sin ellas quedarían como incidencias de cumplimiento).
+Desde el cierre H2 (`v0.2.0`) la semilla siembra los **21 lotes de demostración de `@drinks-on-chain/mocks` 0.5.0** (`src/seed/lots.seed.ts`), con sus registros, autores, fechas, línea de tiempo e instantánea de reglas, coherentes de principio a fin (pesaje → dictamen → fermentación → destilación o crianza → reposo ≥ 180 días → embotellado → laboratorio) y **sin incidencias de cumplimiento**. Las tres diferencias con los fixtures están documentadas en `src/seed/corrections.ts`. Una base sembrada con una versión anterior conserva sus lotes antiguos tal cual y solo recibe los que le faltan; para recrearlos todos, [`deploy/README.md`](deploy/README.md#3-lotes-de-demostración-ya-sembrados-opcional).
 
 Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `change-me` de los `.env.example`. En el servidor, las variables pasan al contenedor `api` desde `~/doc-dev/.env` (`deploy/dev/compose.yml`; la API no las lee): tras editarlas, `docker compose … up -d api` (o el siguiente despliegue) antes del `exec`.
 
@@ -350,7 +350,8 @@ Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `ch
 - Personal interno: `administracion@drinksonchain.test` (`ADMIN`), `operaciones@drinksonchain.test` y `analista@drinksonchain.test` (`OPERATIONS`), `soporte@drinksonchain.test` (`SUPPORT`).
 - Seis bodegas en todos los estados: Altos de Calamuchita y Cinti Viejo `ACTIVE`, Viñedos del Guadalquivir y Sol de Padcaya `INVITED`, Casa Uriondo `SUSPENDED`, Valle Escondido `REVOKED`, cada una con su organización (mismo id).
 - Personas de bodega con sus membresías: dueños, enólogas, agrónomos, operarios y una contadora bloqueada por la plataforma; Sofía Aramayo (`sofia@aramayo.test`) es enóloga en Altos y dueña de Casa Uriondo; Inés Salazar, agrónoma en Cinti Viejo y operaria bloqueada por el dueño en Altos.
-- Trazabilidad: 11 parcelas → 12 vendimias → 14 tanques con 228 lecturas y 16 tratamientos → 4 crianzas y 5 destilaciones → 4 embotellados (`ALT-2026-WINE-001`, `CVJ-2026-SINGANI-001`…) → 3 análisis de laboratorio.
+- Trazabilidad: 12 parcelas y **21 lotes, al menos uno en cada etapa** (`ORIGIN` 1, `HARVEST` 3, `FERMENTING` 2, `AGING` 2, `DISTILLING` 1, `RESTING` 1, `BOTTLED` 7, `CERTIFIED` 1, `REJECTED` 1, `DISCARDED` 2) más un pesaje sin lote: 21 vendimias → 18 tanques con 238 lecturas y 17 tratamientos → 6 crianzas y 9 destilaciones → 9 embotellados con 25.791 códigos de botella (24.670 activos) → 7 análisis de laboratorio.
+- **Singani Gran Reserva 2026** (`CVJ-2026-SINGANI-004`), el caso de la Ola 2, con el **expediente cerrado** (`CERTIFIED`): 18.400 kg → tanque de 12.100 L → corazón de 1.500 L al 60 % → 180 días de reposo → 2.950 botellas → laboratorio conforme → cierre, con la huella y la raíz Merkle calculadas al sembrar.
 - Fechas fijas de los mocks (día de referencia 2026-09-25): no se desplazan al día en que se ejecuta.
 
 **Diferencias con los mocks** (lo que el modelo actual aún no tiene o resuelve de otra forma):
@@ -369,7 +370,8 @@ Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `ch
 | Tratamientos sin autor | `authorizedByMemberId` obligatorio: la enóloga activa de la bodega (si no, el dueño) |
 | Lecturas con `recordedByMemberId` | `recordedByUserId`: la persona de ese miembro |
 | Billeteras sin bóveda | `dynamicVaultId` simulado `demo-vault-<id>` (billeteras y bodegas con cuenta Stellar) |
-| Archivos `/mocks/uploads/…` | Las mismas rutas, sin archivo en el almacenamiento |
+| Archivos `/mocks/uploads/…` | Las mismas rutas, sin archivo en el almacenamiento: los informes y las etiquetas de los lotes sembrados no se abren, ni hay adjuntos sembrados (los eventos `FILE_ATTACHED` de los mocks no se siembran) |
+| Expediente cerrado con huella fija | La huella y la raíz Merkle se calculan al sembrar (dependen de las sales de los códigos de botella, que son aleatorias) |
 
 ---
 
@@ -394,21 +396,25 @@ sequenceDiagram
 
     Note over Admin,Consumidor: 2. Trazabilidad de Campo y Vendimia
     Agro->>API: POST /v1/terroirs (Parcela a 1,850 msnm, Moscatel)
-    Agro->>API: POST /v1/harvest-batches (15,000 kg brutos, 22.4 °Bx)
-    Enol->>API: PATCH /v1/harvest-batches/:id/phyto-status (APPROVED)
+    Enol->>API: POST /v1/lots (Singani 2026: instantánea de reglas)
+    Agro->>API: POST /v1/harvest-batches (lotId, 15,000 kg brutos, maturity 22.4 °Bx)
+    Enol->>API: POST /v1/harvest-batches/:id/phyto-decisions (APPROVED, otra persona que quien pesó)
 
     Note over Admin,Consumidor: 3. Vinificación y Transformación
-    Enol->>API: POST /v1/fermentation-tanks (Cuba TK-03)
+    Enol->>API: POST /v1/fermentation-tanks (Cuba TK-03, inputs)
     Enol->>API: POST /v1/fermentation-tanks/:id/logs (Control térmico a 15.2°C)
-    Enol->>API: POST /v1/production-batches/distillation (Alambique: 1,750 L corazón a 70.2% ABV)
+    Enol->>API: POST /v1/fermentation-tanks/:id/complete (destino: destilación)
+    Enol->>API: POST /v1/production-batches/distillation (Alambique, litros de entrada)
+    Enol->>API: POST /v1/production-batches/:id/close (cortes: 1,750 L de corazón a 70.2% ABV)
 
     Note over Admin,Consumidor: 4. Embotellado y Certificación Analítica
-    Enol->>API: POST /v1/bottling (Valida 180 días reposo -> 4,080 botellas + Genera QR)
-    Enol->>API: POST /v1/lab-analyses (Certificado ISO 17025: Metanol < 200 mg/100ml)
+    Enol->>API: POST /v1/lots/:id/bottling (Valida 180 días de reposo -> 4,080 botellas, un código por botella)
+    Enol->>API: POST /v1/lots/:id/lab-analyses (Informe subido: Metanol < 200 mg/100 ml a.a.)
+    Enol->>API: POST /v1/lots/:id/dossier/close (Expediente con hash y raíz Merkle)
 
     Note over Admin,Consumidor: 5. Pasaporte Digital Público (Consumidor)
-    Consumidor->>API: GET /v1/traceability/public/:lotCode (Escaneo de QR físico)
-    API-->>Consumidor: Árbol DAG completo con origen, altitud, análisis y hashes
+    Consumidor->>API: GET /v1/public/passports/:code (Escaneo del QR del lote o de la botella)
+    API-->>Consumidor: Solo datos registrados: origen, etapas, conformidad, expediente y prueba Merkle
 ```
 
 1. **Gestión de Identidad & Multi-Tenancy:** Registro de usuarios, asignación de billeteras custodiales en Stellar y aislamiento de bodegas.
@@ -443,6 +449,7 @@ sequenceDiagram
 
 ## 📄 7. Documentación Complementaria
 
+- 📦 **[Registro de cambios](CHANGELOG.md):** versiones y cambios incompatibles de la API (`v0.2.0`: cierre H2).
 - 🍸 **[Guía de Pruebas Manuales — Flujo Singani D.O.](docs/demo/guia_pruebas_manuales_trazabilidad.md):** Flujo completo con comandos `curl`, altitud $\ge 1,600$ msnm, destilación y 180 días de reposo inerte.
 - 🍷 **[Guía de Pruebas Manuales — Flujo Vino de Altura](docs/demo/guia_pruebas_manuales_vino.md):** Flujo vitivinícola con maceración, crianza en barricas de roble (190 días) y embotellado.
 - 🧾 **[Bitácora](docs/arquitectura/bitacora.md):** entradas en la misma transacción, solo inserción, cadena de hashes y cómo registrar una acción; consulta, exportación CSV y verificación del back office, bitácora del dueño, motivo obligatorio (`@RequiresReason()`) y tablero (`/v1/platform/dashboard`).

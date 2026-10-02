@@ -1,5 +1,7 @@
 # Guía de Pruebas Manuales — Flujo Singani Boliviano D.O. (Destilación y Reposo Inerte)
 
+> ⚠️ **Cierre H2 (`v0.2.0`)**: ya no existen `PATCH /v1/harvest-batches/:id/phyto-status`, `POST /v1/bottling`, `POST /v1/lab-analyses`, `GET /v1/traceability/dag/:bottlingBatchId` ni `GET /v1/traceability/public/:lotCode`, ni los campos de entrada legados. El recorrido vigente (lote → pesaje → dictamen → tanque → destilación o crianza → embotellado del lote → laboratorio → expediente → pasaporte) está en [`docs/arquitectura/trazabilidad.md`](../arquitectura/trazabilidad.md#cierre-h2-contracción-v020) y, paso a paso, en `test/h2-recorrido.e2e-spec.ts`; los cambios, en [`CHANGELOG.md`](../../CHANGELOG.md).
+
 > ⚠️ **Guía de 0.1, desactualizada en el alta y el equipo.** Desde el cierre de la Ola 1 (H1) la bodega no se autoinscribe (`signup` de `WINERY_ADMIN`, `POST /v1/wineries`, `approve` y `my/members/create` ya no existen): la bodega entra por `POST /v1/public/winery-applications` o `POST /v1/platform/wineries`, el dueño acepta su invitación y el equipo entra por `POST /v1/organizations/current/invitations`. Para probar a mano, usa la semilla de demostración (`SEED_DEMO`, ver el README), que ya deja bodegas activas con su equipo. Los pasos de trazabilidad siguen valiendo.
 
 > **Drinks on Chain — Trazabilidad B2B & Pasaporte Digital Web3**  

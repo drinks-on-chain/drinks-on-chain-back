@@ -1,6 +1,6 @@
 {
   "name": "drinks-on-chain-backend",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Backend API para Trazabilidad B2B y Tokenización NFT de Bebidas en Stellar Soroban",
   "author": "Drinks on Chain Team",
   "private": true,

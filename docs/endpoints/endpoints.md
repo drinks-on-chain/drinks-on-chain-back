@@ -1,5 +1,7 @@
 # Catálogo de Endpoints de la API — Drinks on Chain
 
+> ⚠️ **Cierre H2 (`v0.2.0`)**: ya no existen `PATCH /v1/harvest-batches/:id/phyto-status`, `POST /v1/bottling`, `POST /v1/lab-analyses`, `GET /v1/traceability/dag/:bottlingBatchId` ni `GET /v1/traceability/public/:lotCode`, ni los campos de entrada legados. El recorrido vigente (lote → pesaje → dictamen → tanque → destilación o crianza → embotellado del lote → laboratorio → expediente → pasaporte) está en [`docs/arquitectura/trazabilidad.md`](../arquitectura/trazabilidad.md#cierre-h2-contracción-v020) y, paso a paso, en `test/h2-recorrido.e2e-spec.ts`; los cambios, en [`CHANGELOG.md`](../../CHANGELOG.md).
+
 > ⚠️ **Documento de 0.1, desactualizado.** Desde el cierre de la Ola 1 (H1) ya no existen `POST /v1/wineries`, `GET /v1/wineries/pending`, `POST /v1/wineries/:id/approve|reject` ni `/v1/wineries/my/members*`; `signup` solo registra consumidores; la sesión no lleva `userRole`/`wineryId`/`memberRole` ni `tokens.refreshToken` (el refresco va solo en la cookie `doc_rt`) y los roles van por membresía. La referencia vigente es `openapi.json` (y `/docs` del servidor); el modelo, en [`docs/arquitectura/`](../arquitectura/).
 
 > Guía de referencia exhaustiva y actualizada de endpoints de la API para desarrolladores Frontend y clientes de integración.
