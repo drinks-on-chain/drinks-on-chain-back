@@ -28,7 +28,12 @@ services:
       PORT: 4000
       RELEASE_SHA: ${RELEASE_SHA:-local}
       RUN_MIGRATIONS: ${RUN_MIGRATIONS:-true}
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      # La aplicación se conecta con APP_DB_USER/APP_DB_PASSWORD si están
+      # definidos (rol sin DELETE sobre la trazabilidad, ver
+      # deploy/dev/sql/rol-app-sin-delete.sql); si no, con el dueño, como hasta
+      # ahora. Las migraciones siempre las aplica el dueño.
+      DATABASE_URL: postgresql://${APP_DB_USER:-${POSTGRES_USER:-postgres}}:${APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      MIGRATE_DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET:?Define JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Define JWT_REFRESH_SECRET}
@@ -174,7 +179,7 @@ services:
       NODE_ENV: ${API_NODE_ENV:-production}
       RELEASE_SHA: ${RELEASE_SHA:-local}
       RUN_MIGRATIONS: 'false'
-      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
+      DATABASE_URL: postgresql://${APP_DB_USER:-${POSTGRES_USER:-postgres}}:${APP_DB_PASSWORD:-${POSTGRES_PASSWORD:?Define POSTGRES_PASSWORD}}@postgres:5432/${POSTGRES_DB:-drinks_on_chain_db}?schema=public
       REDIS_URL: redis://:${REDIS_PASSWORD:?Define REDIS_PASSWORD}@redis:6379
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-5}
       OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
