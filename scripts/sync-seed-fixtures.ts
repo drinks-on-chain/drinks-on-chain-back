@@ -26,6 +26,12 @@ const ERP_FILES = [
   'production-batches.json',
   'bottling.json',
   'lab-analyses.json',
+  // Ola 2 (mocks 0.5.x): el lote del servidor y sus registros
+  'lots.json',
+  'maturity-analyses.json',
+  'phyto-decisions.json',
+  'lot-events.json',
+  'corrections.json',
 ] as const;
 const BACKOFFICE_FILES = [
   'member-blocks.json',

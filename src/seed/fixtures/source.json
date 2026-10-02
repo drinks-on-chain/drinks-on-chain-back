@@ -1,7 +1,7 @@
 {
   "package": "@drinks-on-chain/mocks",
-  "version": "0.3.0",
-  "git": "v0.3.0-rc.2-1-g5a197dc",
+  "version": "0.5.0",
+  "git": "v0.5.0-rc.2-1-g89662ea",
   "referenceDay": "2026-09-25",
   "files": [
     "fixtures/erp/wineries.json",
@@ -16,6 +16,11 @@
     "fixtures/erp/production-batches.json",
     "fixtures/erp/bottling.json",
     "fixtures/erp/lab-analyses.json",
+    "fixtures/erp/lots.json",
+    "fixtures/erp/maturity-analyses.json",
+    "fixtures/erp/phyto-decisions.json",
+    "fixtures/erp/lot-events.json",
+    "fixtures/erp/corrections.json",
     "fixtures/backoffice/member-blocks.json",
     "fixtures/backoffice/invitations.json",
     "fixtures/backoffice/staff-mfa.json",
