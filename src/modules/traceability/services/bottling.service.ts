@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AuditService } from '@shared/audit/audit.service';
@@ -10,6 +10,10 @@ import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
 import { Prisma } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
+import {
+  ObjectStorage,
+  STORAGE_SERVICE,
+} from '@shared/storage/storage.interface';
 import { lockLot, LockedLot } from '@modules/lots/lot-records';
 import { actorMembership, dbClock } from '@modules/lots/trace-db';
 import { ensureHarvestLot } from '@modules/lots/chain';
@@ -35,18 +39,32 @@ import {
 /** Transacción del embotellado: genera hasta 100 000 códigos de botella. */
 const BOTTLING_TX_OPTIONS = { maxWait: 10_000, timeout: 120_000 } as const;
 
+const HEART_SELECT = {
+  heartLiters: true,
+  outputVolumeLiters: true,
+  heartAbvPercent: true,
+  initialAlcoholPercentage: true,
+} as const;
+
 const BOTTLING_VIEW_INCLUDE = {
-  lot: { select: { rules: true, productType: true } },
-  labAnalyses: { orderBy: { createdAt: 'desc' } },
-  wineAgingBatch: { select: { volumeLiters: true } },
-  productionBatch: {
+  lot: {
     select: {
-      heartLiters: true,
-      outputVolumeLiters: true,
-      heartAbvPercent: true,
-      initialAlcoholPercentage: true,
+      rules: true,
+      productType: true,
+      // Todas las fuentes que entraron al embotellado del lote (§6.1)
+      wineAgingBatches: {
+        where: { agingStatus: 'BOTTLED' },
+        select: { volumeLiters: true },
+      },
+      productionBatches: {
+        where: { restStatus: 'BOTTLED' },
+        select: HEART_SELECT,
+      },
     },
   },
+  labAnalyses: { orderBy: { createdAt: 'desc' } },
+  wineAgingBatch: { select: { volumeLiters: true } },
+  productionBatch: { select: HEART_SELECT },
 } satisfies Prisma.BottlingBatchInclude;
 
 @Injectable()
@@ -57,6 +75,7 @@ export class BottlingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
   ) {}
 
   /**
@@ -284,11 +303,18 @@ export class BottlingService {
       );
     }
     const codes = await this.codeCounts([batch.id]);
-    return (
-      await markRows(this.prisma, 'BOTTLING', [
-        toBottlingView(batch, codes.get(batch.id)),
-      ])
-    )[0];
+    const view = toBottlingView(batch, codes.get(batch.id));
+    if (view.labelDesign) {
+      // URL firmada de corta vida de la etiqueta (§6.3); la lista solo trae la `key`
+      try {
+        view.labelDesign.url = (
+          await this.storage.getSignedUrl(view.labelDesign.key)
+        ).url;
+      } catch {
+        view.labelDesign.url = null;
+      }
+    }
+    return (await markRows(this.prisma, 'BOTTLING', [view]))[0];
   }
 
   private async codeCounts(
@@ -369,15 +395,36 @@ function toBottlingView(
     valid.find((l) => l.supersededAt === null) ?? valid[0] ?? null;
   let available = num(row.availableLiters);
   let heartPure: number | null = null;
-  if (row.productionBatch) {
-    const heart = distillationHeart(row.productionBatch);
-    available ??= heart.liters;
-    heartPure =
-      heart.liters !== null && heart.abv !== null
-        ? (heart.liters * heart.abv) / 100
-        : null;
-  } else if (row.wineAgingBatch) {
-    available ??= num(row.wineAgingBatch.volumeLiters);
+  // Fuentes del embotellado: las del lote que quedaron `BOTTLED`; en los
+  // registros sin ellas, la crianza o la destilación enlazada
+  const distillations =
+    lot && lot.productionBatches.length > 0
+      ? lot.productionBatches
+      : row.productionBatch
+        ? [row.productionBatch]
+        : [];
+  const agings =
+    lot && lot.wineAgingBatches.length > 0
+      ? lot.wineAgingBatches
+      : row.wineAgingBatch
+        ? [row.wineAgingBatch]
+        : [];
+  if (distillations.length > 0) {
+    const hearts = distillations.map((p) => distillationHeart(p));
+    if (hearts.every((h) => h.liters !== null)) {
+      available ??= hearts.reduce((sum, h) => sum + (h.liters as number), 0);
+    }
+    heartPure = hearts.every((h) => h.liters !== null && h.abv !== null)
+      ? hearts.reduce(
+          (sum, h) => sum + ((h.liters as number) * (h.abv as number)) / 100,
+          0,
+        )
+      : null;
+  } else if (agings.length > 0) {
+    const liters = agings.map((a) => num(a.volumeLiters));
+    if (liters.every((l) => l !== null)) {
+      available ??= (liters as number[]).reduce((sum, l) => sum + l, 0);
+    }
   }
   const productType =
     (lot?.productType as 'WINE' | 'SINGANI' | null) ??

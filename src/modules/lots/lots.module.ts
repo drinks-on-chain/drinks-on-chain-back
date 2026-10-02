@@ -5,9 +5,9 @@ import { LotsService } from './lots.service';
 import { LotBackfillRunner } from './lot-backfill.runner';
 
 /**
- * Lote del servidor y trazabilidad confiable (Ola 2, contrato O2). Las rutas
- * del contrato cuya lógica llega en pasos posteriores están en
- * `contract/` (501 `NOT_IMPLEMENTED`).
+ * Lote del servidor y trazabilidad confiable (Ola 2, contrato O2). Los
+ * controladores de las demás rutas del contrato están en `contract/`
+ * (`LotsContractModule` y `LotViewsModule`); ninguna responde ya 501.
  */
 @Module({
   imports: [PrismaModule],

@@ -21,7 +21,7 @@ import {
   isValidBottleCode,
 } from '../src/modules/lots/domain/bottle-code';
 import {
-  bottleLeaf,
+  bottleLeafHash,
   merkleRoot,
   verifyMerkleProof,
 } from '../src/modules/lots/domain/merkle';
@@ -1681,14 +1681,15 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
         `/v1/public/bottles/${unit.code}`,
       );
       expect(before.body.data.bottle.status).toBe('ACTIVE');
-      await prisma.bottleUnit.update({
-        where: { id: unit.id },
-        data: {
-          status: 'VOIDED',
-          voidedAt: new Date(),
-          voidReason: 'Etiqueta dañada (e2e)',
+      await checked(
+        'post',
+        'cinti',
+        `/v1/bottle-codes/${unit.code}/void`,
+        200,
+        {
+          reason: 'Etiqueta dañada (e2e)',
         },
-      });
+      );
       const res = await checked(
         'get',
         'nobody',
@@ -1745,34 +1746,34 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       const open = await checked('get', 'nobody', dossierPath, 404);
       expect(open.body.error.code).toBe('PUB_CODE_NOT_FOUND');
 
-      // El cierre es del paso 2.8: aquí se escribe la fila como la deja ese paso
+      // Cierre de verdad (paso 2.8): la huella y la raíz Merkle son las que
+      // calcula el servidor sobre los códigos activos
+      const closed = await checked(
+        'post',
+        'cinti',
+        `/v1/lots/${main.lotId}/dossier/close`,
+        200,
+        { confirm: true },
+      );
+      expect(closed.body.data).toMatchObject({
+        status: 'CLOSED',
+        bottleCodes: { count: 2949 },
+      });
+      const hash = closed.body.data.hash as string;
+      const root = closed.body.data.bottleCodes.merkleRoot as string;
+      const stored = await prisma.lotDossier.findUniqueOrThrow({
+        where: { lotId: main.lotId },
+      });
+      const canonical = stored.canonical as string;
+      expect(stored.bottleMerkleRoot).toBe(root);
+      // La raíz es la de los códigos activos al cerrar, por serie
       const units = await prisma.bottleUnit.findMany({
         where: { lotId: main.lotId, status: 'ACTIVE' },
         orderBy: { serial: 'asc' },
       });
-      const leaves = units.map((u) => bottleLeaf(u.serial, u.code, u.salt));
-      const root = merkleRoot(leaves, { odd: 'DUPLICATE', concat: 'BYTES' });
-      const canonical = JSON.stringify({
-        closedAt: new Date().toISOString(),
-        lot: { lotCode: main.lotCode },
-        schema: 'doc-dossier/1',
-      });
-      const hash = createHash('sha256').update(canonical).digest('hex');
-      await prisma.lotDossier.create({
-        data: {
-          lotId: main.lotId,
-          status: 'CLOSED',
-          hash,
-          canonical,
-          bottleCount: units.length,
-          bottleMerkleRoot: root,
-          closedAt: new Date(),
-        },
-      });
-      await prisma.lot.update({
-        where: { id: main.lotId },
-        data: { stage: 'CERTIFIED', stageChangedAt: new Date() },
-      });
+      expect(
+        merkleRoot(units.map((u) => bottleLeafHash(u.serial, u.code, u.salt))),
+      ).toBe(root);
 
       const lot = await checked(
         'get',
@@ -1826,10 +1827,9 @@ describe('Ola 2 · bloque C: vistas del lote, archivos y pasaporte público (e2e
       expect(proof).not.toBeNull();
       expect(
         verifyMerkleProof(
-          bottleLeaf(1234, bottleCode, proof.salt),
+          bottleLeafHash(1234, bottleCode, proof.salt),
           proof.path,
-          root as string,
-          'BYTES',
+          root,
         ),
       ).toBe(true);
       // El de una botella sigue en 60 s: su código aún se puede anular (S-14)

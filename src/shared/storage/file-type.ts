@@ -98,3 +98,21 @@ export function fileTypeForKey(key: string): AllowedFileType | null {
     ) ?? null
   );
 }
+
+/**
+ * Archivos que genera el propio backend (no se suben): el driver local los
+ * sirve como descarga con su URL firmada (p. ej. el ZIP de códigos de botella
+ * para la imprenta, contrato O2 §7.2).
+ */
+export const GENERATED_FILE_TYPES: readonly {
+  mimeType: string;
+  extension: string;
+}[] = [{ mimeType: 'application/zip', extension: '.zip' }];
+
+/** Tipo de un archivo generado por su extensión, o `null`. */
+export function generatedFileTypeForKey(
+  key: string,
+): { mimeType: string; extension: string } | null {
+  const lower = key.toLowerCase();
+  return GENERATED_FILE_TYPES.find((t) => lower.endsWith(t.extension)) ?? null;
+}

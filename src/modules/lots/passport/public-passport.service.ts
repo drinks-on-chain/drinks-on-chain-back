@@ -17,14 +17,8 @@ import {
   isValidBottleCode,
   normalizeBottleCode,
 } from '../domain/bottle-code';
-import {
-  bottleLeaf,
-  findMerkleVariant,
-  merkleLevels,
-  merkleProof,
-  MerkleStep,
-  MerkleVariant,
-} from '../domain/merkle';
+import { merkleProof, MerkleStep } from '../domain/merkle';
+import { closedDossierLeaves, ClosedDossierLeaves } from '../lot-dossier';
 import { dbClock } from '../trace-db';
 import { publicLotAttachments } from '../views/lot-attachments.service';
 import { PassportLookupLimiter } from './passport-lookup-limiter';
@@ -106,9 +100,9 @@ interface LotStamp {
   stamp: string;
 }
 
+/** Hojas de la raíz de un expediente cerrado, con la posición de cada código. */
 interface MerkleTree {
-  variant: MerkleVariant;
-  levels: string[][];
+  closed: ClosedDossierLeaves;
   index: Map<string, number>;
 }
 
@@ -361,7 +355,6 @@ export class PublicPassportService {
         code: true,
         serial: true,
         status: true,
-        salt: true,
         lotId: true,
         bottlingBatch: { select: { totalBottlesPackaged: true } },
       },
@@ -371,7 +364,7 @@ export class PublicPassportService {
     const lot = await this.lotPassport(stamp);
     const proof =
       lot.dossier.status === 'CLOSED'
-        ? await this.merkleProofOf(unit.lotId, unit.code, unit.salt)
+        ? await this.merkleProofOf(unit.lotId, unit.code)
         : null;
     const status = unit.status === 'VOIDED' ? 'VOIDED' : 'ACTIVE';
     return {
@@ -399,29 +392,41 @@ export class PublicPassportService {
 
   /**
    * Prueba Merkle del código contra la raíz que guardó el cierre del
-   * expediente. Solo se publica si reproduce esa raíz (ver `domain/merkle`).
+   * expediente (`lot_dossiers.bottle_merkle_root`), con la construcción única
+   * de `domain/merkle` (`sha256-merkle/serial-code-salt`). Las hojas son los
+   * códigos que estaban activos al cerrar (`closedDossierLeaves`): un código
+   * anulado **antes** del cierre no tiene prueba; uno anulado **después**
+   * (S-14) la conserva, porque formó parte de la raíz.
+   *
+   * Las hojas de un expediente cerrado no cambian (tras el cierre no se
+   * emiten códigos), así que se guardan en memoria por lote y raíz.
    */
   private async merkleProofOf(
     lotId: string,
     code: string,
-    salt: string,
   ): Promise<{ salt: string; path: MerkleStep[] } | null> {
     const dossier = await this.prisma.lotDossier.findUnique({
       where: { lotId },
-      select: {
-        status: true,
-        bottleMerkleRoot: true,
-        bottleCount: true,
-        closedAt: true,
-      },
+      select: { status: true, bottleMerkleRoot: true },
     });
-    const root = dossier?.bottleMerkleRoot?.trim().toLowerCase();
+    const root = dossier?.bottleMerkleRoot;
     if (dossier?.status !== 'CLOSED' || !root) return null;
 
     const treeKey = `${lotId}:${root}`;
     let tree = this.trees.get(treeKey);
     if (tree === undefined) {
-      tree = await this.buildTree(lotId, root, dossier);
+      const closed = await closedDossierLeaves(this.prisma, lotId);
+      if (!closed) {
+        this.logger.warn(
+          `La raíz Merkle del expediente del lote ${lotId} no se pudo reproducir: el pasaporte no publica la prueba`,
+        );
+      }
+      tree = closed
+        ? {
+            closed,
+            index: new Map(closed.units.map((u, i) => [u.code, i])),
+          }
+        : null;
       this.trees.set(treeKey, tree);
       if (this.trees.size > MERKLE_TREES_KEPT) {
         this.trees.delete(this.trees.keys().next().value as string);
@@ -431,52 +436,9 @@ export class PublicPassportService {
     const index = tree.index.get(code);
     if (index === undefined) return null;
     return {
-      salt: salt.trim(),
-      path: merkleProof(tree.levels, index, tree.variant),
+      salt: tree.closed.units[index].salt,
+      path: merkleProof(tree.closed.leaves, index),
     };
-  }
-
-  private async buildTree(
-    lotId: string,
-    root: string,
-    dossier: { bottleCount: number | null; closedAt: Date | null },
-  ): Promise<MerkleTree | null> {
-    const units = await this.prisma.bottleUnit.findMany({
-      where: { lotId },
-      orderBy: [{ serial: 'asc' }, { createdAt: 'asc' }],
-      select: { code: true, serial: true, salt: true, voidedAt: true },
-    });
-    const closedAt = dossier.closedAt;
-    // Las botellas que entraron al expediente: las vigentes al cerrar; si no
-    // cuadra con lo guardado, todas las del lote
-    const candidates = [
-      units.filter(
-        (u) =>
-          u.voidedAt === null || (closedAt !== null && u.voidedAt > closedAt),
-      ),
-      units,
-    ].sort(
-      (a, b) =>
-        Number(b.length === dossier.bottleCount) -
-        Number(a.length === dossier.bottleCount),
-    );
-    for (const set of candidates) {
-      const leaves = set.map((u) =>
-        bottleLeaf(u.serial, u.code, u.salt.trim()),
-      );
-      const variant = findMerkleVariant(leaves, root);
-      if (variant) {
-        return {
-          variant,
-          levels: merkleLevels(leaves, variant),
-          index: new Map(set.map((u, i) => [u.code, i])),
-        };
-      }
-    }
-    this.logger.warn(
-      `La raíz Merkle del expediente del lote ${lotId} no se pudo reproducir: el pasaporte no publica la prueba`,
-    );
-    return null;
   }
 
   // ── Errores, límites y caché ─────────────────────────────────────────────

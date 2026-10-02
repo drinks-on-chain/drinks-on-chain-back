@@ -4,7 +4,8 @@ import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 
 /**
  * Respuestas de error comunes de las rutas del contrato de la Ola 2 que se
- * publican en la apertura (§16.1) con `501` hasta que llega su paso.
+ * publicaron en la apertura (§16.1) con `501` hasta que llegó su paso (hoy
+ * ninguna lo usa: `ApiNotImplemented` queda para la próxima ola).
  */
 
 /** 501 `NOT_IMPLEMENTED` de una ruta cuya lógica llega con el paso `step`. */

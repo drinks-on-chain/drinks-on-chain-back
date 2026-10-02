@@ -1,6 +1,6 @@
 # Trazabilidad confiable: el lote del servidor
 
-> Ola 2 · apertura (O2-BE-1; contrato `plan/contratos/o2-erp-confiable.md` §0–§2, §13, §14, §16, §20; docs-back/01 §9.1 EA-01…EA-08 y SE-07; docs-back/08 §5). Esta página describe lo que ya está en `dev`: el modelo del lote, la instantánea de reglas, la migración de los datos anteriores y los cierres de seguridad. Lo que el contrato publica pero aún no tiene lógica responde **501 `NOT_IMPLEMENTED`** (ver [Rutas](#rutas)).
+> Ola 2 · apertura (O2-BE-1; contrato `plan/contratos/o2-erp-confiable.md` §0–§2, §13, §14, §16, §20; docs-back/01 §9.1 EA-01…EA-08 y SE-07; docs-back/08 §5). Esta página describe lo que ya está en `dev`: el modelo del lote, la instantánea de reglas, la migración de los datos anteriores y los cierres de seguridad. Las rutas que la apertura publicó con 501 `NOT_IMPLEMENTED` ya tienen su lógica (Etapa 2, pasos 2.2–2.10; ver [Rutas](#rutas)): no queda ninguna con 501.
 
 ## Modelo
 
@@ -34,7 +34,9 @@ flowchart LR
 | `fermentation_tank_inputs` | Kilos de cada pesaje que entran a un tanque (`availableKg` = neto − entradas) |
 | `bottle_units` | Código de botella (8 caracteres Crockford: 7 aleatorios + control Luhn mod 32), serie, estado (`ACTIVE`/`VOIDED`), sal de la hoja Merkle |
 | `lot_compliance_issues` | Incidencias de cumplimiento (`MIGRATION`, `CORRECTION`, `RULES_REEVALUATION`) con `details` ampliados; una abierta bloquea el embotellado |
-| `bottle_code_exports`, `trace_corrections`, `lot_attachments`, `lot_dossiers` | Creadas en la apertura para los pasos 2.6–2.9 (sin lógica todavía) |
+| `bottle_code_exports` | Cada exportación de códigos (CSV o ZIP): rango de series, opciones del QR, estado (`PENDING`/`READY`/`FAILED`), filas, quién la pidió, clave del ZIP en el almacenamiento privado y caducidad (ver [Códigos de botella](#códigos-de-botella-paso-26)) |
+| `lot_dossiers` | Expediente cerrado del lote: `hash`, `canonical` (los bytes hasheados), raíz Merkle y número de códigos, fecha y autor del cierre (ver [Expediente](#expediente-del-lote-y-hash-canónico-paso-28)) |
+| `trace_corrections`, `lot_attachments` | Creadas en la apertura para los pasos 2.7 y 2.9 |
 | `lot_backfill_pending` | Cola del relleno de la migración (ver [Migración](#migración-de-los-datos-anteriores-26)) |
 
 Columnas nuevas (todas nulas o con valor por defecto) en la cadena actual: `lot_id` en pesajes, tanques, crianzas, destilaciones, embotellados (única: **un embotellado por lote**) y análisis; `created_by_membership_id` (autoría real, `TraceActor`); `terroir_snapshot` del pesaje; `final_volume_liters` del tanque; `start_date`, `container_count` y descarte de la crianza; cortes (`heads/heart/tails/vinasse_liters`, `heart_abv_percent`) y descarte de la destilación; `available_liters`, remanente y `label_design_key` del embotellado; `methanol_mg_100ml_aa`, `conformity`, `conformity_status`, `superseded_at` y `laboratory_report_key` del análisis. Brix, pH y acidez del pesaje pasan a ser **nulos** sin análisis.
@@ -43,7 +45,7 @@ Dos restricciones únicas se relajan: el código de vendimia es único **por bod
 
 Los actores se guardan por su membresía (`*_membership_id`, sin clave foránea, como en la bitácora) y se resuelven a `TraceActor { membershipId, userId, fullName, role }`; `null` = sistema o no registrado (datos anteriores). Las claves foráneas nuevas son `Restrict`; las antiguas `Cascade` pasan a `Restrict` en el cierre de la ola (H2), junto con `lot_id NOT NULL` (salvo en pesajes).
 
-El código vive en `src/modules/lots/`: `domain/` (reglas puras y probadas: D.O., laboratorio, candados, balance, códigos de botella, etapa, fechas en La Paz), `lot-records.ts` (crear y bloquear lotes, recalcular la etapa), `bottling-engine.ts` (reglas del embotellado), `lot-backfill.ts` (relleno), `chain.ts` (destino, D.O. y volumen de la cadena) y `contract/` (rutas del contrato con 501).
+El código vive en `src/modules/lots/`: `domain/` (reglas puras y probadas: D.O., laboratorio, candados, balance, códigos de botella, etapa, fechas en La Paz, JSON canónico, árbol Merkle, contenido del expediente, CSV, ZIP y QR), `lot-records.ts` (crear y bloquear lotes, recalcular la etapa), `bottling-engine.ts` (reglas del embotellado), `bottle-codes.service.ts` y `bottle-code-export.builder.ts` (códigos de botella), `lot-dossier.ts` y `dossier.service.ts` (expediente), `jobs/` (procesadores del worker), `lot-backfill.ts` (relleno), `chain.ts` (destino, D.O. y volumen de la cadena) `views/` y `passport/` (vistas y pasaporte público) y `contract/` (controladores de las rutas del contrato).
 
 ## Instantánea de reglas (CFG-06)
 
@@ -152,6 +154,171 @@ Ningún registro de la trazabilidad tiene ruta de edición ni de borrado. Un err
 | Corrección que incumple una regla de un embotellado ya hecho (§9) | Se registra y abre una incidencia `CORRECTION` (no 422) | El embotellado no se puede deshacer y el dato corregido es el verdadero; el 422 se reserva para lo que aún se puede evitar |
 | Cómo se guarda una corrección (§9) | El registro pasa a tener el valor vigente; el anterior queda en `trace_corrections.changes` y en la bitácora | Todas las reglas y vistas leen un único valor vigente; no hay rutas de edición ni de borrado |
 | Eventos del outbox `lot.*` (§15) | No se emiten todavía | Su único consumidor es la caché del pasaporte (paso 2.10); un evento sin procesador falla en el worker |
+## Embotellado seguro: precisiones del paso 2.5
+
+`POST /v1/lots/{id}/bottling[/preview]` y la ruta legada usan el mismo motor (`bottling-engine.ts`). Además de la tabla de arriba:
+
+- **Fuentes sin repetir**: la misma crianza o destilación dos veces en `sources` → 422 `TRC_BOTTLING_SOURCE_INVALID` (contaría dos veces su volumen y su alcohol).
+- **`liters` no esconde merma**: como hay un embotellado por lote y cada fuente incluida queda `BOTTLED`, `balance.availableLiters` es siempre el volumen **entero** de las fuentes. Si `liters` pide menos, la diferencia se declara en `leftover` o cuenta como merma (y puede superar la tolerada). El alcohol puro disponible (`balance.pureAlcohol.availableLiters`) es solo el de los litros que se toman. Más litros que los de la fuente → 422 `TRC_VOLUME_EXCEEDS_AVAILABLE`.
+- **Tolerancia del balance de alcohol** (S-11): alcohol puro embotellado ≤ alcohol del corazón × 1,005.
+- **Etiqueta**: `labelDesignKey` es la `key` de un archivo subido por la propia bodega (`org/{bodega}/…`); ajena o inexistente → 422 `TRC_FILE_NOT_FOUND` (en la vista previa, una violación más). El detalle del embotellado devuelve `labelDesign: { key, url }` con una URL firmada de corta vida.
+- **Código de lote**: `{lotPrefix}-{año del embotellado}-{WINE|SINGANI}-{NNN}`; la secuencia (por bodega y año, común a los productos) sale de `lot_sequences` con la fila bloqueada. Probado con embotellados simultáneos de dos bodegas, de tres lotes de la misma bodega (números consecutivos) y del mismo lote (uno entra, el otro 409 `TRC_LOT_ALREADY_BOTTLED`).
+- **Rendimiento**: los códigos se insertan por tandas de 5.000 (`generateBottleUnits`); un lote de 5.000 botellas se embotella en una transacción en pocos segundos.
+
+## Códigos de botella (paso 2.6)
+
+Contrato O2 §7. Un código por botella desde el embotellado (8 caracteres Crockford: 7 aleatorios + control Luhn mod 32), con serie `1…N`. Los listan, exportan y anulan **OWNER y ENOLOGIST**; de la plataforma solo listan ADMIN y OPERATIONS (con `?wineryId=`; SUPPORT → 403). La plataforma no exporta ni anula. Los demás roles ven solo los totales del embotellado (`bottleCodes`).
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /v1/lots/{id}/bottle-codes` | Página por serie (`limit`/`offset`), filtros `status`, `fromSerial`, `toSerial` y búsqueda `q` (fragmento del código tal como se teclea, o la serie exacta). Un código sustituido y su sustituto comparten serie (primero el anulado). La sal de la hoja Merkle no sale por la API |
+| `GET /v1/lots/{id}/bottle-codes/export` | CSV por *streaming* (cursor por serie, tandas de 1.000) |
+| `POST /v1/lots/{id}/bottle-codes/exports` | Pide el ZIP para la imprenta: `202 { exportId, status: 'PENDING' }` |
+| `GET /v1/lots/{id}/bottle-codes/exports/{exportId}` | Estado de la exportación y, con el ZIP listo y sin caducar, `downloadUrl` (URL firmada de 15 min) |
+| `POST /v1/bottle-codes/{code}/void` | Anula un código; con `replace: true` emite otro con la misma serie |
+
+Lote sin embotellar → 409 `TRC_LOT_NOT_BOTTLED`. Rango inválido (`fromSerial > toSerial` o fuera de `1…N`) o sin códigos activos → 422 `VALIDATION_ERROR`.
+
+**CSV** (`text/csv; charset=utf-8`, `Content-Disposition: attachment; filename="codigos-{lotCode}-{desde}-{hasta}.csv"`, cabeceras `X-Export-Rows` y `X-Export-Id`):
+
+```
+serial,code,codeFormatted,qrUrl,lotCode,lotName,productType,bottlingDate
+1,K7M2Q9XA,K7M2-Q9XA,https://app.drinksonchain.com/b/K7M2Q9XA,CVJ-2026-SINGANI-004,Singani Gran Reserva 2026,SINGANI,2026-10-01
+```
+
+Una fila por código **activo** del rango (un código anulado no se imprime; de una serie sustituida sale el sustituto), UTF-8 **con BOM**, separador coma, `CRLF` y celdas neutralizadas contra fórmulas, como los demás CSV del backend. `qrUrl` = `{PASSPORT_BASE_URL}/b/{código}`.
+
+**ZIP** (en el almacenamiento privado, clave `exports/bottle-codes/{bodega}/{exportId}.zip`: fuera del prefijo `org/…` de las subidas, así que `GET /v1/uploads/url` no lo firma):
+
+```
+codigos.csv                 # el mismo CSV, con las filas del rango
+qr/1-K7M2Q9XA.svg           # qr/{serial}-{code}.svg (o .png), uno por código activo
+qr/2-P3R8T2W7.svg
+```
+
+El QR codifica `qrUrl` con corrección de errores `M`. `qr.imageFormat` es `SVG` (vectorial, lo que conviene a la imprenta) o `PNG` (1 bit, exactamente `sizePx × sizePx`); por defecto `sizePx: 512` y `margin: 4` módulos. Lo genera el worker con la tarea **`trace.bottle-codes.export`**: la petición escribe la fila `PENDING` y el evento del outbox en la misma transacción, el procesador (`jobs/bottle-codes-export.handler.ts`) arma el ZIP y deja la fila `READY` (idempotente; en el último intento fallido, `FAILED`). Como máximo **20.000 códigos por ZIP** (se arma en memoria y el formato ZIP clásico admite 65.535 entradas): un lote mayor se exporta por rangos. Caduca a los **7 días**: `downloadUrl` pasa a `null` y la tarea horaria `trace.bottle-codes.exports-cleanup` borra el archivo (la fila se conserva).
+
+Cada exportación (CSV o ZIP) queda en `bottle_code_exports`, suma en `exportsCount`/`firstExportedAt` de cada código y deja la entrada `BOTTLE_CODES_EXPORTED` en la bitácora **con el rango**, antes de enviar nada.
+
+**Anular** (`{ reason, replace? }`): el código pasa a `VOIDED` (ya anulado → 409 `TRC_BOTTLE_CODE_ALREADY_VOIDED`; de otra bodega, inexistente o con el control mal → 404 `TRC_BOTTLE_CODE_NOT_FOUND`). Con `replace: true` se emite un código nuevo con la **misma serie** (`replaces` / `voided.replacedBy`). Deja el evento `BOTTLE_CODE_VOIDED` en la línea de tiempo (interno, con la serie pero sin el código) y la entrada `BOTTLE_CODE_VOIDED` en la bitácora. Invariante: códigos `ACTIVE` = botellas − bajas sin sustituto. Con el **expediente cerrado** se puede anular pero no sustituir (S-14): `replace: true` → 409 `TRC_DOSSIER_CLOSED`.
+
+## Expediente del lote y hash canónico (paso 2.8)
+
+Contrato O2 §10 y §20. Lo leen todos los miembros (y la plataforma); lo cierran OWNER y ENOLOGIST.
+
+| Ruta | Qué hace |
+|---|---|
+| `GET /v1/lots/{id}/dossier/preview` | `{ ready, requirements[], hashPreview }` |
+| `POST /v1/lots/{id}/dossier/close` | `{ confirm: true }` → `LotDossier`; lote → `CERTIFIED` |
+| `GET /v1/lots/{id}/dossier` | `LotDossier` (`OPEN` mientras no se cierra) |
+| `GET /v1/lots/{id}/dossier/canonical` | Los bytes canónicos, sin el envoltorio `data`; cabeceras `X-Dossier-Status` (`OPEN`/`CLOSED`) y `X-Dossier-Hash` |
+
+**Requisitos del cierre** (un `ErrorDetail` por cada uno sin cumplir en el 422 `TRC_DOSSIER_NOT_READY`, con `meta.requirement`):
+
+| Requisito | Se cumple cuando | `meta` extra |
+|---|---|---|
+| `BOTTLED` | El lote tiene su embotellado | — |
+| `LAB_CONFORMING` | El análisis vigente (el último sin sustituir ni anular) es `CONFORMING`; ausente, incompleto o no conforme no cumplen | `labStatus` |
+| `BOTTLE_CODES_READY` | Hay códigos activos, cada serie `1…N` tiene código y ninguna tiene dos activos | — |
+| `NO_OPEN_COMPLIANCE_ISSUES` | Sin incidencias de cumplimiento abiertas | `issueIds` |
+| `NO_OPEN_SOURCES` | Sin crianzas ni destilaciones abiertas | `sourceIds` |
+
+**Cierre** (con la fila del lote bloqueada): expediente ya cerrado → 409 `TRC_DOSSIER_CLOSED` (`meta.closedAt`, `meta.hash`); lote `REJECTED` o `DISCARDED` → 409 `TRC_LOT_TERMINAL`; requisitos → 422. Después calcula el contenido canónico y su SHA-256, guarda `lot_dossiers`, el lote pasa a `CERTIFIED` y deja el evento `DOSSIER_CLOSED` (público) en la línea de tiempo, la entrada `DOSSIER_CLOSED` en la bitácora y el evento **`lot.certified`** en el outbox (cola `chain`; payload `{ lotId, wineryId, lotCode, hash, bottleMerkleRoot, bottleCount, closedAt }`). El procesador de hoy solo lo registra: el anclaje llega en la Ola 3.
+
+Tras el cierre, las escrituras del lote responden 409 `TRC_LOT_TERMINAL` (`lockLot(…, { writable: true })`). Las que el contrato marca con `TRC_DOSSIER_CLOSED` (laboratorio, correcciones) deben llamar antes a **`assertDossierOpen(tx, lotId)`** (`lot-dossier.ts`). Lo único que el lote sigue admitiendo es anular códigos sin sustituto; el expediente no cambia nunca más.
+
+### Lo que se guarda (`lot_dossiers`)
+
+| Columna | Contenido |
+|---|---|
+| `lot_id` | Clave: un expediente por lote. La fila se crea al cerrar (sin fila = `OPEN`) |
+| `schema` | `doc-dossier/1` |
+| `status` | `CLOSED` |
+| `hash` | SHA-256 (hexadecimal en minúsculas) de los bytes UTF-8 de `canonical`. Algoritmo: `sha256/jcs-rfc8785` |
+| `canonical` | El JSON canónico, tal cual: sus bytes UTF-8 son lo que se hasheó y lo que devuelven `GET …/dossier/canonical` y el pasaporte público |
+| `bottle_count`, `bottle_merkle_root` | Número de hojas y raíz Merkle de los códigos de botella. Algoritmo: `sha256-merkle/serial-code-salt` |
+| `closed_at`, `closed_by_membership_id` | Fecha (reloj de la base, leído con el lote bloqueado) y autor del cierre |
+
+### Forma canónica `doc-dossier/1`
+
+JSON canónico **RFC 8785 (JCS)**, UTF-8: propiedades ordenadas por unidades de código UTF-16, sin espacios, cadenas y números con la serialización de ECMAScript (`domain/jcs.ts`, probado con los ejemplos de la RFC). Reglas del contenido (`domain/dossier.ts`):
+
+- Las **medidas** (columnas decimales) van como cadenas de escala fija, con la escala de su columna: kilos `"18400.000"`, litros de tanque y crianza `"12100.00"`, litros de destilación y embotellado `"1500.000"`, grados `"40.00"`, Brix y pH `"23.50"`, densidad `"1.0850"`. Los enteros (botellas, cL, meses, añada) son números.
+- Los **documentos guardados como JSON** (instantánea de reglas, conformidad del laboratorio, valores `before`/`after` de las correcciones) van tal cual se guardaron.
+- Instantes en ISO 8601 UTC con milisegundos; fechas de calendario `YYYY-MM-DD`.
+- Listas ordenadas por fecha e id (comparación binaria en la aplicación, no la intercalación de la base).
+- Personas como `{ membershipId, role }` (o `null`): sin nombres ni correos. Tampoco van textos libres (notas, motivos; de una corrección de `notes` queda solo el campo), ni URL o claves de archivos, ni los códigos de botella.
+
+```jsonc
+{
+  "schema": "doc-dossier/1",
+  "closedAt": "2026-10-01T15:04:05.123Z",           // null en la vista previa
+  "closedBy": { "membershipId": "…", "role": "OWNER" },
+  "winery": { "id": "…", "lotPrefix": "CVJ", "tradeName": "Destilería Cinti Viejo" },
+  "lot": { "id", "reference", "lotCode", "name", "productType", "harvestYear",
+           "createdAt", "createdBy", "bottledAt" },
+  "rules": { /* instantánea completa (LotRules), tal como se guardó */ },
+  "harvests": [{ "id", "code", "intakeDate", "harvestYear", "grossWeightKg", "tareWeightKg",
+                 "netWeightKg", "temperatureAtIntakeC", "phytosanitaryStatus",
+                 "terroir": { "id", "parcelName", "altitudeMasl", "varietyName",
+                              "rawMaterialType", "takenAt" },   // tal como era al pesar
+                 "recordedAt", "recordedBy",
+                 "maturityAnalyses": [{ "id", "brixDegrees", "ph", "acidityGl", "measuredAt",
+                                        "recordedAt", "recordedBy", "source", "voidedAt" }],
+                 "phytoDecisions": [{ "id", "decision", "decidedAt", "recordedAt", "decidedBy",
+                                      "inspectionReportSha256", "source", "voidedAt" }] }],
+  "tanks": [{ "id", "tankCode", "material", "capacityLiters", "volumeFilledLiters",
+              "finalVolumeLiters", "destinationType", "status", "startDate", "endDate",
+              "recordedAt", "recordedBy",
+              "inputs": [{ "harvestBatchId", "kg" }],
+              "readings": [{ "id", "recordedAt", "temperatureCelsius", "specificGravity", "phValue" }],
+              "treatments": [{ "id", "treatmentType", "additiveName", "dosageAppliedGPerHl",
+                               "totalAppliedG", "regulatoryAuthCode", "appliedAt" }] }],
+  "agings": [{ "id", "fermentationTankId", "containerType", "containerMaterial", "containerCount",
+               "barrelUseCycle", "volumeLiters", "plannedMonths", "startDate", "unlockDate",
+               "status", "discardedAt", "recordedAt", "recordedBy" }],
+  "distillations": [{ "id", "fermentationTankId", "processType", "equipmentIdentifier",
+                      "processStartDate", "processEndDate", "inputVolumeLiters", "headsLiters",
+                      "heartLiters", "tailsLiters", "vinasseLiters", "heartAbvPercent",
+                      "restUntil", "status", "discardedAt", "recordedAt", "recordedBy" }],
+  "bottling": { "id", "lotCode", "productType", "bottlingDate", "packagingFormatCl",
+                "totalBottlesPackaged", "finalAlcoholAbv", "waterDilutionLiters", "bottleType",
+                "leftover": { "liters", "disposition" },
+                "balance": { "availableLiters", "waterDilutionLiters", "bottledLiters",
+                             "leftoverLiters", "lossLiters", "lossPercent",
+                             "pureAlcohol": { "availableLiters", "bottledLiters" } },
+                "recordedAt", "recordedBy" },
+  "labAnalyses": [{ "id", "laboratoryName", "certificationCode", "analysisRequestDate",
+                    "testPerformedAt", "actualAlcoholAbv", "totalAlcoholAbv",
+                    "totalAcidityTartaricGl", "volatileAcidityAceticGl", "freeSulfurDioxideMgL",
+                    "totalSulfurDioxideMgL", "reducingSugarsGl", "totalDryExtractGl",
+                    "sugarFreeDryExtractGl", "overpressureBar", "methanolContentMgL",
+                    "methanolMg100mlAa", "copperContentMgL", "conformityStatus",
+                    "conformity": { /* LabConformity guardada */ },
+                    "current", "supersededAt", "recordedAt", "recordedBy" }],
+  "corrections": [{ "id", "target": { "type", "id" }, "kind",
+                    "changes": [{ "field", "before", "after" }], "createdAt", "createdBy" }],
+  "attachments": [{ "kind", "sha256" }],
+  "bottleCodes": { "count": 2950, "merkleRoot": "…", "algorithm": "sha256-merkle/serial-code-salt" }
+}
+```
+
+El `balance` del expediente se recalcula con los registros vigentes y el volumen entero de las fuentes embotelladas. Las propiedades sin dato van con `null` (nunca se omiten), así la forma es estable.
+
+**Vista previa**: con el expediente abierto, `GET …/dossier/canonical` devuelve el mismo documento con `closedAt` y `closedBy` en `null`, y `hashPreview` es su SHA-256. No cambia mientras no cambien los registros del lote (sirve a la UI para detectar cambios); la huella definitiva incluye además la fecha y el autor del cierre. Con el expediente cerrado, `hashPreview` es la huella definitiva.
+
+### Raíz Merkle de los códigos de botella
+
+El expediente es público y los códigos son el antifalsificación de la etiqueta, así que no van en claro (supuesto técnico de §20, P-3). `domain/merkle.ts`:
+
+1. Hojas: los códigos **activos al cerrar**, ordenados por serie. `hoja = SHA-256("{serie}:{código}:{sal}")` sobre el texto UTF-8, con la sal de la botella (`bottle_units.salt`: 16 bytes aleatorios en hexadecimal, 32 caracteres) tal cual está guardada.
+2. Cada nivel empareja de izquierda a derecha: `padre = SHA-256(izquierdo ‖ derecho)` sobre los 32 bytes de cada resumen.
+3. Un nodo sin pareja al final de un nivel **sube tal cual** (no se duplica).
+4. La raíz, en hexadecimal en minúsculas. Sin hojas, `SHA-256("")`.
+
+**Para el pasaporte público** (`PublicBottlePassport.bottle.merkleProof`): `bottleMerkleProof(client, lotId, code)` (`lot-dossier.ts`) devuelve `{ salt, path: { side: 'L' | 'R', hash }[], merkleRoot }`, o `null` si el expediente no está cerrado o el código no entró en la raíz (anulado antes del cierre). `side` es el lado del hermano: `L` → `SHA-256(hermano ‖ actual)`; `R` → `SHA-256(actual ‖ hermano)`; se comprueba con `verifyMerkleProof(hoja, path, raíz)`. Las hojas de un expediente cerrado son los códigos activos hoy más los anulados **después** del cierre (tras el cierre no se emiten códigos nuevos); `closedDossierLeaves` las reconstruye y comprueba que reproducen la raíz guardada antes de dar una prueba. Para que ese orden sea exacto, el cierre y la anulación leen el reloj de la base con el lote ya bloqueado (`lockedClock`, `clock_timestamp()`).
+
+**Cómo verifica un tercero**: descarga los bytes (`GET /v1/lots/{id}/dossier/canonical`, o el del pasaporte público), calcula su SHA-256 y lo compara con `hash`; con la serie, el código y la sal de una botella calcula la hoja y sigue `path` hasta `bottleCodes.merkleRoot`, que está dentro de esos mismos bytes.
 
 ## Migración de los datos anteriores (§2.6)
 
@@ -190,7 +357,9 @@ Implementadas en la apertura (con su OpenAPI y validadas contra él en e2e): `GE
 
 Implementadas en los pasos 2.3, 2.4 y 2.7 ([arriba](#vinificación-crianza-y-destilación-laboratorio-y-correcciones-pasos-2224-y-27)): transiciones del tanque, descarte de crianza, cierre y descarte de destilación, laboratorio por lote y correcciones. La línea de tiempo, el grafo, el balance, el panel, los reportes, los adjuntos (2.9) y el pasaporte público (2.10) también están implementados ([abajo](#vistas-del-lote-y-pasaporte-público-pasos-29-y-210)).
 
-Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso de la Etapa 2 que las trae): códigos de botella y exportaciones (2.6) y expediente (2.8).
+Con lógica desde los pasos 2.6 y 2.8: las cinco rutas de [códigos de botella](#códigos-de-botella-paso-26) y las cuatro del [expediente](#expediente-del-lote-y-hash-canónico-paso-28).
+
+Con esto **ya no queda ninguna ruta del contrato con 501 `NOT_IMPLEMENTED`**: las que se publicaron así en la apertura tienen su lógica desde la Etapa 2 (pasos 2.3–2.10).
 
 ## Vistas del lote y pasaporte público (pasos 2.9 y 2.10)
 
@@ -227,7 +396,7 @@ Qué se publica y qué no (§12.3):
 - **Sin cifras internas** (S-22): ni pesos, ni volúmenes intermedios, ni dosis, ni mermas, ni notas, ni el motivo de un descarte o de una anulación. De las correcciones, cuántas y cuándo.
 - La parcela es la del momento del pesaje (`terroirSnapshot`); la D.O. se evalúa con la instantánea del lote. `origin.terroirs[].region` es la región de la bodega (la parcela no guarda una propia).
 - Sigue respondiendo con la bodega suspendida o revocada (`winery.active: false`), con el lote descartado (`stage: DISCARDED`) y con el código anulado (`bottle.status: VOIDED`) (S-23).
-- **Expediente**: `dossier.status`, `hash` y `canonicalUrl` solo con el expediente `CLOSED`; abierto, `OPEN` y `null`. `GET /v1/public/lots/{lotCode}/dossier` devuelve los bytes canónicos tal como se guardaron (sin envoltorio), con la huella como `ETag`. La **prueba Merkle** de una botella se publica solo si reproduce la raíz guardada al cerrar (`domain/merkle.ts` prueba las construcciones habituales del árbol); si no, `merkleProof: null`.
+- **Expediente**: `dossier.status`, `hash` y `canonicalUrl` solo con el expediente `CLOSED`; abierto, `OPEN` y `null`. `GET /v1/public/lots/{lotCode}/dossier` devuelve los bytes canónicos tal como se guardaron (sin envoltorio), con la huella como `ETag`. La **prueba Merkle** de una botella (`bottle.merkleProof: { salt, path }`) usa la construcción única de `domain/merkle.ts` ([arriba](#raíz-merkle-de-los-códigos-de-botella)) sobre las hojas de `closedDossierLeaves`, que solo se dan si reproducen `lot_dossiers.bottle_merkle_root`. Un código anulado **antes** del cierre no entró en la raíz: `merkleProof: null`. Uno anulado **después** (S-14) sigue con su prueba y con `status: VOIDED`.
 - `GET /v1/public/lots/{lotCode}/attachments/{attachmentId}` redirige (302) a una URL firmada de corta vida, solo para adjuntos con visibilidad vigente `PUBLIC`.
 
 Límites y caché (§12.4, PUB-05):
@@ -248,3 +417,5 @@ Límites y caché (§12.4, PUB-05):
 | `RATE_LIMIT_PASSPORT_PER_MINUTE` | Peticiones por minuto e IP en el pasaporte público (60) |
 | `RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE` | Peticiones por minuto e IP en `/v1/public/wineries` (120) |
 | `PASSPORT_MISS_LIMIT`, `PASSPORT_MISS_WINDOW_SECONDS` | Códigos inexistentes por IP antes del 429 `PUB_TOO_MANY_LOOKUPS` (20) y su ventana en segundos (600) |
+| `STORAGE_DRIVER`, `S3_*`, `STORAGE_LOCAL_PATH` | También en el **worker**: guarda ahí los ZIP de códigos de botella (los crea al primer trabajo; mal configurado, falla la exportación, no el arranque). En `deploy/dev/compose.yml` y `docker-compose.yml` el worker ya recibe los mismos valores que la API |
+| `JOB_ATTEMPTS` | Intentos de `trace.bottle-codes.export` antes de dejar la exportación `FAILED` (por defecto 5) |

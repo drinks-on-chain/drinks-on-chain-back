@@ -64,30 +64,23 @@ export interface BottlingEvaluation {
   availableLiters: number | null;
 }
 
-type SourceRow =
-  | {
-      kind: 'AGING';
-      id: string;
-      lotId: string | null;
-      status: string;
-      discarded: boolean;
-      liters: number | null;
-      heartAbv: null;
-      tankId: string;
-      lock: LotLock | null;
-    }
-  | {
-      kind: 'REST';
-      id: string;
-      lotId: string | null;
-      status: string;
-      discarded: boolean;
-      liters: number | null;
-      heartAbv: number | null;
-      tankId: string;
-      lock: LotLock | null;
-      closed: boolean;
-    };
+type SourceRow = {
+  id: string;
+  /** Posición en `sources` de la petición (para el `field` de los errores). */
+  index: number;
+  lotId: string | null;
+  status: string;
+  discarded: boolean;
+  /** Volumen disponible de la fuente (todo: queda `BOTTLED`). */
+  liters: number | null;
+  /** Litros que la petición toma de la fuente (por defecto, todos). */
+  requestedLiters: number | undefined;
+  tankId: string;
+  lock: LotLock | null;
+} & (
+  | { kind: 'AGING'; heartAbv: null }
+  | { kind: 'REST'; heartAbv: number | null; closed: boolean }
+);
 
 /**
  * Reglas del embotellado seguro (contrato O2 §6.2), en su orden: tipo derivado
@@ -95,6 +88,12 @@ type SourceRow =
  * vez por lote, fuentes pendientes, balance de volumen con la merma de la
  * instantánea (EA-02), balance de alcohol, vino sin agua e incidencias
  * abiertas. No escribe nada: la usan la vista previa y el alta.
+ *
+ * Como el embotellado es uno por lote y cada fuente incluida queda `BOTTLED`,
+ * el balance de volumen cuenta **todo** el volumen de cada fuente: si
+ * `liters` pide menos, la diferencia se declara como remanente (`leftover`)
+ * o cuenta como merma (no puede desaparecer del balance). El alcohol puro
+ * disponible, en cambio, es solo el de los litros que se toman.
  */
 export async function evaluateBottling(
   tx: Tx,
@@ -117,7 +116,25 @@ export async function evaluateBottling(
     }),
   ]);
   const requested: SourceRow[] = [];
-  for (const ref of request.sources) {
+  const seen = new Set<string>();
+  for (const [index, ref] of request.sources.entries()) {
+    const sourceField =
+      ref.kind === 'AGING' ? 'wineAgingBatchId' : 'productionBatchId';
+    // Una fuente repetida contaría su volumen (y su alcohol) dos veces
+    if (seen.has(ref.id)) {
+      violations.push(
+        violation(
+          ErrorCode.TRC_BOTTLING_SOURCE_INVALID,
+          'La fuente está repetida en el embotellado',
+          {
+            field: `sources.${index}.${sourceField}`,
+            meta: { sourceId: ref.id },
+          },
+        ),
+      );
+      continue;
+    }
+    seen.add(ref.id);
     const row =
       ref.kind === 'AGING'
         ? await tx.wineAgingBatch.findFirst({
@@ -134,8 +151,7 @@ export async function evaluateBottling(
           ErrorCode.TRC_BOTTLING_SOURCE_INVALID,
           'La fuente no existe en esta bodega',
           {
-            field:
-              ref.kind === 'AGING' ? 'wineAgingBatchId' : 'productionBatchId',
+            field: sourceField,
             meta: { sourceId: ref.id },
           },
         ),
@@ -147,6 +163,8 @@ export async function evaluateBottling(
       requested.push({
         kind: 'AGING',
         id: a.id,
+        index,
+        requestedLiters: ref.liters,
         lotId: a.lotId,
         status: a.agingStatus,
         discarded:
@@ -173,6 +191,8 @@ export async function evaluateBottling(
       requested.push({
         kind: 'REST',
         id: p.id,
+        index,
+        requestedLiters: ref.liters,
         lotId: p.lotId,
         status: p.restStatus,
         discarded:
@@ -361,21 +381,16 @@ export async function evaluateBottling(
   }
 
   // 4–6. Balance de volumen, merma, alcohol y agua
-  const liters = requested.map(
-    (s, i) => request.sources[i]?.liters ?? s.liters,
-  );
-  const missing = requested.filter(
-    (s, i) => liters[i] === null || liters[i] === undefined,
-  );
-  for (const [i, s] of requested.entries()) {
-    const want = request.sources[i]?.liters;
+  const missing = requested.filter((s) => s.liters === null);
+  for (const s of requested) {
+    const want = s.requestedLiters;
     if (want !== undefined && s.liters !== null && want > s.liters + 1e-6) {
       violations.push(
         violation(
           ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
           `La fuente tiene ${s.liters} L`,
           {
-            field: `sources.${i}.liters`,
+            field: `sources.${s.index}.liters`,
             expected: s.liters,
             actual: want,
             meta: {
@@ -389,15 +404,21 @@ export async function evaluateBottling(
       );
     }
   }
-  const available = liters.reduce<number>((sum, l) => sum + (l ?? 0), 0);
-  const heartPure = requested.every(
-    (s) => s.kind === 'REST' && s.heartAbv !== null,
-  )
-    ? requested.reduce(
-        (sum, s, i) => sum + ((liters[i] ?? 0) * (s.heartAbv ?? 0)) / 100,
-        0,
-      )
-    : null;
+  // Volumen: todo lo de cada fuente (lo que no se toma es remanente o merma)
+  const available = requested.reduce((sum, s) => sum + (s.liters ?? 0), 0);
+  // Alcohol puro: solo el de los litros que se toman de cada destilación
+  const heartPure =
+    requested.length > 0 &&
+    requested.every((s) => s.kind === 'REST' && s.heartAbv !== null)
+      ? requested.reduce(
+          (sum, s) =>
+            sum +
+            (Math.min(s.requestedLiters ?? s.liters ?? 0, s.liters ?? 0) *
+              (s.heartAbv ?? 0)) /
+              100,
+          0,
+        )
+      : null;
   const input = {
     productType: productType ?? lot.productType ?? 'WINE',
     availableLiters: available,

@@ -94,7 +94,7 @@ Estado del recurso → **409**; regla de negocio incumplida → **422**; escritu
   }
 }
 ```
-Una ruta del contrato publicada sin lógica todavía responde **501 `NOT_IMPLEMENTED`** con `details[0].meta.step` (paso de la Etapa 2 que la trae).
+Una ruta del contrato publicada sin lógica todavía responde **501 `NOT_IMPLEMENTED`** con `details[0].meta.step` (el paso que la trae). Las de la Ola 2 ya tienen todas su lógica: hoy ninguna ruta responde 501.
 
 ---
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
@@ -7,6 +7,11 @@ import { AuditAction } from '@shared/audit/audit.actions';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import type { ErrorDetail } from '@shared/interfaces/api-response.interface';
+import {
+  isSafeStorageKey,
+  ObjectStorage,
+  STORAGE_SERVICE,
+} from '@shared/storage/storage.interface';
 import { lockLot, LockedLot } from './lot-records';
 import { actorMembership, dbClock } from './trace-db';
 import { resolvePassportBaseUrl } from './bottle-units';
@@ -53,7 +58,31 @@ export class LotBottlingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
   ) {}
+
+  /**
+   * La etiqueta (`labelDesignKey`) es la `key` de un archivo subido por la
+   * propia bodega (`POST /v1/uploads`): inexistente o ajena → violación
+   * `TRC_FILE_NOT_FOUND` (contrato O2 §0 y §13).
+   */
+  private async labelDesignViolation(
+    wineryId: string,
+    key: string | undefined,
+  ): Promise<ErrorDetail | null> {
+    if (key === undefined) return null;
+    const own =
+      isSafeStorageKey(key) &&
+      key.startsWith(`org/${wineryId}/`) &&
+      (await this.storage.exists(key));
+    return own
+      ? null
+      : violation(
+          ErrorCode.TRC_FILE_NOT_FOUND,
+          'El diseño de la etiqueta no existe o no es de esta bodega',
+          { field: 'labelDesignKey' },
+        );
+  }
 
   /** Vista previa: evalúa las reglas sin escribir nada. */
   async preview(
@@ -65,16 +94,23 @@ export class LotBottlingService {
     balance: BottlingBalance;
     violations: ErrorDetail[];
   }> {
+    const label = await this.labelDesignViolation(
+      wineryId,
+      input.labelDesignKey,
+    );
     return this.prisma.$transaction(async (tx) => {
       const lot = await lockLot(tx, lotId, wineryId, { writable: true });
       await assertNotBottled(tx, lot);
       const clock = await dbClock(tx);
       const request = await toRequest(tx, lot, input);
       const evaluation = await evaluateBottling(tx, lot, request, clock);
+      const violations = label
+        ? [...evaluation.violations, label]
+        : evaluation.violations;
       return {
-        valid: evaluation.valid,
+        valid: violations.length === 0,
         balance: evaluation.balance,
-        violations: evaluation.violations,
+        violations,
       };
     }, BOTTLING_TX_OPTIONS);
   }
@@ -90,16 +126,23 @@ export class LotBottlingService {
       PASSPORT_BASE_URL: this.config.get<string>('PASSPORT_BASE_URL'),
       APP_URL_MARKETPLACE: this.config.get<string>('APP_URL_MARKETPLACE'),
     });
+    const label = await this.labelDesignViolation(
+      wineryId,
+      input.labelDesignKey,
+    );
     return this.prisma.$transaction(async (tx) => {
       const lot = await lockLot(tx, lotId, wineryId, { writable: true });
       await assertNotBottled(tx, lot);
       const clock = await dbClock(tx);
       const request = await toRequest(tx, lot, input);
       const evaluation = await evaluateBottling(tx, lot, request, clock);
+      const violations = label
+        ? [...evaluation.violations, label]
+        : evaluation.violations;
       throwViolations(
-        evaluation.violations,
-        evaluation.violations.length > 1
-          ? `${evaluation.violations[0].message} (y ${evaluation.violations.length - 1} regla(s) más)`
+        violations,
+        violations.length > 1
+          ? `${violations[0].message} (y ${violations.length - 1} regla(s) más)`
           : undefined,
       );
       const membership = await actorMembership(tx, userId, wineryId);

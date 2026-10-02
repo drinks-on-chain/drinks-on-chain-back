@@ -51,6 +51,18 @@ flowchart LR
 
 Los repositorios y `WalletsService` aceptan un `tx` opcional para participar en la transacción de quien los llama.
 
+## Eventos y tareas de los lotes (Ola 2)
+
+Procesadores en `src/modules/lots/jobs/` ([trazabilidad](trazabilidad.md#códigos-de-botella-paso-26)):
+
+| Trabajo | Cola | Qué hace |
+|---|---|---|
+| `trace.bottle-codes.export` | `default` | Lo escribe `POST /v1/lots/{id}/bottle-codes/exports` junto a la fila `PENDING` de `bottle_code_exports`. Genera el ZIP para la imprenta (CSV + un QR por código) en el almacenamiento privado y deja la fila `READY`; idempotente; en el último intento fallido (`JOB_ATTEMPTS`), `FAILED` |
+| `trace.bottle-codes.exports-cleanup` | `scheduled` | Cada hora (minuto 41): borra del almacenamiento los ZIP caducados (7 días) |
+| `lot.certified` | `chain` | Lo escribe el cierre del expediente con la huella del lote. Hoy solo deja constancia; la Ola 3 lo usará para anclar el hash |
+
+El contrato O2 §15 nombra una cola `exports` para la primera tarea; mientras no exista como cola propia, va por `default`.
+
 ## Cómo añadir un evento y su procesador
 
 1. En el servicio, dentro de la transacción:
