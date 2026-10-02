@@ -215,7 +215,7 @@ export class CorrectionsService {
         },
       });
       const issues = await reevaluateLotIssues(tx, lot.id, {
-        violations: after,
+        clearedCodes: comparison.clearedCodes,
         record: comparison.recorded,
         source: 'CORRECTION',
         correctionId: correction.id,
@@ -312,6 +312,23 @@ export class CorrectionsService {
         await effectiveDoRules(tx, wineryId),
         clock.now,
       );
+      // Lotes singani abiertos que usan la parcela, bloqueados en orden
+      // estable y con su revisión de antes del cambio
+      const affected = await tx.lot.findMany({
+        where: {
+          wineryId,
+          productType: 'SINGANI',
+          stage: { notIn: ['DISCARDED', 'REJECTED', 'CERTIFIED', 'ANCHORED'] },
+          harvestBatches: { some: { terroirId } },
+        },
+        select: { id: true },
+        orderBy: { id: 'asc' },
+      });
+      const lots: { lot: LockedLot; before: ErrorDetail[] }[] = [];
+      for (const { id: lotId } of affected) {
+        const lot = await lockLot(tx, lotId, wineryId);
+        lots.push({ lot, before: await lotIntegrity(tx, lot.id) });
+      }
       await tx.terroir.update({
         where: { id: terroirId },
         data: {
@@ -341,28 +358,19 @@ export class CorrectionsService {
         },
       });
 
-      // Lotes singani abiertos que usan la parcela, en orden estable
-      const lots = await tx.lot.findMany({
-        where: {
-          wineryId,
-          productType: 'SINGANI',
-          stage: { notIn: ['DISCARDED', 'REJECTED', 'CERTIFIED', 'ANCHORED'] },
-          harvestBatches: { some: { terroirId } },
-        },
-        select: { id: true },
-        orderBy: { id: 'asc' },
-      });
       const reevaluated: {
         lotId: string;
         opened: string[];
         resolved: string[];
       }[] = [];
-      for (const { id: lotId } of lots) {
-        const lot = await lockLot(tx, lotId, wineryId);
-        const violations = await lotIntegrity(tx, lot.id);
+      for (const { lot, before } of lots) {
+        const comparison = compareIntegrity(
+          before,
+          await lotIntegrity(tx, lot.id),
+        );
         const issues = await reevaluateLotIssues(tx, lot.id, {
-          violations,
-          record: violations.filter(
+          clearedCodes: comparison.clearedCodes,
+          record: [...comparison.rejected, ...comparison.recorded].filter(
             (v) => v.code === ErrorCode.TRC_DO_NOT_ELIGIBLE,
           ),
           source: 'RULES_REEVALUATION',
@@ -1082,11 +1090,16 @@ export class CorrectionsService {
     }
     const plannedMonths =
       (v.plannedMonths as number | undefined) ?? row.plannedMonths;
-    // El candado se recalcula: inicio + meses (nunca menos que el mínimo)
-    const unlockDate = addMonths(
-      startDay,
-      Math.max(plannedMonths, ctx.lot.rules.wine.minAgingMonths),
-    );
+    // El candado se recalcula si cambian el inicio o los meses: inicio +
+    // meses (nunca menos que el mínimo de la instantánea)
+    const lockTouched =
+      v.startDate !== undefined || v.plannedMonths !== undefined;
+    const unlockDate = lockTouched
+      ? addMonths(
+          startDay,
+          Math.max(plannedMonths, ctx.lot.rules.wine.minAgingMonths),
+        )
+      : dateOnly(row.lockUntilDate);
     await tx.wineAgingBatch.update({
       where: { id: row.id },
       data: {
@@ -1094,8 +1107,10 @@ export class CorrectionsService {
         ...(v.volumeLiters !== undefined && {
           volumeLiters: decimal(v.volumeLiters),
         }),
-        startDate: toDbDate(startDay),
-        lockUntilDate: toDbDate(unlockDate),
+        ...(lockTouched && {
+          startDate: toDbDate(startDay),
+          lockUntilDate: toDbDate(unlockDate),
+        }),
       },
     });
     if (dateOnly(row.lockUntilDate) !== unlockDate) {
@@ -1197,9 +1212,11 @@ export class CorrectionsService {
       (v.headsLiters as number | undefined) ?? num(current.headsLiters);
     const tails =
       (v.tailsLiters as number | undefined) ?? num(current.tailsLiters);
-    const restUntil = endDay
-      ? addDays(endDay, ctx.lot.rules.singani.minRestDays)
-      : null;
+    // El reposo se recalcula si cambia la fecha de cierre
+    const restUntil =
+      typeof v.processEndDate === 'string'
+        ? addDays(v.processEndDate, ctx.lot.rules.singani.minRestDays)
+        : null;
     const cutsTouched = ['headsLiters', 'heartLiters', 'tailsLiters'].some(
       (f) => v[f] !== undefined,
     );

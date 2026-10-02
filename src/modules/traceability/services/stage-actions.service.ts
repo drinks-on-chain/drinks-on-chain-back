@@ -3,6 +3,7 @@ import { AgingStatusEnum, Prisma, RestStatusEnum } from '@prisma/client';
 import { AUDIT_TX_OPTIONS, AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
 import { ErrorCode } from '@shared/exceptions/error-codes';
+import type { ErrorDetail } from '@shared/interfaces/api-response.interface';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { ensureHarvestLot } from '@modules/lots/chain';
 import {
@@ -17,6 +18,7 @@ import {
   dateOnly,
   toDbDate,
 } from '@modules/lots/domain/dates';
+import { compareIntegrity } from '@modules/lots/domain/lot-integrity';
 import { LOT_RULE_KEYS } from '@modules/lots/domain/lot-rules';
 import {
   cutsTotal,
@@ -115,6 +117,7 @@ export class StageActionsService {
         );
       }
       const reason = dto.reason.trim();
+      const before = await lotIntegrity(tx, lot.id);
       const updated = await tx.wineAgingBatch.update({
         where: { id },
         data: {
@@ -142,7 +145,7 @@ export class StageActionsService {
         },
         resource: { type: 'wine_aging_batch', id: aging.id },
       });
-      await this.reevaluate(tx, lot, clock);
+      await this.reevaluate(tx, lot, clock, before);
       await this.audit.record(tx, {
         action: AuditAction.AGING_DISCARDED,
         resource: { type: 'wine_aging_batch', id: aging.id },
@@ -359,6 +362,7 @@ export class StageActionsService {
         throw sourceClosed('La destilación', batch.restStatus);
       }
       const reason = dto.reason.trim();
+      const before = await lotIntegrity(tx, lot.id);
       const updated = await tx.productionBatch.update({
         where: { id },
         data: {
@@ -383,7 +387,7 @@ export class StageActionsService {
         },
         resource: { type: 'production_batch', id: batch.id },
       });
-      await this.reevaluate(tx, lot, clock);
+      await this.reevaluate(tx, lot, clock, before);
       await this.audit.record(tx, {
         action: AuditAction.DISTILLATION_DISCARDED,
         resource: { type: 'production_batch', id: batch.id },
@@ -422,9 +426,15 @@ export class StageActionsService {
    * Un descarte puede resolver una incidencia (p. ej. una fuente abierta en
    * un lote ya embotellado, §6.2.3): se reevalúan las abiertas.
    */
-  private async reevaluate(tx: Tx, lot: LockedLot, clock: DbClock) {
+  private async reevaluate(
+    tx: Tx,
+    lot: LockedLot,
+    clock: DbClock,
+    before: ErrorDetail[],
+  ) {
+    const after = await lotIntegrity(tx, lot.id);
     await reevaluateLotIssues(tx, lot.id, {
-      violations: await lotIntegrity(tx, lot.id),
+      clearedCodes: compareIntegrity(before, after).clearedCodes,
       record: [],
       source: 'RULES_REEVALUATION',
       correctionId: null,

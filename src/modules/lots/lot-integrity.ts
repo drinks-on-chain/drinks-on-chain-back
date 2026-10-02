@@ -1,11 +1,7 @@
 import { Prisma } from '@prisma/client';
 import type { ErrorDetail } from '@shared/interfaces/api-response.interface';
 import { dateOnly, laPazDate } from './domain/dates';
-import {
-  INTEGRITY_CODES,
-  IntegrityLot,
-  lotIntegrityViolations,
-} from './domain/lot-integrity';
+import { IntegrityLot, lotIntegrityViolations } from './domain/lot-integrity';
 import { parseLotRules } from './domain/lot-rules';
 import type { LotProductType } from './domain/lot-stage';
 import { num } from './domain/sources';
@@ -58,6 +54,7 @@ export async function loadIntegrityLot(
           startDate: true,
           createdAt: true,
           plannedMonths: true,
+          lockUntilDate: true,
           volumeLiters: true,
           agingStatus: true,
           discardedAt: true,
@@ -130,6 +127,7 @@ export async function loadIntegrityLot(
       id: a.id,
       startDate: a.startDate ? dateOnly(a.startDate) : laPazDate(a.createdAt),
       plannedMonths: a.plannedMonths,
+      storedUnlockDate: dateOnly(a.lockUntilDate),
       volumeLiters: num(a.volumeLiters),
       discarded: a.discardedAt !== null || a.agingStatus === 'DISCARDED',
       bottled: a.agingStatus === 'BOTTLED',
@@ -178,30 +176,29 @@ export interface IssueReevaluation {
 
 /**
  * Reevalúa las incidencias del lote tras una escritura (§9): las abiertas
- * cuyo código ya no aparece en la revisión quedan resueltas (`resolvedAt`,
- * con la corrección que lo logró), y las violaciones de `record` (las que la
- * corrección deja registradas) se abren como incidencias nuevas, agrupadas
- * por código, salvo que ya haya una abierta con ese código.
+ * cuyo código la escritura **resolvió** (se incumplía antes y ya no, ver
+ * `compareIntegrity`) quedan resueltas (`resolvedAt`, con la corrección que
+ * lo logró), y las violaciones de `record` (las que la corrección deja
+ * registradas) se abren como incidencias nuevas, agrupadas por código, salvo
+ * que ya haya una abierta con ese código.
  */
 export async function reevaluateLotIssues(
   tx: Tx,
   lotId: string,
   options: {
-    violations: readonly ErrorDetail[];
+    clearedCodes: readonly string[];
     record: readonly ErrorDetail[];
     source: 'CORRECTION' | 'RULES_REEVALUATION';
     correctionId: string | null;
     now: Date;
   },
 ): Promise<IssueReevaluation> {
-  const remaining = new Set(options.violations.map((v) => v.code));
   const open = await tx.lotComplianceIssue.findMany({
     where: { lotId, resolvedAt: null },
     select: { id: true, code: true },
   });
-  const resolved = open.filter(
-    (issue) =>
-      INTEGRITY_CODES.includes(issue.code) && !remaining.has(issue.code),
+  const resolved = open.filter((issue) =>
+    options.clearedCodes.includes(issue.code),
   );
   if (resolved.length > 0) {
     await tx.lotComplianceIssue.updateMany({

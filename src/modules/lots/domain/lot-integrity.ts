@@ -47,6 +47,8 @@ export interface IntegrityLot {
     id: string;
     startDate: string;
     plannedMonths: number;
+    /** `lock_until_date` guardado: con un registro anterior a la Ola 2 manda la fecha más tardía. */
+    storedUnlockDate: string | null;
     volumeLiters: number | null;
     discarded: boolean;
     bottled: boolean;
@@ -332,7 +334,7 @@ function bottledViolations(
           id: a.id,
           startDate: a.startDate,
           plannedMonths: a.plannedMonths,
-          storedUnlockDate: null,
+          storedUnlockDate: a.storedUnlockDate,
         },
         rules,
         bottling.bottlingDay,
@@ -441,8 +443,10 @@ export function violationKey(detail: ErrorDetail): string {
 /**
  * Compara la revisión de antes y de después de una corrección: lo que la
  * corrección **introduce** (dividido en lo que se rechaza y lo que, por ser
- * de un embotellado ya hecho, queda como incidencia) y los códigos que ya no
- * aparecen.
+ * de un embotellado ya hecho, queda como incidencia) y los códigos que la
+ * corrección **resuelve**: los que se incumplían antes y ya no. Una incidencia
+ * cuyo código no se incumplía antes (p. ej. una de la migración que esta
+ * revisión no reproduce) nunca se da por resuelta por una escritura ajena.
  */
 export function compareIntegrity(
   before: readonly ErrorDetail[],
@@ -455,6 +459,7 @@ export function compareIntegrity(
   const known = new Set(before.map(violationKey));
   const introduced = after.filter((d) => !known.has(violationKey(d)));
   const remaining = new Set(after.map((d) => d.code));
+  const previous = new Set(before.map((d) => d.code ?? ''));
   return {
     rejected: introduced.filter(
       (d) => !BOTTLED_RULE_CODES.includes(d.code ?? ''),
@@ -462,6 +467,8 @@ export function compareIntegrity(
     recorded: introduced.filter((d) =>
       BOTTLED_RULE_CODES.includes(d.code ?? ''),
     ),
-    clearedCodes: INTEGRITY_CODES.filter((code) => !remaining.has(code)),
+    clearedCodes: INTEGRITY_CODES.filter(
+      (code) => previous.has(code) && !remaining.has(code),
+    ),
   };
 }

@@ -419,6 +419,7 @@ describe('revisión de integridad del lote (§9: candados, balances, D.O.)', () 
           id: 'a-1',
           startDate: '2026-01-01',
           plannedMonths: 3,
+          storedUnlockDate: null,
           volumeLiters: 1900,
           discarded: false,
           bottled: true,
@@ -427,6 +428,7 @@ describe('revisión de integridad del lote (§9: candados, balances, D.O.)', () 
           id: 'a-2',
           startDate: '2026-01-01',
           plannedMonths: 6,
+          storedUnlockDate: null,
           volumeLiters: 500,
           discarded: false,
           bottled: false,
@@ -453,6 +455,15 @@ describe('revisión de integridad del lote (§9: candados, balances, D.O.)', () 
     lot.agings[1].discarded = true;
     expect(codes(lotIntegrityViolations(lot))).not.toContain(
       'TRC_BOTTLING_SOURCES_PENDING',
+    );
+    // Con un registro anterior a la Ola 2 manda la fecha de candado más tardía
+    lot.agings[0].plannedMonths = 6;
+    expect(codes(lotIntegrityViolations(lot))).not.toContain(
+      'TRC_LOCK_NOT_RELEASED',
+    );
+    lot.agings[0].storedUnlockDate = '2026-09-15';
+    expect(codes(lotIntegrityViolations(lot))).toContain(
+      'TRC_LOCK_NOT_RELEASED',
     );
   });
 
@@ -494,6 +505,9 @@ describe('revisión de integridad del lote (§9: candados, balances, D.O.)', () 
     const comparison = compareIntegrity(violations, violations);
     expect(comparison.rejected).toEqual([]);
     expect(comparison.recorded).toEqual([]);
+    // Lo que no se incumplía antes tampoco se da por resuelto
+    expect(comparison.clearedCodes).toEqual([]);
+    expect(compareIntegrity([], []).clearedCodes).toEqual([]);
     expect(violationKey(violations[0])).toBe(
       'TRC_VOLUME_EXCEEDS_AVAILABLE:tk-1:TRANSFERS',
     );
