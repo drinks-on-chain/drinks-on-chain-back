@@ -25,6 +25,7 @@ import {
   stateError,
   violation,
 } from '../domain/trace-errors';
+import { assertDossierOpen } from '../lot-dossier';
 import { appendLotEvent } from '../lot-events';
 import { lockLot } from '../lot-records';
 import { actorOf, resolveTraceActors, TraceActor } from '../trace-actors';
@@ -175,21 +176,11 @@ export class LotAttachmentsService {
 
     const created = await this.prisma.$transaction(async (tx) => {
       const lot = await lockLot(tx, lotId, wineryId);
-      const dossier = await tx.lotDossier.findUnique({
-        where: { lotId },
-        select: { status: true, closedAt: true },
-      });
-      if (dossier?.status === 'CLOSED') {
-        throw stateError(
-          ErrorCode.TRC_DOSSIER_CLOSED,
-          'El expediente del lote está cerrado: ya no admite archivos',
-          [
-            violation(ErrorCode.TRC_DOSSIER_CLOSED, 'Expediente cerrado', {
-              meta: { closedAt: dossier.closedAt?.toISOString() ?? null },
-            }),
-          ],
-        );
-      }
+      await assertDossierOpen(
+        tx,
+        lotId,
+        'El expediente del lote está cerrado: ya no admite archivos',
+      );
       if (TERMINAL_STAGES.includes(lot.stage)) {
         throw stateError(
           ErrorCode.TRC_LOT_TERMINAL,

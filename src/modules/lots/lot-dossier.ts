@@ -383,31 +383,41 @@ export async function bottleMerkleProof(
 }
 
 /**
- * 409 `TRC_DOSSIER_CLOSED` si el expediente del lote ya está cerrado
- * (contrato O2 §13: escritura tras el cierre, con `meta.closedAt`). Para las
- * escrituras del lote que el contrato marca con este código (laboratorio,
- * correcciones, sustitución de códigos): llámala antes de `lockLot(…,
- * { writable: true })`, que respondería `TRC_LOT_TERMINAL`.
+ * Error 409 `TRC_DOSSIER_CLOSED` (contrato O2 §13: escritura tras el cierre,
+ * con `meta.closedAt`). Una sola forma para todas las escrituras que el
+ * contrato marca con este código.
+ */
+export function dossierClosedError(
+  dossier: { closedAt: Date | null; hash: string | null } | null,
+  message = 'El expediente del lote está cerrado: ya no admite registros',
+) {
+  return stateError(ErrorCode.TRC_DOSSIER_CLOSED, message, [
+    violation(ErrorCode.TRC_DOSSIER_CLOSED, 'Expediente cerrado', {
+      meta: {
+        closedAt: dossier?.closedAt?.toISOString() ?? null,
+        hash: dossier?.hash ?? null,
+      },
+    }),
+  ]);
+}
+
+/**
+ * 409 `TRC_DOSSIER_CLOSED` si el expediente del lote ya está cerrado. Para
+ * las escrituras del lote que el contrato marca con este código (laboratorio
+ * §8.1, correcciones §9, archivos §11.5, sustitución de códigos §7.2 y un
+ * segundo cierre §10): llámala con la fila del lote bloqueada y **antes** de
+ * `lockLot(…, { writable: true })`, que respondería `TRC_LOT_TERMINAL` (el
+ * código de las demás escrituras sobre un lote `CERTIFIED`).
  */
 export async function assertDossierOpen(
   client: DbClient,
   lotId: string,
+  message?: string,
 ): Promise<void> {
   const dossier = await client.lotDossier.findUnique({
     where: { lotId },
     select: { status: true, closedAt: true, hash: true },
   });
   if (dossier?.status !== 'CLOSED') return;
-  throw stateError(
-    ErrorCode.TRC_DOSSIER_CLOSED,
-    'El expediente del lote está cerrado: ya no admite registros',
-    [
-      violation(ErrorCode.TRC_DOSSIER_CLOSED, 'Expediente cerrado', {
-        meta: {
-          closedAt: dossier.closedAt?.toISOString() ?? null,
-          hash: dossier.hash,
-        },
-      }),
-    ],
-  );
+  throw dossierClosedError(dossier, message);
 }

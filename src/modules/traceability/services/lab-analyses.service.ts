@@ -22,6 +22,7 @@ import {
   withMarks,
 } from '@modules/lots/correction-marks';
 import { lockLot, LockedLot } from '@modules/lots/lot-records';
+import { assertDossierOpen } from '@modules/lots/lot-dossier';
 import { appendLotEvent } from '@modules/lots/lot-events';
 import {
   actorMembership,
@@ -126,6 +127,12 @@ export class LabAnalysesService {
       const lotId =
         bottling.lotId ??
         (harvestBatchId ? await ensureHarvestLot(tx, harvestBatchId) : null);
+      if (lotId) {
+        // Alias de la ruta del lote (§8.1): con el expediente cerrado, el
+        // motivo exacto es `TRC_DOSSIER_CLOSED`, no la etapa terminal
+        await lockLotRow(tx, lotId);
+        await assertDossierOpen(tx, lotId);
+      }
       const lot = lotId
         ? await lockLot(tx, lotId, wineryId, { writable: true })
         : null;
@@ -180,7 +187,6 @@ export class LabAnalysesService {
         where: { id: lotId, wineryId },
         select: {
           stage: true,
-          dossier: { select: { status: true, closedAt: true } },
           bottlingBatch: {
             select: {
               id: true,
@@ -193,9 +199,7 @@ export class LabAnalysesService {
       });
       if (!row) throw lotNotFound();
       // Antes que la etapa terminal: el motivo exacto es el expediente
-      if (row.dossier?.status === 'CLOSED') {
-        throw dossierClosed(row.dossier.closedAt);
-      }
+      await assertDossierOpen(tx, lotId);
       const lot = await lockLot(tx, lotId, wineryId, { writable: true });
       if (!row.bottlingBatch) {
         throw stateError(
@@ -474,19 +478,6 @@ export function resolveMethanol(dto: {
     );
   }
   return dto.methanolMg100mlAa ?? fromMgL;
-}
-
-/** 409 `TRC_DOSSIER_CLOSED`: el expediente cerrado no admite más registros. */
-export function dossierClosed(closedAt: Date | null) {
-  return stateError(
-    ErrorCode.TRC_DOSSIER_CLOSED,
-    'El expediente del lote está cerrado: ya no admite registros',
-    [
-      violation(ErrorCode.TRC_DOSSIER_CLOSED, 'Expediente cerrado', {
-        meta: { closedAt: closedAt ? closedAt.toISOString() : null },
-      }),
-    ],
-  );
 }
 
 export function toLabView(

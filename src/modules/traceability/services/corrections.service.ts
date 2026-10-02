@@ -62,6 +62,10 @@ import {
 } from '@modules/lots/domain/trace-errors';
 import { effectiveDoRules, terroirDo } from '@modules/lots/do-rules';
 import { releaseDueLocks } from '@modules/lots/lock-release';
+import {
+  assertDossierOpen,
+  dossierClosedError,
+} from '@modules/lots/lot-dossier';
 import { appendLotEvent } from '@modules/lots/lot-events';
 import { lotIntegrity, reevaluateLotIssues } from '@modules/lots/lot-integrity';
 import { lockLot, LockedLot, refreshLotStage } from '@modules/lots/lot-records';
@@ -76,7 +80,6 @@ import {
   DbClock,
   lockLotRow,
 } from '@modules/lots/trace-db';
-import { dossierClosed } from './lab-analyses.service';
 
 type Tx = Prisma.TransactionClient;
 type Values = Record<string, CorrectionValue>;
@@ -480,17 +483,11 @@ export class CorrectionsService {
     target: { type: CorrectionTargetType; kind: CorrectionKind },
   ): Promise<LockedLot> {
     await lockLotRow(tx, lotId);
-    const row = await tx.lot.findFirst({
-      where: { id: lotId, wineryId },
-      select: { dossier: { select: { status: true, closedAt: true } } },
-    });
-    if (!row) throw lotNotFound();
-    if (row.dossier?.status === 'CLOSED') {
-      throw dossierClosed(row.dossier.closedAt);
-    }
+    // 404 antes que el estado del expediente: el lote de otra bodega no existe
     const lot = await lockLot(tx, lotId, wineryId);
+    await assertDossierOpen(tx, lot.id);
     if (lot.stage === 'CERTIFIED' || lot.stage === 'ANCHORED') {
-      throw dossierClosed(null);
+      throw dossierClosedError(null);
     }
     const rejectedVoid =
       lot.stage === 'REJECTED' &&
