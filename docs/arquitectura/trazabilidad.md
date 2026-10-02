@@ -131,7 +131,53 @@ Con ellas la semilla no genera incidencias. Una base que ya tenía la semilla an
 
 Implementadas en la apertura (con su OpenAPI y validadas contra él en e2e): `GET/POST /v1/lots`, `GET/PATCH /v1/lots/{id}`, `POST /v1/lots/{id}/discard`; `POST /v1/lots/{id}/bottling/preview` y `POST /v1/lots/{id}/bottling` (mismo motor que la ruta legada; sin `sources`, todas las fuentes abiertas del lote con todo su volumen); `POST/GET /v1/harvest-batches/{id}/phyto-decisions` y `…/maturity-analyses`; `GET /v1/harvest-batches?lotId=none`; y las rutas actuales con las reglas nuevas y los campos aditivos (`lotId`, `inputs`, `lock`, `balance`, `bottleCodes`, `conformity`, `units`…). `GET /v1/public/wineries` también responde (O2-WEB-1).
 
-Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso de la Etapa 2 que las trae): transiciones del tanque (2.3), descarte de crianza y cierre/descarte de destilación (2.4), códigos de botella y exportaciones (2.6), laboratorio por lote y correcciones (2.7), expediente (2.8), línea de tiempo, grafo, balance, panel, reportes y adjuntos (2.9) y pasaporte público (2.10).
+Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso de la Etapa 2 que las trae): transiciones del tanque (2.3), descarte de crianza y cierre/descarte de destilación (2.4), códigos de botella y exportaciones (2.6), laboratorio por lote y correcciones (2.7) y expediente (2.8). La línea de tiempo, el grafo, el balance, el panel, los reportes, los adjuntos (2.9) y el pasaporte público (2.10) ya tienen lógica: ver la sección siguiente.
+
+## Vistas del lote y pasaporte público (pasos 2.9 y 2.10)
+
+Código en `src/modules/lots/views/` (vistas y archivos), `src/modules/lots/passport/` (pasaporte) y `domain/lot-balance.ts`, `domain/merkle.ts` (funciones puras con sus pruebas). Contrato O2 §11 y §12.
+
+### Vistas (§11)
+
+| Ruta | Quién | Qué devuelve |
+|---|---|---|
+| `GET /v1/lots/{id}/timeline` | Los cinco roles; plataforma | Eventos de `lot_events` por `seq` con su actor, `lateEntry` (registrado más de 7 días después del hecho, S-9), candados y fecha estimada |
+| `GET /v1/lots/{id}/balance` | Todos salvo OPERATOR; plataforma | Kilos por dictamen, mosto y rendimiento (sobre los kilos que entraron a tanques), merma de fermentación, crianza o destilación (cortes, grado medio ponderado, alcohol puro), balance del embotellado y proyección de botellas (S-19) |
+| `GET /v1/lots/{id}/graph` | Miembros de la bodega dueña; plataforma | Nodos y aristas con cantidades y métricas reales. **SE-07**: cualquier otra sesión (otra bodega, consumidor, punto de retiro) → 404 `TRC_LOT_NOT_FOUND`, nunca 403 |
+| `GET /v1/traceability/dashboard` | Todos salvo OPERATOR; plataforma | Lotes por etapa, candados que se liberan en ≤ 14 días, alertas de fermentación (última lectura > 32 °C o 48 h sin lecturas, S-18), dictámenes pendientes, embotellados sin laboratorio, lotes listos para cerrar, incidencias abiertas y uva sin lote |
+| `GET /v1/traceability/reports/production` | OWNER, ENOLOGIST, ACCOUNTANT; plataforma | Una fila por lote y totales por tipo (`WINE`, `SINGANI`, `UNDECIDED`). `format=csv`: UTF-8 con BOM, coma, CRLF y celdas seguras contra fórmulas. Más de 10 000 lotes → 422 `TRC_REPORT_TOO_LARGE` |
+
+Lo que no está registrado **no se supone**: sin volumen final del tanque, la merma de fermentación es `null` (no cero); una métrica del grafo sin dato es `null`.
+
+### Archivos del lote (§11.5, S-20)
+
+`POST /v1/lots/{id}/attachments` referencia por su `key` un archivo ya subido con `POST /v1/uploads`. La clave debe ser del prefijo de la bodega (`org/{wineryId}/…`) y existir → si no, 422 `TRC_FILE_NOT_FOUND`. Al adjuntar se guardan el tipo real (firma de bytes), el tamaño y la **huella SHA-256** del archivo (lo que el expediente usa en lugar de la URL). Todo nace `PRIVATE` salvo la etiqueta (`LABEL`), que nace `PUBLIC`; publicar otro tipo de archivo es cosa de OWNER o ENOLOGIST. Con el expediente cerrado → 409 `TRC_DOSSIER_CLOSED`; lote terminal → 409 `TRC_LOT_TERMINAL`.
+
+La lista (`GET`) incluye además los informes de dictamen y de laboratorio guardados por su `key`, cada uno con una URL firmada de 15 minutos; AGRONOMIST y OPERATOR solo ven los que adjuntaron ellos (§14).
+
+`POST …/{attachmentId}/visibility` **no edita el adjunto** (solo inserción): añade un evento `FILE_ATTACHED` con `data.action = VISIBILITY_CHANGED` a la línea de tiempo y una entrada `ATTACHMENT_VISIBILITY_CHANGED` a la bitácora. La visibilidad vigente es la del último de esos eventos; repetir la vigente no registra nada.
+
+### Pasaporte público (§12)
+
+`GET /v1/public/passports/{code}` normaliza el código (§7.1) y decide: 8 caracteres Crockford con el control válido → botella; forma de código de lote → lote; cualquier otra cosa → 422 `PUB_CODE_MALFORMED` sin tocar la base. Solo hay pasaporte de lotes con código de lote (embotellados).
+
+Qué se publica y qué no (§12.3):
+
+- **Solo datos registrados** (EA-05): cada apartado lleva su `status` (`RECORDED`, `NOT_RECORDED`, `NOT_APPLICABLE`) y los campos sin dato van en `null`. Un vino tiene `distillation: NOT_APPLICABLE`; un singani, `aging: NOT_APPLICABLE`.
+- **Roles, no personas** (S-21): la línea de tiempo lleva `actorRole`. Sus textos son **propios del pasaporte** (`publicEventSummary`), nunca el resumen interno del evento, que lleva kilos, litros, motivos y códigos internos.
+- **Sin cifras internas** (S-22): ni pesos, ni volúmenes intermedios, ni dosis, ni mermas, ni notas, ni el motivo de un descarte o de una anulación. De las correcciones, cuántas y cuándo.
+- La parcela es la del momento del pesaje (`terroirSnapshot`); la D.O. se evalúa con la instantánea del lote. `origin.terroirs[].region` es la región de la bodega (la parcela no guarda una propia).
+- Sigue respondiendo con la bodega suspendida o revocada (`winery.active: false`), con el lote descartado (`stage: DISCARDED`) y con el código anulado (`bottle.status: VOIDED`) (S-23).
+- **Expediente**: `dossier.status`, `hash` y `canonicalUrl` solo con el expediente `CLOSED`; abierto, `OPEN` y `null`. `GET /v1/public/lots/{lotCode}/dossier` devuelve los bytes canónicos tal como se guardaron (sin envoltorio), con la huella como `ETag`. La **prueba Merkle** de una botella se publica solo si reproduce la raíz guardada al cerrar (`domain/merkle.ts` prueba las construcciones habituales del árbol); si no, `merkleProof: null`.
+- `GET /v1/public/lots/{lotCode}/attachments/{attachmentId}` redirige (302) a una URL firmada de corta vida, solo para adjuntos con visibilidad vigente `PUBLIC`.
+
+Límites y caché (§12.4, PUB-05):
+
+- **404 uniforme** `PUB_CODE_NOT_FOUND` ("Código no encontrado") para un código de botella o de lote que no existe, un expediente sin cerrar o un adjunto privado.
+- **60 peticiones por minuto e IP real** para todas las rutas del pasaporte juntas y 120 para `/v1/public/wineries` (límites `passport` y `publicWineries` del `AppThrottlerGuard`). La IP es la firmada por el proxy de las apps (`X-DOC-Client-IP`).
+- **Freno a la enumeración** (S-24): cada código bien formado que no existe cuenta para su IP; al superar 20 en 10 minutos (ventana fija desde el primero), todas las consultas del pasaporte de esa IP responden 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After` hasta que acaba la ventana. Los códigos mal formados (422) no cuentan. Contadores en Redis; si Redis no responde, en la memoria del proceso.
+- `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (con `If-None-Match` → 304). Lote con el expediente cerrado: `max-age=3600`; el de una botella se queda en 60 s porque su código aún se puede anular (S-14). Los 404 llevan `max-age=30` y se recuerdan 30 s en Redis; 422 y 429, `no-store`.
+- **Caché en Redis de 60 s** del pasaporte del lote, guardada con una marca de su estado (último `seq` de la línea de tiempo, última escritura, etapa, estado de la bodega y del expediente). Cada lectura compara la marca con una consulta ligera: cualquier evento del lote deja la entrada sin efecto, sin depender de que quien escribe avise.
 
 ## Configuración
 
@@ -139,3 +185,7 @@ Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso
 |---|---|
 | `PASSPORT_BASE_URL` | Base del QR: `{PASSPORT_BASE_URL}/b/{código}` (OP-06). Por defecto `APP_URL_MARKETPLACE`; si tampoco, `http://localhost:3005` |
 | `LOT_BACKFILL_ON_BOOT` | `false` desactiva el relleno al arrancar (por defecto activo) |
+| `API_PUBLIC_URL` | Origen público de la API para los enlaces del pasaporte (`dossier.canonicalUrl` y `publicAttachments[].url`). Vacío: rutas relativas (`/v1/public/lots/…`) que la app resuelve contra su proxy |
+| `RATE_LIMIT_PASSPORT_PER_MINUTE` | Peticiones por minuto e IP en el pasaporte público (60) |
+| `RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE` | Peticiones por minuto e IP en `/v1/public/wineries` (120) |
+| `PASSPORT_MISS_LIMIT`, `PASSPORT_MISS_WINDOW_SECONDS` | Códigos inexistentes por IP antes del 429 `PUB_TOO_MANY_LOOKUPS` (20) y su ventana en segundos (600) |

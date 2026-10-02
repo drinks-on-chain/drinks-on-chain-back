@@ -175,5 +175,16 @@ Contrato: `plan/contratos/o1b-lista-de-espera.md` (carpeta del ecosistema). Sale
 - [ ] **2.6 Códigos de botella** (ERP-15) — parcial: generación al embotellar; listado, CSV, ZIP y anulación (501)
 - [ ] **2.7 Laboratorio y correcciones** (ERP-17, 18; EA-06, EA-08) — parcial: conformidad calculada con unidades y reanálisis; correcciones (501)
 - [ ] **2.8 Expediente** (ERP-19)
-- [ ] **2.9 Vistas del lote** (ERP-20…24, EA-05) — parcial: eventos registrados desde la apertura y grafo legado con datos reales; rutas nuevas (501)
-- [ ] **2.10 Pasaporte público** (PUB-01, 02, 05)
+- [x] **2.9 Vistas del lote** (ERP-20…24, EA-05, SE-07) — línea de tiempo, balance, grafo, panel, reporte y archivos del lote. · 2026-10-01 ([`docs/arquitectura/trazabilidad.md`](arquitectura/trazabilidad.md#vistas-del-lote-y-pasaporte-público-pasos-29-y-210))
+  - [x] `GET /v1/lots/{id}/timeline` (eventos con actor, registro tardío, candados y fecha estimada) y `GET /v1/lots/{id}/balance` (kilos → litros → botellas con mermas por etapa y proyección S-19; sin volumen registrado la merma es `null`) · 2026-10-01
+  - [x] `GET /v1/lots/{id}/graph` con datos reales (`null` = no registrado) y SE-07: bodega dueña y plataforma; cualquier otra sesión → 404 · 2026-10-01
+  - [x] `GET /v1/traceability/dashboard` (lotes por etapa, candados en ≤ 14 días, alertas de fermentación S-18, dictámenes pendientes, embotellados sin laboratorio, listos para cerrar, incidencias, uva sin lote) · 2026-10-01
+  - [x] `GET /v1/traceability/reports/production` en JSON y CSV (fila por lote, totales por tipo, 422 `TRC_REPORT_TOO_LARGE` sobre 10 000 filas) · 2026-10-01
+  - [x] Archivos del lote: `POST/GET /v1/lots/{id}/attachments` y `POST …/{attachmentId}/visibility` sobre `uploads` (privados salvo la etiqueta, S-20; tipo, tamaño y SHA-256; el cambio de visibilidad se registra sin editar el adjunto) · 2026-10-01
+  - [ ] `corrected` de los nodos del grafo y `corrections` del pasaporte leen `trace_corrections`: se rellenan cuando lleguen las correcciones (2.7)
+- [x] **2.10 Pasaporte público** (PUB-01, 02, 05; EA-05) — lote y botella con solo datos registrados, límites y caché. · 2026-10-01 ([`docs/arquitectura/trazabilidad.md`](arquitectura/trazabilidad.md#vistas-del-lote-y-pasaporte-público-pasos-29-y-210))
+  - [x] `GET /v1/public/passports/{code}`, `/public/lots/{lotCode}`, `/public/bottles/{code}`: "no registrado" como `NOT_RECORDED`/`null`, roles y no nombres (S-21), sin pesos ni volúmenes (S-22), visible con la bodega suspendida, el lote descartado y el código anulado (S-23) · 2026-10-01
+  - [x] `GET /v1/public/lots/{lotCode}/dossier` (bytes canónicos del expediente cerrado) y `…/attachments/{attachmentId}` (302 a una URL firmada, solo adjuntos públicos) · 2026-10-01
+  - [x] 404 uniforme, 422 por código mal formado, 60 peticiones/min por IP real (120 en `/public/wineries`) y 429 `PUB_TOO_MANY_LOOKUPS` tras 20 códigos inexistentes en 10 min (S-24); `Cache-Control`, `ETag` y caché en Redis de 60 s que cambia con cada evento del lote (§12.4) · 2026-10-01
+  - [ ] Con el cierre del expediente (2.8): comprobar la prueba Merkle de la botella contra la raíz que escriba el cierre (hoy se prueba con una raíz de ensayo; el pasaporte solo publica la prueba si reproduce la raíz guardada)
+  - [ ] Invalidar la caché desde el worker con los eventos `lot.*` del outbox cuando se emitan (hoy la marca de estado del lote ya lo hace en cada lectura)
