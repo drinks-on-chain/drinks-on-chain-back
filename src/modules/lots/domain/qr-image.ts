@@ -107,7 +107,7 @@ export function qrPng(text: string, options: QrImageOptions): Buffer {
   return Buffer.concat([
     PNG_SIGNATURE,
     pngChunk('IHDR', header),
-    pngChunk('IDAT', deflateSync(raw, { level: 9 })),
+    pngChunk('IDAT', deflateSync(raw, { level: 6 })),
     pngChunk('IEND', Buffer.alloc(0)),
   ]);
 }

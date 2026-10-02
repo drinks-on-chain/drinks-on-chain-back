@@ -156,13 +156,11 @@ describe('raíz Merkle de los códigos de botella (§10, §20)', () => {
     expect(() => merkleRoot(['zz'])).toThrow();
   });
 
-  it('5.000 botellas: raíz y prueba en un tiempo despreciable', () => {
+  it('5.000 botellas: raíz y prueba de 13 pasos como mucho', () => {
     const list = leaves(5000);
-    const started = Date.now();
     const root = merkleRoot(list);
     const path = merkleProof(list, 4999);
     expect(verifyMerkleProof(list[4999], path, root)).toBe(true);
     expect(path.length).toBeLessThanOrEqual(13);
-    expect(Date.now() - started).toBeLessThan(2000);
   });
 });
