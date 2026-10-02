@@ -691,7 +691,7 @@
     },
     "/v1/bottle-codes/{code}/void": {
       "post": {
-        "description": "Contrato O2 §7.2: `replace: true` emite un código nuevo con la misma serie (etiqueta dañada). Con el expediente cerrado solo se anula sin sustituto (S-14). Queda en la bitácora (`BOTTLE_CODE_VOIDED`).",
+        "description": "Contrato O2 §7.2: `replace: true` emite un código nuevo con la misma serie (etiqueta dañada); la respuesta es el código anulado, con el sustituto en `voided.replacedBy`. Con el expediente cerrado solo se anula sin sustituto (S-14). Queda en la línea de tiempo del lote y en la bitácora (`BOTTLE_CODE_VOIDED`).",
         "operationId": "BottleCodesController_voidCode_v1",
         "parameters": [
           {
@@ -768,16 +768,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.6 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -3687,7 +3677,7 @@
     },
     "/v1/lots/{id}/bottle-codes": {
       "get": {
-        "description": "Contrato O2 §7.2: por número de serie, con filtros de estado y rango (`fromSerial`–`toSerial`). Rango inválido (`fromSerial > toSerial` o fuera de `1…N`) → 422 `VALIDATION_ERROR`.",
+        "description": "Contrato O2 §7.2: por número de serie, con filtros de estado y rango (`fromSerial`–`toSerial`) y búsqueda `q` por fragmento del código o por número de serie. Un código sustituido y su sustituto comparten serie (primero el anulado). Rango inválido (`fromSerial > toSerial` o fuera de `1…N`) → 422 `VALIDATION_ERROR`. De la plataforma solo listan ADMIN y OPERATIONS (con `?wineryId=`).",
         "operationId": "BottleCodesController_list_v1",
         "parameters": [
           {
@@ -3762,6 +3752,17 @@
               "example": 500,
               "type": "integer"
             }
+          },
+          {
+            "name": "q",
+            "required": false,
+            "in": "query",
+            "description": "Busca por un fragmento del código (se normaliza: mayúsculas, sin espacios ni guiones, O → 0, I/L → 1) o por el número de serie exacto",
+            "schema": {
+              "maxLength": 20,
+              "example": "K7M2-Q9",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -3806,6 +3807,16 @@
               }
             }
           },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (otros roles: solo los totales del embotellado)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
+          },
           "404": {
             "description": "TRC_LOT_NOT_FOUND",
             "content": {
@@ -3835,16 +3846,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.6 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -3852,7 +3853,7 @@
             "bearer": []
           }
         ],
-        "summary": "Listar los códigos de botella del lote",
+        "summary": "Listar y buscar los códigos de botella del lote",
         "tags": [
           "Códigos de botella"
         ]
@@ -3860,7 +3861,7 @@
     },
     "/v1/lots/{id}/bottle-codes/export": {
       "get": {
-        "description": "Contrato O2 §7.2: `text/csv; charset=utf-8` con la cabecera `serial,code,codeFormatted,qrUrl,lotCode,lotName,productType,bottlingDate`, opcionalmente por rango de serie. Queda en la bitácora (`BOTTLE_CODES_EXPORTED`) con el rango.",
+        "description": "Contrato O2 §7.2: `text/csv; charset=utf-8` con la cabecera `serial,code,codeFormatted,qrUrl,lotCode,lotName,productType,bottlingDate`, una fila por código **activo**, opcionalmente por rango de serie. UTF-8 con BOM, separador coma, CRLF. Se envía por partes (streaming); la cabecera `X-Export-Rows` lleva el número de filas. Queda registrada en `bottle_code_exports` y en la bitácora (`BOTTLE_CODES_EXPORTED`) con el rango. Solo la bodega (la plataforma no exporta códigos: 403).",
         "operationId": "BottleCodesController_exportCsv_v1",
         "parameters": [
           {
@@ -3907,7 +3908,7 @@
             "name": "wineryId",
             "required": false,
             "in": "query",
-            "description": "Solo personal de plataforma: bodega sobre la que se consulta",
+            "description": "Solo personal de plataforma: bodega de la petición. La plataforma no exporta códigos (403): solo los lista (contrato O2 §14)",
             "schema": {
               "format": "uuid",
               "type": "string"
@@ -3922,6 +3923,16 @@
                 "schema": {
                   "type": "string",
                   "example": "serial,code,codeFormatted,qrUrl,lotCode,lotName,productType,bottlingDate\n1,K7M2Q9XA,K7M2-Q9XA,https://app.drinksonchain.com/b/K7M2Q9XA,CVJ-2026-SINGANI-004,Singani Gran Reserva 2026,SINGANI,2026-10-01"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol sin permiso o personal de plataforma)",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
             }
@@ -3955,16 +3966,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.6 de la Etapa 2",
-            "content": {
-              "text/csv": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -3980,7 +3981,7 @@
     },
     "/v1/lots/{id}/bottle-codes/exports": {
       "post": {
-        "description": "Contrato O2 §7.2: ZIP con el CSV y una imagen de QR por botella (`{serial}-{code}.svg`), generado en el worker (`trace.bottle-codes.export`); caduca a los 7 días. Se consulta con `GET …/exports/{exportId}`.",
+        "description": "Contrato O2 §7.2: ZIP con `codigos.csv` y una imagen de QR por código activo del rango (`qr/{serial}-{code}.svg` o `.png`; por defecto 512 px y 4 módulos de margen), generado en el worker (`trace.bottle-codes.export`); caduca a los 7 días. Como máximo 20 000 códigos por exportación (más → 422: se exporta por rangos). Se consulta con `GET …/exports/{exportId}`. Queda en la bitácora (`BOTTLE_CODES_EXPORTED`) con el rango.",
         "operationId": "BottleCodesController_createExport_v1",
         "parameters": [
           {
@@ -4062,16 +4063,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.6 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -4087,7 +4078,7 @@
     },
     "/v1/lots/{id}/bottle-codes/exports/{exportId}": {
       "get": {
-        "description": "Contrato O2 §7.2: `downloadUrl` es una URL firmada de 15 min, solo con `status: READY`.",
+        "description": "Contrato O2 §7.2: `downloadUrl` es una URL firmada de 15 min, solo con el ZIP `READY` y sin caducar. Solo la bodega (la plataforma no exporta códigos: 403).",
         "operationId": "BottleCodesController_getExport_v1",
         "parameters": [
           {
@@ -4118,8 +4109,8 @@
               }
             }
           },
-          "404": {
-            "description": "TRC_LOT_NOT_FOUND, NOT_FOUND",
+          "403": {
+            "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol sin permiso o personal de plataforma)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4128,8 +4119,8 @@
               }
             }
           },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.6 de la Etapa 2",
+          "404": {
+            "description": "TRC_LOT_NOT_FOUND, NOT_FOUND",
             "content": {
               "application/json": {
                 "schema": {
@@ -4144,7 +4135,7 @@
             "bearer": []
           }
         ],
-        "summary": "Estado de una exportación ZIP",
+        "summary": "Estado de una exportación",
         "tags": [
           "Códigos de botella"
         ]
@@ -4691,16 +4682,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.8 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -4716,7 +4697,7 @@
     },
     "/v1/lots/{id}/dossier/canonical": {
       "get": {
-        "description": "Contrato O2 §10: los **bytes exactos** que se hashearon (o se hashearían), sin el envoltorio `data`, para recalcular la huella.",
+        "description": "Contrato O2 §10: los **bytes exactos** que se hashearon (o se hashearían), sin el envoltorio `data`, para recalcular la huella. La cabecera `X-Dossier-Status` dice si el expediente está `OPEN` (vista previa) o `CLOSED`, y `X-Dossier-Hash` lleva el SHA-256 de estos bytes.",
         "operationId": "DossierController_canonical_v1",
         "parameters": [
           {
@@ -4750,16 +4731,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.8 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -4775,7 +4746,7 @@
     },
     "/v1/lots/{id}/dossier/close": {
       "post": {
-        "description": "Contrato O2 §10: calcula el hash SHA-256 del contenido canónico (JCS), pasa el lote a `CERTIFIED` y emite `lot.certified` por el outbox (la Ola 3 lo ancla). Tras el cierre el lote solo admite anular códigos sin sustituto.",
+        "description": "Contrato O2 §10: calcula el hash SHA-256 del contenido canónico (JCS) y la raíz Merkle de los códigos de botella activos, pasa el lote a `CERTIFIED` y emite `lot.certified` por el outbox (la Ola 3 lo ancla). Tras el cierre el lote solo admite anular códigos sin sustituto.",
         "operationId": "DossierController_close_v1",
         "parameters": [
           {
@@ -4857,16 +4828,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.8 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -4882,7 +4843,7 @@
     },
     "/v1/lots/{id}/dossier/preview": {
       "get": {
-        "description": "Contrato O2 §10: `BOTTLED`, `LAB_CONFORMING`, `BOTTLE_CODES_READY`, `NO_OPEN_COMPLIANCE_ISSUES` y `NO_OPEN_SOURCES`, con la huella que tendría el expediente si se cerrara ahora.",
+        "description": "Contrato O2 §10: `BOTTLED`, `LAB_CONFORMING`, `BOTTLE_CODES_READY`, `NO_OPEN_COMPLIANCE_ISSUES` y `NO_OPEN_SOURCES`. `hashPreview` es la huella del contenido canónico actual (el de `GET …/dossier/canonical`, con `closedAt` y `closedBy` en `null`): no cambia mientras no cambien los registros del lote; la huella definitiva incluye además la fecha y el autor del cierre. `null` si el lote aún no está embotellado; con el expediente cerrado, la huella definitiva.",
         "operationId": "DossierController_preview_v1",
         "parameters": [
           {
@@ -4907,16 +4868,6 @@
           },
           "404": {
             "description": "TRC_LOT_NOT_FOUND",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.8 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -13998,6 +13949,23 @@
               "FAILED"
             ]
           },
+          "format": {
+            "type": "string",
+            "enum": [
+              "CSV",
+              "ZIP"
+            ]
+          },
+          "fromSerial": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 1
+          },
+          "toSerial": {
+            "type": "integer",
+            "minimum": 1,
+            "example": 2950
+          },
           "rows": {
             "type": "integer",
             "minimum": 0,
@@ -14008,12 +13976,19 @@
             "example": "2026-10-02T09:00:00.000Z"
           },
           "createdBy": {
-            "$ref": "#/components/schemas/TraceActorDto"
+            "nullable": true,
+            "description": "`null` = no registrado (membresía que ya no existe)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceActorDto"
+              }
+            ]
           },
           "downloadUrl": {
             "type": "string",
             "nullable": true,
-            "description": "URL firmada de 15 min (solo `READY`)"
+            "description": "URL firmada de 15 min del ZIP (solo `READY` y sin caducar; una exportación CSV se descarga al pedirla)"
           },
           "expiresAt": {
             "type": "string",
@@ -14024,6 +13999,9 @@
         "required": [
           "exportId",
           "status",
+          "format",
+          "fromSerial",
+          "toSerial",
           "rows",
           "createdAt",
           "createdBy",
@@ -14177,7 +14155,14 @@
             "example": "2026-10-05T12:00:00.000Z"
           },
           "by": {
-            "$ref": "#/components/schemas/TraceActorDto"
+            "nullable": true,
+            "description": "`null` = no registrado (membresía que ya no existe)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceActorDto"
+              }
+            ]
           },
           "reason": {
             "type": "string",
