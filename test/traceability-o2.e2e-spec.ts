@@ -1326,21 +1326,21 @@ describe('Ola 2 · apertura: lote, migración y cierres de seguridad (e2e)', () 
       expect(res.body.error.code).toBe('TRC_LOT_NOT_FOUND');
     });
 
-    it('rutas del contrato sin lógica todavía: 501 NOT_IMPLEMENTED con su esquema', async () => {
+    it('las vistas del lote y el pasaporte (pasos 2.9 y 2.10) ya tienen lógica: no responden 501', async () => {
       const res = await checked(
         'get',
         'cinti',
         `/v1/lots/${lotId}/timeline`,
-        501,
+        200,
       );
-      expect(res.body.error.code).toBe('NOT_IMPLEMENTED');
+      expect(res.body.data.events.length).toBeGreaterThan(0);
       const pub = await checked(
         'get',
         'consumer',
         `/v1/public/passports/${lotCode}`,
-        501,
+        200,
       );
-      expect(pub.body.error.code).toBe('NOT_IMPLEMENTED');
+      expect(pub.body.data).toMatchObject({ kind: 'LOT', lotCode });
     });
   });
 
