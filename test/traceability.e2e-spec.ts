@@ -291,7 +291,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           finalAlcoholAbv: 40.0,
           totalBottlesPackaged: 4080,
           packagingFormatCl: 75,
-          bottlingDate: daysAgo(0),
+          bottlingDate: daysAgo(1),
         });
 
       expect(res.status).toBe(422);
