@@ -114,6 +114,10 @@ services:
       WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
+      # Mismo almacenamiento que la API (ZIP de códigos de botella)
+      S3_ENDPOINT: http://minio:9000
+    volumes:
+      - api_uploads:/app/uploads
     healthcheck:
       test: ['CMD', 'node', 'dist/worker-healthcheck.js']
       interval: 15s
