@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AuditService } from '@shared/audit/audit.service';
@@ -10,6 +10,10 @@ import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
 import { Prisma } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
+import {
+  ObjectStorage,
+  STORAGE_SERVICE,
+} from '@shared/storage/storage.interface';
 import { lockLot, LockedLot } from '@modules/lots/lot-records';
 import { actorMembership, dbClock } from '@modules/lots/trace-db';
 import { ensureHarvestLot } from '@modules/lots/chain';
@@ -70,6 +74,7 @@ export class BottlingService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly config: ConfigService,
+    @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
   ) {}
 
   /**
@@ -290,7 +295,18 @@ export class BottlingService {
       );
     }
     const codes = await this.codeCounts([batch.id]);
-    return toBottlingView(batch, codes.get(batch.id));
+    const view = toBottlingView(batch, codes.get(batch.id));
+    if (view.labelDesign) {
+      // URL firmada de corta vida de la etiqueta (§6.3); la lista solo trae la `key`
+      try {
+        view.labelDesign.url = (
+          await this.storage.getSignedUrl(view.labelDesign.key)
+        ).url;
+      } catch {
+        view.labelDesign.url = null;
+      }
+    }
+    return view;
   }
 
   private async codeCounts(
