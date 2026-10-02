@@ -151,6 +151,8 @@ export const ErrorCode = {
   // ── Bitácora (contrato O1 §7) ─────────────────────────────
   /** 422 · La exportación CSV supera 50 000 filas: acotar fechas o filtros. */
   AUDIT_EXPORT_TOO_LARGE: 'AUDIT_EXPORT_TOO_LARGE',
+  /** 422 · La exportación CSV de la lista de espera supera el máximo de filas. */
+  WAITLIST_EXPORT_TOO_LARGE: 'WAITLIST_EXPORT_TOO_LARGE',
 
   // ── Archivos (SE-04) ──────────────────────────────────────
   /** 422 · El contenido del archivo no corresponde a un tipo permitido. */

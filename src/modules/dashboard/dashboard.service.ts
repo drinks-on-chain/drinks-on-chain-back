@@ -4,6 +4,7 @@ import {
   InvitationStatusEnum,
   MembershipStatusEnum,
   Prisma,
+  WaitlistTypeEnum,
   WineryApplicationStatusEnum,
 } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
@@ -33,6 +34,8 @@ export interface DashboardView {
   wineries: { invited: number; active: number; suspended: number };
   invitations: { pending: number; expiringIn24h: number };
   team: { blockedMembers: number };
+  /** Lista de espera (contrato O1b §2): totales por tipo y altas de las últimas 24 h. */
+  waitlist: { consumers: number; wineries: number; last24h: number };
   alerts: DashboardAlert[];
   recentAudit: AuditEventView[];
 }
@@ -57,8 +60,8 @@ interface InvitationStats {
 /**
  * Tablero del back office (contrato O1 §8, PLT-06): solicitudes de alta por
  * estado, bodegas por estado, invitaciones pendientes y a punto de caducar,
- * miembros bloqueados, alertas y los últimos eventos de la bitácora, con
- * consultas tipadas de Prisma sobre los modelos de la Ola 1.
+ * miembros bloqueados, lista de espera, alertas y los últimos eventos de la
+ * bitácora, con consultas tipadas de Prisma sobre los modelos de la Ola 1.
  */
 @Injectable()
 export class DashboardService {
@@ -75,6 +78,7 @@ export class DashboardService {
       blockedMembers,
       emails,
       recent,
+      waitlist,
     ] = await Promise.all([
       this.applicationStats(now),
       this.invitationStats(now),
@@ -84,6 +88,7 @@ export class DashboardService {
       }),
       this.failedEmails(now),
       this.auditQuery.recent(5),
+      this.waitlistStats(now),
     ]);
 
     return {
@@ -91,8 +96,28 @@ export class DashboardService {
       wineries,
       invitations,
       team: { blockedMembers },
+      waitlist,
       alerts: buildAlerts(now, { applications, invitations, emails }),
       recentAudit: recent,
+    };
+  }
+
+  private async waitlistStats(now: Date): Promise<DashboardView['waitlist']> {
+    const [byType, last24h] = await Promise.all([
+      this.prisma.waitlistEntry.groupBy({
+        by: ['type'],
+        _count: { _all: true },
+      }),
+      this.prisma.waitlistEntry.count({
+        where: { createdAt: { gte: new Date(now.getTime() - 24 * HOUR_MS) } },
+      }),
+    ]);
+    const count = (type: WaitlistTypeEnum) =>
+      byType.find((g) => g.type === type)?._count._all ?? 0;
+    return {
+      consumers: count(WaitlistTypeEnum.CONSUMER),
+      wineries: count(WaitlistTypeEnum.WINERY),
+      last24h,
     };
   }
 

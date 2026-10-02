@@ -223,6 +223,7 @@ Un recurso de otra bodega sigue respondiendo **404** (`NOT_FOUND`), nunca 403.
 | `SETTING_LEVEL_NOT_ALLOWED` | 422 | Ajuste por bodega en un parámetro solo general, o estándar en uno solo por bodega |
 | `SETTING_BELOW_LEGAL_MINIMUM` | 422 | Valor más laxo que el mínimo legal sin excepción autorizada (A-31) |
 | `AUDIT_EXPORT_TOO_LARGE` | 422 | La exportación CSV de la bitácora supera 50 000 filas |
+| `WAITLIST_EXPORT_TOO_LARGE` | 422 | La exportación CSV de la lista de espera supera 50 000 filas |
 
 Motivo ausente en una acción del back office sobre terceros (`@RequiresReason()`, AUD-05): 422 `VALIDATION_ERROR` con `details[{ field: 'reason' }]`.
 

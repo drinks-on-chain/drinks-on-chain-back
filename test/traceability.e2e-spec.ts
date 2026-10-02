@@ -258,8 +258,10 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
         .send({
           fermentationTankId,
           equipmentIdentifier: 'Alambique de Cobre Charentais AL-01',
-          processStartDate: '2026-04-01',
-          processEndDate: '2026-04-03',
+          // Fechas relativas a hoy: con fechas fijas el reposo de 180 días se
+          // cumple solo con el paso del calendario y el Paso 7 deja de probar nada.
+          processStartDate: daysAgo(12),
+          processEndDate: daysAgo(10),
           inputVolumeLiters: 10000.0,
           outputVolumeLiters: 1750.0,
           wasteVolumeLiters: 570.0,
@@ -289,7 +291,7 @@ describe('Traceability ERP & Strategy Pattern (e2e)', () => {
           finalAlcoholAbv: 40.0,
           totalBottlesPackaged: 4080,
           packagingFormatCl: 75,
-          bottlingDate: '2026-04-05',
+          bottlingDate: daysAgo(0),
         });
 
       expect(res.status).toBe(422);

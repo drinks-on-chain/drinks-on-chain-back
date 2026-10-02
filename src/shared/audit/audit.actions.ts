@@ -56,6 +56,14 @@ export const AuditAction = {
   WINERY_APPLICATION_APPROVED: 'WINERY_APPLICATION_APPROVED',
   WINERY_APPLICATION_REJECTED: 'WINERY_APPLICATION_REJECTED',
 
+  // Lista de espera (contrato O1b)
+  /** Inscripción pública nueva (origen `PUBLIC`; solo el tipo y el origen). */
+  WAITLIST_JOINED: 'WAITLIST_JOINED',
+  /** El back office cambió el estado o las notas de una inscripción. */
+  WAITLIST_STATUS_CHANGED: 'WAITLIST_STATUS_CHANGED',
+  /** Exportación CSV de la lista (con el número de filas). */
+  WAITLIST_EXPORTED: 'WAITLIST_EXPORTED',
+
   // Bodegas
   WINERY_CREATED: 'WINERY_CREATED',
   /** Obsoleto (H1): aprobación y rechazo de la autoinscripción de 0.1. */

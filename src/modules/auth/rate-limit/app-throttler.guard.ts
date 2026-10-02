@@ -38,8 +38,8 @@ export function authRouteLimit(
 
 /**
  * Controladores con el límite de `/auth/*` (por IP y ruta): sesión, cuenta,
- * segundo factor, las rutas públicas de invitaciones (tokens) y el formulario
- * público de solicitud de alta.
+ * segundo factor, las rutas públicas de invitaciones (tokens), el formulario
+ * público de solicitud de alta y la inscripción en la lista de espera.
  */
 export const AUTH_RATE_LIMITED_CONTROLLERS: ReadonlySet<string> = new Set([
   'AuthController',
@@ -47,6 +47,7 @@ export const AUTH_RATE_LIMITED_CONTROLLERS: ReadonlySet<string> = new Set([
   'MfaController',
   'PublicInvitationsController',
   'PublicWineryApplicationsController',
+  'PublicWaitlistController',
 ]);
 
 const isAuthRoute = (context: ExecutionContext): boolean =>
