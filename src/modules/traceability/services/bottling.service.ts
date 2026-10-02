@@ -25,6 +25,7 @@ import {
 } from '@modules/lots/domain/bottling-balance';
 import { parseLotRules } from '@modules/lots/domain/lot-rules';
 import { distillationHeart, num } from '@modules/lots/domain/sources';
+import { CorrectionMarks, markRows } from '@modules/lots/correction-marks';
 import {
   stateError,
   throwViolations,
@@ -205,7 +206,7 @@ export class BottlingService {
   async findAll(
     wineryId: string | undefined,
     query: QueryBottlingBatchesDto,
-  ): Promise<Paginated<BottlingView>> {
+  ): Promise<Paginated<BottlingView & CorrectionMarks>> {
     const where: Prisma.BottlingBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.productType && { productType: query.productType }),
@@ -226,12 +227,19 @@ export class BottlingService {
     const codes = await this.codeCounts(items.map((i) => i.id));
     // En la lista no van la crianza ni la destilación (solo en el detalle)
     return toPage(
-      items.map((i) => {
-        const view: Partial<BottlingView> = toBottlingView(i, codes.get(i.id));
-        delete view.wineAgingBatch;
-        delete view.productionBatch;
-        return view as BottlingView;
-      }),
+      await markRows(
+        this.prisma,
+        'BOTTLING',
+        items.map((i) => {
+          const view: Partial<BottlingView> = toBottlingView(
+            i,
+            codes.get(i.id),
+          );
+          delete view.wineAgingBatch;
+          delete view.productionBatch;
+          return view as BottlingView;
+        }),
+      ),
       total,
       query,
     );
@@ -276,7 +284,11 @@ export class BottlingService {
       );
     }
     const codes = await this.codeCounts([batch.id]);
-    return toBottlingView(batch, codes.get(batch.id));
+    return (
+      await markRows(this.prisma, 'BOTTLING', [
+        toBottlingView(batch, codes.get(batch.id)),
+      ])
+    )[0];
   }
 
   private async codeCounts(
@@ -351,8 +363,10 @@ function toBottlingView(
   codes: BottleCodesSummary | undefined,
 ): BottlingView {
   const { lot, labAnalyses, ...rest } = row;
+  // El vigente: ni sustituido por un reanálisis ni anulado por una corrección
+  const valid = labAnalyses.filter((l) => l.voidedAt === null);
   const current =
-    labAnalyses.find((l) => l.supersededAt === null) ?? labAnalyses[0] ?? null;
+    valid.find((l) => l.supersededAt === null) ?? valid[0] ?? null;
   let available = num(row.availableLiters);
   let heartPure: number | null = null;
   if (row.productionBatch) {

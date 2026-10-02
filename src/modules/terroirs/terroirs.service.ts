@@ -15,6 +15,11 @@ import {
   TerroirDoFields,
 } from '@modules/lots/do-rules';
 import { stateError, violation } from '@modules/lots/domain/trace-errors';
+import {
+  CorrectionMarks,
+  correctionMarks,
+  withMarks,
+} from '@modules/lots/correction-marks';
 
 /** Campos con efecto normativo: no se cambian por `PATCH` en una parcela usada (§3.1). */
 const NORMATIVE_FIELDS = [
@@ -38,20 +43,26 @@ export class TerroirsService {
    */
   private async withDo<T extends Terroir>(
     terroirs: T[],
-  ): Promise<(T & TerroirDoFields)[]> {
+  ): Promise<(T & TerroirDoFields & CorrectionMarks)[]> {
+    // Marcas de corrección (§9): los campos normativos corregidos de la parcela
+    const marks = await correctionMarks(
+      this.prisma,
+      'TERROIR',
+      terroirs.map((t) => t.id),
+    );
     const rulesByWinery = new Map<
       string,
       Awaited<ReturnType<typeof effectiveDoRules>>
     >();
     const now = new Date();
-    const out: (T & TerroirDoFields)[] = [];
+    const out: (T & TerroirDoFields & CorrectionMarks)[] = [];
     for (const t of terroirs) {
       let rules = rulesByWinery.get(t.wineryId);
       if (!rules) {
         rules = await effectiveDoRules(this.prisma, t.wineryId);
         rulesByWinery.set(t.wineryId, rules);
       }
-      out.push({ ...t, ...terroirDo(t, rules, now) });
+      out.push({ ...withMarks(t, marks), ...terroirDo(t, rules, now) });
     }
     return out;
   }

@@ -1,13 +1,34 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AUDIT_TX_OPTIONS, AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
 import { ValidationException } from '@shared/exceptions/validation.exception';
+import {
+  PaginationQueryDto,
+  toPage,
+  toPrismaPage,
+} from '@shared/dto/pagination-query.dto';
+import type { Paginated } from '@shared/interfaces/api-response.interface';
+import {
+  ObjectStorage,
+  STORAGE_SERVICE,
+} from '@shared/storage/storage.interface';
 import { CreateBatchLabAnalysisDto } from '../dto/create-batch-lab-analysis.dto';
 import { Prisma, BatchLabAnalysis } from '@prisma/client';
-import { lockLot } from '@modules/lots/lot-records';
+import { CreateLotLabAnalysisDto } from '@modules/lots/contract/dto/lot-lab-analyses.dto';
+import {
+  CorrectionMarks,
+  correctionMarks,
+  withMarks,
+} from '@modules/lots/correction-marks';
+import { lockLot, LockedLot } from '@modules/lots/lot-records';
 import { appendLotEvent } from '@modules/lots/lot-events';
-import { actorMembership, dbClock } from '@modules/lots/trace-db';
+import {
+  actorMembership,
+  dbClock,
+  DbClock,
+  lockLotRow,
+} from '@modules/lots/trace-db';
 import { ensureHarvestLot } from '@modules/lots/chain';
 import {
   actorOf,
@@ -21,17 +42,42 @@ import {
   methanolToAnhydrous,
 } from '@modules/lots/domain/lab-conformity';
 import type { LotProductType } from '@modules/lots/domain/lot-stage';
-import { calendarDay } from '@modules/lots/domain/dates';
-import { ruleError, violation } from '@modules/lots/domain/trace-errors';
+import { calendarDay, dateOnly } from '@modules/lots/domain/dates';
+import { assertDayNotFuture, assertNotBefore } from '@modules/lots/date-rules';
+import { assertWineryFile, signedFileUrl } from '@modules/lots/trace-files';
+import {
+  lotNotFound,
+  stateError,
+  violation,
+} from '@modules/lots/domain/trace-errors';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 
-export type LabAnalysisView = Omit<BatchLabAnalysis, 'conformity'> & {
-  conformity: LabConformity | null;
-  units: typeof LAB_UNITS;
-  current: boolean;
-  recordedBy: TraceActor | null;
-  report: { key: string; sha256: string | null; url: string | null } | null;
-};
+type Tx = Prisma.TransactionClient;
+
+export type LabAnalysisView = Omit<BatchLabAnalysis, 'conformity'> &
+  CorrectionMarks & {
+    conformity: LabConformity | null;
+    units: typeof LAB_UNITS;
+    current: boolean;
+    recordedBy: TraceActor | null;
+    report: { key: string; sha256: string | null; url: string | null } | null;
+  };
+
+/** Valores de un análisis (los de las dos rutas de alta). */
+type LabValuesInput = Omit<
+  CreateBatchLabAnalysisDto,
+  | 'bottlingBatchId'
+  | 'laboratoryReportPdfUrl'
+  | 'conformsToSenasagStandards'
+  | 'additionalParams'
+> & { additionalParams?: Record<string, unknown> };
+
+interface BottlingRef {
+  id: string;
+  productType: string;
+  finalAlcoholAbv: Prisma.Decimal;
+  bottlingDate: Date;
+}
 
 @Injectable()
 export class LabAnalysesService {
@@ -40,38 +86,22 @@ export class LabAnalysesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
   ) {}
 
   /**
-   * Análisis de laboratorio (contrato O2 §8, EA-08): la conformidad se
-   * calcula en el servidor contra los límites y unidades de la instantánea
-   * del lote (`conformsToSenasagStandards` de la entrada se ignora); falta un
-   * parámetro exigido → `INCOMPLETE` y no conforme. Un análisis nuevo
-   * sustituye al anterior (reanálisis): ya no hay 409.
+   * Análisis de laboratorio (contrato O2 §8, EA-08) por la ruta legada: la
+   * conformidad se calcula en el servidor contra los límites y unidades de la
+   * instantánea del lote (`conformsToSenasagStandards` de la entrada se
+   * ignora); falta un parámetro exigido → `INCOMPLETE` y no conforme. Un
+   * análisis nuevo sustituye al anterior (reanálisis): ya no hay 409.
    */
   async create(
     wineryId: string,
     userId: string,
     dto: CreateBatchLabAnalysisDto,
   ): Promise<LabAnalysisView> {
-    const abv = dto.actualAlcoholAbv;
-    const fromMgL =
-      dto.methanolContentMgL !== undefined
-        ? methanolToAnhydrous(dto.methanolContentMgL, abv)
-        : null;
-    if (
-      dto.methanolMg100mlAa !== undefined &&
-      fromMgL !== null &&
-      Math.abs(fromMgL - dto.methanolMg100mlAa) >
-        Math.max(fromMgL, dto.methanolMg100mlAa) * 0.01
-    ) {
-      throw ValidationException.forField(
-        'methanolMg100mlAa',
-        `El metanol en mg/L (${dto.methanolContentMgL}) equivale a ${fromMgL} mg/100 mL a.a. con ${abv} % vol: no coincide con ${dto.methanolMg100mlAa}`,
-      );
-    }
-    const methanolAa = dto.methanolMg100mlAa ?? fromMgL;
-
+    const methanolAa = resolveMethanol(dto);
     const id = await this.prisma.$transaction(async (tx) => {
       const bottling = await tx.bottlingBatch.findFirst({
         where: { id: dto.bottlingBatchId, wineryId },
@@ -100,136 +130,135 @@ export class LabAnalysesService {
         ? await lockLot(tx, lotId, wineryId, { writable: true })
         : null;
       const clock = await dbClock(tx);
-      const testDay = calendarDay(dto.testPerformedAt);
-      if (testDay > clock.today) {
-        throw ruleError(
-          ErrorCode.TRC_DATE_IN_FUTURE,
-          'La fecha del ensayo no puede ser futura',
+      return this.register(tx, {
+        wineryId,
+        userId,
+        bottling,
+        lot,
+        clock,
+        values: dto,
+        methanolAa,
+        report: { key: null, url: dto.laboratoryReportPdfUrl },
+        testDay: calendarDay(dto.testPerformedAt),
+      });
+    }, AUDIT_TX_OPTIONS);
+    return this.findView(id);
+  }
+
+  /**
+   * Análisis del lote (`POST /v1/lots/{id}/lab-analyses`, §8.1): solo con el
+   * lote embotellado y el expediente abierto; el informe va por su `key` de
+   * `POST /v1/uploads` (o la URL, alias hasta H2). Mismo cálculo de
+   * conformidad y de unidades que la ruta legada; un análisis nuevo
+   * sustituye al vigente.
+   */
+  async createForLot(
+    wineryId: string,
+    userId: string,
+    lotId: string,
+    dto: CreateLotLabAnalysisDto,
+  ): Promise<LabAnalysisView> {
+    const methanolAa = resolveMethanol(dto);
+    if (!dto.laboratoryReportKey && !dto.laboratoryReportPdfUrl) {
+      throw ValidationException.forField(
+        'laboratoryReportKey',
+        'Indica el informe del laboratorio: la `key` de POST /v1/uploads',
+      );
+    }
+    if (dto.laboratoryReportKey) {
+      await assertWineryFile(
+        this.storage,
+        wineryId,
+        dto.laboratoryReportKey,
+        'laboratoryReportKey',
+        'El informe del laboratorio no existe o no es de esta bodega',
+      );
+    }
+    const id = await this.prisma.$transaction(async (tx) => {
+      await lockLotRow(tx, lotId);
+      const row = await tx.lot.findFirst({
+        where: { id: lotId, wineryId },
+        select: {
+          stage: true,
+          dossier: { select: { status: true, closedAt: true } },
+          bottlingBatch: {
+            select: {
+              id: true,
+              productType: true,
+              finalAlcoholAbv: true,
+              bottlingDate: true,
+            },
+          },
+        },
+      });
+      if (!row) throw lotNotFound();
+      // Antes que la etapa terminal: el motivo exacto es el expediente
+      if (row.dossier?.status === 'CLOSED') {
+        throw dossierClosed(row.dossier.closedAt);
+      }
+      const lot = await lockLot(tx, lotId, wineryId, { writable: true });
+      if (!row.bottlingBatch) {
+        throw stateError(
+          ErrorCode.TRC_LOT_NOT_BOTTLED,
+          `El lote está en etapa ${lot.stage}: el análisis de laboratorio se registra tras el embotellado`,
           [
-            violation(ErrorCode.TRC_DATE_IN_FUTURE, 'Fecha futura', {
-              field: 'testPerformedAt',
-              expected: clock.today,
-              actual: testDay,
+            violation(ErrorCode.TRC_LOT_NOT_BOTTLED, 'Lote sin embotellar', {
+              meta: { stage: lot.stage },
             }),
           ],
         );
       }
-      const productType: LotProductType | null =
-        lot?.productType ??
-        (bottling.productType === 'SINGANI'
-          ? 'SINGANI'
-          : bottling.productType === 'WINE'
-            ? 'WINE'
-            : null);
-      const conformity = lot
-        ? computeLabConformity({
-            productType,
-            values: {
-              actualAlcoholAbv: abv,
-              volatileAcidityAceticGl: dto.volatileAcidityAceticGl,
-              methanolMg100mlAa: methanolAa,
-              copperContentMgL: dto.copperContentMgL ?? null,
-            },
-            limits: lot.rules.lab.limits,
-            labeledAbv: bottling.finalAlcoholAbv.toNumber(),
-            rulesTakenAt: lot.rules.takenAt,
-          })
-        : null;
-      const membership = await actorMembership(tx, userId, wineryId);
-      const legacyMember = membership
-        ? await tx.wineryMember.findUnique({
-            where: { id: membership.id },
-            select: { id: true },
-          })
-        : null;
-
-      // Reanálisis: el anterior deja de ser el vigente
-      await tx.batchLabAnalysis.updateMany({
-        where: { bottlingBatchId: bottling.id, supersededAt: null },
-        data: { supersededAt: clock.now },
-      });
-      const decimal = (v: number | undefined | null) =>
-        v !== undefined && v !== null ? new Prisma.Decimal(v) : null;
-      this.logger.log(
-        `Registrando informe de laboratorio "${dto.accreditedLabCertificationCode}" por ${dto.certifiedLaboratoryName}: ${conformity?.status ?? 'sin lote'}`,
+      const clock = await dbClock(tx);
+      const testDay = calendarDay(dto.testPerformedAt);
+      assertDayNotFuture('testPerformedAt', testDay, clock);
+      assertNotBefore(
+        'testPerformedAt',
+        testDay,
+        dateOnly(row.bottlingBatch.bottlingDate),
+        'El ensayo no puede ser anterior al embotellado',
       );
-      const created = await tx.batchLabAnalysis.create({
-        data: {
-          bottlingBatchId: bottling.id,
-          certifiedLaboratoryName: dto.certifiedLaboratoryName,
-          accreditedLabCertificationCode: dto.accreditedLabCertificationCode,
-          analysisRequestDate: dto.analysisRequestDate
-            ? new Date(dto.analysisRequestDate)
-            : null,
-          testPerformedAt: new Date(`${testDay}T00:00:00.000Z`),
-          actualAlcoholAbv: new Prisma.Decimal(dto.actualAlcoholAbv),
-          totalAlcoholAbv: decimal(dto.totalAlcoholAbv),
-          totalAcidityTartaricGl: new Prisma.Decimal(
-            dto.totalAcidityTartaricGl,
-          ),
-          volatileAcidityAceticGl: new Prisma.Decimal(
-            dto.volatileAcidityAceticGl,
-          ),
-          freeSulfurDioxideMgL: decimal(dto.freeSulfurDioxideMgL),
-          totalSulfurDioxideMgL: decimal(dto.totalSulfurDioxideMgL),
-          reducingSugarsGl: decimal(dto.reducingSugarsGl),
-          totalDryExtractGl: decimal(dto.totalDryExtractGl),
-          sugarFreeDryExtractGl: decimal(dto.sugarFreeDryExtractGl),
-          overpressureBar: decimal(dto.overpressureBar),
-          methanolContentMgL: decimal(dto.methanolContentMgL),
-          methanolMg100mlAa: decimal(methanolAa),
-          copperContentMgL: decimal(dto.copperContentMgL),
-          additionalParams: dto.additionalParams ?? Prisma.DbNull,
-          laboratoryReportPdfUrl: dto.laboratoryReportPdfUrl,
-          // Calculada (EA-08): el valor enviado se ignora
-          conformsToSenasagStandards: conformity?.status === 'CONFORMING',
-          conformsToEuStandards: dto.conformsToEuStandards ?? false,
-          conformsToUsaStandards: dto.conformsToUsaStandards ?? false,
-          reviewedByMemberId: legacyMember?.id ?? null,
-          lotId: lot?.id ?? null,
-          conformity: conformity
-            ? (conformity as unknown as Prisma.InputJsonObject)
-            : Prisma.DbNull,
-          conformityStatus: conformity?.status ?? 'INCOMPLETE',
-          createdByMembershipId: membership?.id ?? null,
+      return this.register(tx, {
+        wineryId,
+        userId,
+        bottling: row.bottlingBatch,
+        lot,
+        clock,
+        values: dto,
+        methanolAa,
+        report: {
+          key: dto.laboratoryReportKey ?? null,
+          url: dto.laboratoryReportPdfUrl ?? null,
         },
+        testDay,
       });
-      if (lot) {
-        await appendLotEvent(tx, lot.id, {
-          type: 'LAB_REGISTERED',
-          occurredAt: created.testPerformedAt,
-          stage: lot.stage,
-          actorMembershipId: membership?.id ?? null,
-          summary: `Análisis de ${dto.certifiedLaboratoryName}: ${conformity?.status}`,
-          data: {
-            conformity: conformity?.status,
-            laboratory: dto.certifiedLaboratoryName,
-          },
-          resource: { type: 'lab_analysis', id: created.id },
-        });
-        await tx.lot.update({
-          where: { id: lot.id },
-          data: { updatedAt: clock.now },
-        });
-      }
-      await this.audit.record(tx, {
-        action: AuditAction.LAB_ANALYSIS_CREATED,
-        resource: { type: 'lab_analysis', id: created.id },
-        organizationId: wineryId,
-        after: { ...created, conformity: conformity?.status ?? null },
-      });
-      return created.id;
     }, AUDIT_TX_OPTIONS);
-    const row = await this.prisma.batchLabAnalysis.findUniqueOrThrow({
-      where: { id },
-    });
-    const actors = await resolveTraceActors(this.prisma, [
-      row.createdByMembershipId,
-    ]);
-    return toLabView(row, actors);
+    return this.findView(id);
   }
 
-  /** Análisis vigente del embotellado (el último sin sustituir). */
+  /** Todos los análisis del lote, el más reciente primero (§8.1). */
+  async listForLot(
+    wineryId: string | undefined,
+    lotId: string,
+    query: PaginationQueryDto,
+  ): Promise<Paginated<LabAnalysisView>> {
+    const lot = await this.prisma.lot.findFirst({
+      where: { id: lotId, ...(wineryId && { wineryId }) },
+      select: { id: true },
+    });
+    if (!lot) throw lotNotFound();
+    const where = { lotId };
+    const [rows, total] = await Promise.all([
+      this.prisma.batchLabAnalysis.findMany({
+        where,
+        ...toPrismaPage(query),
+        orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      }),
+      this.prisma.batchLabAnalysis.count({ where }),
+    ]);
+    return toPage(await this.toViews(rows), total, query);
+  }
+
+  /** Análisis vigente del embotellado (el último sin sustituir ni anular). */
   async findByBatchId(
     wineryId: string | undefined,
     bottlingBatchId: string,
@@ -242,29 +271,233 @@ export class LabAnalysesService {
       include: { labAnalyses: { orderBy: { createdAt: 'desc' } } },
     });
     const current =
-      batch?.labAnalyses.find((l) => l.supersededAt === null) ??
+      batch?.labAnalyses.find(
+        (l) => l.supersededAt === null && l.voidedAt === null,
+      ) ??
+      batch?.labAnalyses.find((l) => l.voidedAt === null) ??
       batch?.labAnalyses[0];
     if (!batch || !current) {
       throw new NotFoundException(
         `Certificado de laboratorio para el lote ${bottlingBatchId} no encontrado`,
       );
     }
-    const actors = await resolveTraceActors(this.prisma, [
-      current.createdByMembershipId,
-    ]);
-    return toLabView(current, actors);
+    return (await this.toViews([current]))[0];
   }
+
+  /**
+   * Alta común de las dos rutas: fecha no futura, conformidad calculada,
+   * sustitución del vigente, evento `LAB_REGISTERED` y bitácora.
+   */
+  private async register(
+    tx: Tx,
+    input: {
+      wineryId: string;
+      userId: string;
+      bottling: BottlingRef;
+      lot: LockedLot | null;
+      clock: DbClock;
+      values: LabValuesInput;
+      methanolAa: number | null;
+      report: { key: string | null; url: string | null };
+      testDay: string;
+    },
+  ): Promise<string> {
+    const { bottling, lot, clock, values: dto, testDay } = input;
+    assertDayNotFuture('testPerformedAt', testDay, clock);
+    const productType: LotProductType | null =
+      lot?.productType ??
+      (bottling.productType === 'SINGANI'
+        ? 'SINGANI'
+        : bottling.productType === 'WINE'
+          ? 'WINE'
+          : null);
+    const conformity = lot
+      ? computeLabConformity({
+          productType,
+          values: {
+            actualAlcoholAbv: dto.actualAlcoholAbv,
+            volatileAcidityAceticGl: dto.volatileAcidityAceticGl,
+            methanolMg100mlAa: input.methanolAa,
+            copperContentMgL: dto.copperContentMgL ?? null,
+          },
+          limits: lot.rules.lab.limits,
+          labeledAbv: bottling.finalAlcoholAbv.toNumber(),
+          rulesTakenAt: lot.rules.takenAt,
+        })
+      : null;
+    const membership = await actorMembership(tx, input.userId, input.wineryId);
+    const legacyMember = membership
+      ? await tx.wineryMember.findUnique({
+          where: { id: membership.id },
+          select: { id: true },
+        })
+      : null;
+
+    // Reanálisis: el anterior deja de ser el vigente
+    await tx.batchLabAnalysis.updateMany({
+      where: { bottlingBatchId: bottling.id, supersededAt: null },
+      data: { supersededAt: clock.now },
+    });
+    const decimal = (v: number | undefined | null) =>
+      v !== undefined && v !== null ? new Prisma.Decimal(v) : null;
+    this.logger.log(
+      `Registrando informe de laboratorio "${dto.accreditedLabCertificationCode}" por ${dto.certifiedLaboratoryName}: ${conformity?.status ?? 'sin lote'}`,
+    );
+    const created = await tx.batchLabAnalysis.create({
+      data: {
+        bottlingBatchId: bottling.id,
+        certifiedLaboratoryName: dto.certifiedLaboratoryName,
+        accreditedLabCertificationCode: dto.accreditedLabCertificationCode,
+        analysisRequestDate: dto.analysisRequestDate
+          ? new Date(dto.analysisRequestDate)
+          : null,
+        testPerformedAt: new Date(`${testDay}T00:00:00.000Z`),
+        actualAlcoholAbv: new Prisma.Decimal(dto.actualAlcoholAbv),
+        totalAlcoholAbv: decimal(dto.totalAlcoholAbv),
+        totalAcidityTartaricGl: new Prisma.Decimal(dto.totalAcidityTartaricGl),
+        volatileAcidityAceticGl: new Prisma.Decimal(
+          dto.volatileAcidityAceticGl,
+        ),
+        freeSulfurDioxideMgL: decimal(dto.freeSulfurDioxideMgL),
+        totalSulfurDioxideMgL: decimal(dto.totalSulfurDioxideMgL),
+        reducingSugarsGl: decimal(dto.reducingSugarsGl),
+        totalDryExtractGl: decimal(dto.totalDryExtractGl),
+        sugarFreeDryExtractGl: decimal(dto.sugarFreeDryExtractGl),
+        overpressureBar: decimal(dto.overpressureBar),
+        methanolContentMgL: decimal(dto.methanolContentMgL),
+        methanolMg100mlAa: decimal(input.methanolAa),
+        copperContentMgL: decimal(dto.copperContentMgL),
+        additionalParams:
+          (dto.additionalParams as Prisma.InputJsonObject | undefined) ??
+          Prisma.DbNull,
+        // La columna es obligatoria: con el informe por `key`, guarda la `key`
+        laboratoryReportPdfUrl: input.report.url ?? input.report.key ?? '',
+        laboratoryReportKey: input.report.key,
+        // Calculada (EA-08): el valor enviado se ignora
+        conformsToSenasagStandards: conformity?.status === 'CONFORMING',
+        conformsToEuStandards: dto.conformsToEuStandards ?? false,
+        conformsToUsaStandards: dto.conformsToUsaStandards ?? false,
+        reviewedByMemberId: legacyMember?.id ?? null,
+        lotId: lot?.id ?? null,
+        conformity: conformity
+          ? (conformity as unknown as Prisma.InputJsonObject)
+          : Prisma.DbNull,
+        conformityStatus: conformity?.status ?? 'INCOMPLETE',
+        createdByMembershipId: membership?.id ?? null,
+      },
+    });
+    if (lot) {
+      await appendLotEvent(tx, lot.id, {
+        type: 'LAB_REGISTERED',
+        occurredAt: created.testPerformedAt,
+        stage: lot.stage,
+        actorMembershipId: membership?.id ?? null,
+        summary: `Análisis de ${dto.certifiedLaboratoryName}: ${conformity?.status}`,
+        data: {
+          conformity: conformity?.status,
+          laboratory: dto.certifiedLaboratoryName,
+        },
+        resource: { type: 'lab_analysis', id: created.id },
+      });
+      await tx.lot.update({
+        where: { id: lot.id },
+        data: { updatedAt: clock.now },
+      });
+    }
+    await this.audit.record(tx, {
+      action: AuditAction.LAB_ANALYSIS_CREATED,
+      resource: { type: 'lab_analysis', id: created.id },
+      organizationId: input.wineryId,
+      after: { ...created, conformity: conformity?.status ?? null },
+    });
+    return created.id;
+  }
+
+  private async findView(id: string): Promise<LabAnalysisView> {
+    const row = await this.prisma.batchLabAnalysis.findUniqueOrThrow({
+      where: { id },
+    });
+    return (await this.toViews([row]))[0];
+  }
+
+  /** Vistas con autor, marcas de corrección y URL firmada del informe. */
+  private async toViews(rows: BatchLabAnalysis[]): Promise<LabAnalysisView[]> {
+    const [actors, marks] = await Promise.all([
+      resolveTraceActors(
+        this.prisma,
+        rows.map((r) => r.createdByMembershipId),
+      ),
+      correctionMarks(
+        this.prisma,
+        'LAB_ANALYSIS',
+        rows.map((r) => r.id),
+      ),
+    ]);
+    return Promise.all(
+      rows.map(async (row) => {
+        const view = withMarks(toLabView(row, actors), marks);
+        if (view.report && row.laboratoryReportKey) {
+          view.report.url = await signedFileUrl(
+            this.storage,
+            row.laboratoryReportKey,
+          );
+        }
+        return view;
+      }),
+    );
+  }
+}
+
+/**
+ * Metanol en mg/100 mL de alcohol anhidro (§8.2): el enviado o el convertido
+ * desde mg/L de producto (`10 × mgL / grado`); si llegan ambos y difieren más
+ * de un 1 % → 422 `VALIDATION_ERROR`.
+ */
+export function resolveMethanol(dto: {
+  actualAlcoholAbv: number;
+  methanolContentMgL?: number;
+  methanolMg100mlAa?: number;
+}): number | null {
+  const fromMgL =
+    dto.methanolContentMgL !== undefined
+      ? methanolToAnhydrous(dto.methanolContentMgL, dto.actualAlcoholAbv)
+      : null;
+  if (
+    dto.methanolMg100mlAa !== undefined &&
+    fromMgL !== null &&
+    Math.abs(fromMgL - dto.methanolMg100mlAa) >
+      Math.max(fromMgL, dto.methanolMg100mlAa) * 0.01
+  ) {
+    throw ValidationException.forField(
+      'methanolMg100mlAa',
+      `El metanol en mg/L (${dto.methanolContentMgL}) equivale a ${fromMgL} mg/100 mL a.a. con ${dto.actualAlcoholAbv} % vol: no coincide con ${dto.methanolMg100mlAa}`,
+    );
+  }
+  return dto.methanolMg100mlAa ?? fromMgL;
+}
+
+/** 409 `TRC_DOSSIER_CLOSED`: el expediente cerrado no admite más registros. */
+export function dossierClosed(closedAt: Date | null) {
+  return stateError(
+    ErrorCode.TRC_DOSSIER_CLOSED,
+    'El expediente del lote está cerrado: ya no admite registros',
+    [
+      violation(ErrorCode.TRC_DOSSIER_CLOSED, 'Expediente cerrado', {
+        meta: { closedAt: closedAt ? closedAt.toISOString() : null },
+      }),
+    ],
+  );
 }
 
 export function toLabView(
   row: BatchLabAnalysis,
   actors: Map<string, TraceActor>,
-): LabAnalysisView {
+): Omit<LabAnalysisView, keyof CorrectionMarks> {
   return {
     ...row,
     conformity: (row.conformity as unknown as LabConformity | null) ?? null,
     units: LAB_UNITS,
-    current: row.supersededAt === null,
+    current: row.supersededAt === null && row.voidedAt === null,
     recordedBy: actorOf(actors, row.createdByMembershipId),
     report: row.laboratoryReportKey
       ? { key: row.laboratoryReportKey, sha256: null, url: null }

@@ -1283,7 +1283,7 @@
     },
     "/v1/fermentation-tanks/{id}/clean": {
       "post": {
-        "description": "Contrato O2 §4.2: `TRANSFERRED → CLEANED`; libera el `tankCode` para otro tanque (S-7).",
+        "description": "Contrato O2 §4.2: `TRANSFERRED → CLEANED`; libera el `tankCode` para otro tanque (S-7). El tanque de un lote descartado o rechazado se limpia desde cualquier estado (su contenido se retiró con el lote).",
         "operationId": "TankTransitionsController_clean_v1",
         "parameters": [
           {
@@ -1358,16 +1358,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.3 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -1454,7 +1444,7 @@
             }
           },
           "409": {
-            "description": "TRC_TANK_INVALID_TRANSITION (`meta: { from, to }`), TRC_LOT_TERMINAL",
+            "description": "TRC_TANK_INVALID_TRANSITION (`meta: { from, to }`), TRC_LOT_TERMINAL, TRC_INVALID_STAGE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1465,16 +1455,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_DESTINATION_MISMATCH, TRC_DO_NOT_ELIGIBLE, TRC_VOLUME_EXCEEDS_AVAILABLE, TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.3 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -1574,7 +1554,7 @@
     },
     "/v1/fermentation-tanks/{id}/start": {
       "post": {
-        "description": "Contrato O2 §4.2: `FILLING → FERMENTING`.",
+        "description": "Contrato O2 §4.2: `FILLING → FERMENTING`. `startedAt` no puede ser futuro ni anterior al llenado.",
         "operationId": "TankTransitionsController_start_v1",
         "parameters": [
           {
@@ -1638,7 +1618,7 @@
             }
           },
           "409": {
-            "description": "TRC_TANK_INVALID_TRANSITION (`meta: { from, to }`), TRC_LOT_TERMINAL",
+            "description": "TRC_TANK_INVALID_TRANSITION (`meta: { from, to }`), TRC_LOT_TERMINAL, TRC_INVALID_STAGE",
             "content": {
               "application/json": {
                 "schema": {
@@ -1649,16 +1629,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.3 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -4412,16 +4382,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.7 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -4435,7 +4395,7 @@
         ]
       },
       "post": {
-        "description": "Contrato O2 §9: ningún registro se edita ni se borra; la corrección guarda el valor anterior y el nuevo (`AMEND`) o deja de contar el registro (`VOID`), con motivo. Vuelve a validar las reglas del lote con la instantánea y, si resuelve una incidencia, la marca `resolvedAt`. Solo quien tiene el rol para crear ese registro puede corregirlo (S-17).",
+        "description": "Contrato O2 §9: ningún registro se edita ni se borra; la corrección guarda el valor anterior y el nuevo (`AMEND`) o deja de contar el registro (`VOID`), con motivo. Vuelve a validar las reglas del lote con la instantánea (candados, balances, D.O.): si incumple una → 422 `TRC_CORRECTION_BREAKS_RULES` con los detalles de la regla y su `code`; si lo que incumple es una regla de un embotellado ya hecho (candado a su fecha, balance de volumen o de alcohol), la corrección se registra y abre una incidencia con `source: CORRECTION` que bloquea el cierre del expediente; si resuelve una incidencia, la marca `resolvedAt`. Solo quien tiene el rol para crear ese registro puede corregirlo (S-17; si no, 403 `AUTH_INSUFFICIENT_PERMISSIONS`). Las parcelas se corrigen con `POST /v1/terroirs/{id}/corrections`.",
         "operationId": "CorrectionsController_create_v1",
         "parameters": [
           {
@@ -4479,7 +4439,7 @@
             }
           },
           "403": {
-            "description": "TRC_PLATFORM_READ_ONLY",
+            "description": "TRC_PLATFORM_READ_ONLY, AUTH_INSUFFICIENT_PERMISSIONS (S-17)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4489,7 +4449,7 @@
             }
           },
           "404": {
-            "description": "TRC_LOT_NOT_FOUND, NOT_FOUND",
+            "description": "TRC_LOT_NOT_FOUND, NOT_FOUND (el registro no existe en el lote)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4499,7 +4459,7 @@
             }
           },
           "409": {
-            "description": "TRC_DOSSIER_CLOSED, TRC_LOT_TERMINAL",
+            "description": "TRC_DOSSIER_CLOSED, TRC_LOT_TERMINAL, TRC_PHYTO_DECISION_FINAL (anular un dictamen con la uva en un tanque), TRC_INVALID_STAGE (fuente descartada), CONFLICT (registro ya anulado)",
             "content": {
               "application/json": {
                 "schema": {
@@ -4510,16 +4470,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_CORRECTION_FIELD_NOT_CORRECTABLE, TRC_CORRECTION_BREAKS_RULES",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.7 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -4946,7 +4896,7 @@
     },
     "/v1/lots/{id}/lab-analyses": {
       "get": {
-        "description": "Contrato O2 §8.1: todos los análisis del lote, el más reciente primero, con `current: true` en el vigente.",
+        "description": "Contrato O2 §8.1: todos los análisis del lote, el más reciente primero, con `current: true` en el vigente (ni sustituido por un reanálisis ni anulado por una corrección).",
         "operationId": "LotLabAnalysesController_list_v1",
         "parameters": [
           {
@@ -5052,16 +5002,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.7 de la Etapa 2",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
           }
         },
         "security": [
@@ -5075,7 +5015,7 @@
         ]
       },
       "post": {
-        "description": "Contrato O2 §8.1–§8.3: un análisis nuevo sustituye al anterior (reanálisis). La conformidad se calcula contra `rules.lab.limits` de la instantánea del lote (singani: metanol, cobre y grado; vino: acidez volátil y grado); falta alguno → `INCOMPLETE`. Unidades de §8.2.",
+        "description": "Contrato O2 §8.1–§8.3: un análisis nuevo sustituye al anterior (reanálisis). La conformidad se calcula contra `rules.lab.limits` de la instantánea del lote (singani: metanol, cobre y grado; vino: acidez volátil y grado); falta alguno → `INCOMPLETE`. Unidades de §8.2. El informe va por su `key` de `POST /v1/uploads` (de la bodega y existente; si no, 422 `TRC_FILE_NOT_FOUND`) o por su URL (alias hasta H2); el ensayo no puede ser anterior al embotellado.",
         "operationId": "LotLabAnalysesController_create_v1",
         "parameters": [
           {
@@ -5150,16 +5090,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE, TRC_FILE_NOT_FOUND",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.7 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -10511,7 +10441,7 @@
             }
           },
           "409": {
-            "description": "TRC_INVALID_STAGE · TRC_LOT_TERMINAL",
+            "description": "TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL",
             "content": {
               "application/json": {
                 "schema": {
@@ -10584,7 +10514,7 @@
     },
     "/v1/production-batches/{id}/close": {
       "post": {
-        "description": "Contrato O2 §5.2: **balance de masa** cabezas + corazón + colas (+ vinaza) ≤ `inputVolumeLiters`. Abre el reposo: `mandatoryRestUntil = processEndDate + rules.singani.minRestDays` (instantánea del lote) y `restStatus: RESTING`. Con todas las destilaciones cerradas, el lote pasa a `RESTING`.",
+        "description": "Contrato O2 §5.2: **balance de masa** cabezas + corazón + colas (+ vinaza) ≤ `inputVolumeLiters`. Abre el reposo: `mandatoryRestUntil = processEndDate + rules.singani.minRestDays` (instantánea del lote) y `restStatus: RESTING` (`READY` si la fecha declarada ya cumple el reposo). Con todas las destilaciones cerradas, el lote pasa a `RESTING`.",
         "operationId": "ProductionActionsController_close_v1",
         "parameters": [
           {
@@ -10648,7 +10578,7 @@
             }
           },
           "409": {
-            "description": "TRC_DISTILLATION_ALREADY_CLOSED, TRC_LOT_TERMINAL",
+            "description": "TRC_DISTILLATION_ALREADY_CLOSED, TRC_INVALID_STAGE (descartada o embotellada), TRC_LOT_TERMINAL",
             "content": {
               "application/json": {
                 "schema": {
@@ -10658,17 +10588,7 @@
             }
           },
           "422": {
-            "description": "VALIDATION_ERROR, TRC_MASS_BALANCE_EXCEEDED, TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.4 de la Etapa 2",
+            "description": "VALIDATION_ERROR, TRC_MASS_BALANCE_EXCEEDED, TRC_VOLUME_MISSING (sin volumen de entrada registrado), TRC_DATE_IN_FUTURE, TRC_DATE_BEFORE_PREVIOUS_STAGE",
             "content": {
               "application/json": {
                 "schema": {
@@ -10766,16 +10686,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.4 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -11804,7 +11714,7 @@
         ]
       },
       "patch": {
-        "description": "Permite modificar datos agronómicos, polígono perimetral o estado activo.",
+        "description": "Permite modificar datos agronómicos, polígono perimetral o estado activo. En una parcela con pesajes, la altitud, la cepa y la materia prima (campos con efecto en la D.O.) no cambian por aquí: se corrigen con `POST /v1/terroirs/{id}/corrections` (contrato O2 §3.1).",
         "operationId": "TerroirsController_update_v1",
         "parameters": [
           {
@@ -11839,6 +11749,16 @@
           },
           "404": {
             "description": "Parcela no encontrada"
+          },
+          "409": {
+            "description": "TRC_TERROIR_IN_USE (campo normativo de una parcela usada; `meta.fields`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiErrorResponseDto"
+                }
+              }
+            }
           },
           "422": {
             "description": "VALIDATION_ERROR: cuerpo inválido (un detalle por campo; `null` en un campo opcional equivale a omitirlo)",
@@ -11929,16 +11849,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_CORRECTION_FIELD_NOT_CORRECTABLE, TRC_CORRECTION_BREAKS_RULES",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.7 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -12636,7 +12546,7 @@
             }
           },
           "409": {
-            "description": "FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_INVALID_STAGE · TRC_LOT_TERMINAL",
+            "description": "FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL",
             "content": {
               "application/json": {
                 "schema": {
@@ -12784,16 +12694,6 @@
           },
           "422": {
             "description": "VALIDATION_ERROR, TRC_VOLUME_EXCEEDS_AVAILABLE",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "NOT_IMPLEMENTED: llega con el paso 2.4 de la Etapa 2",
             "content": {
               "application/json": {
                 "schema": {
@@ -13625,6 +13525,29 @@
       "BatchLabAnalysisResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -13765,6 +13688,12 @@
             "type": "string",
             "nullable": true,
             "description": "Sustituido por un reanálisis"
+          },
+          "voidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Anulado por una corrección `VOID` (contrato O2 §9)"
           },
           "conformity": {
             "nullable": true,
@@ -14128,6 +14057,29 @@
       "BottlingBatchResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -15044,6 +14996,11 @@
             "example": true,
             "deprecated": true,
             "description": "Se ignora: la D.O. del lote se calcula en el servidor con su instantánea (EA-03). Sale de la entrada en H2"
+          },
+          "closeTank": {
+            "type": "boolean",
+            "example": true,
+            "description": "Última destilación del tanque: pasa a `TRANSFERRED` aunque le quede volumen (queda como merma de trasiego). Sin él, el tanque se transfiere solo al agotarse su volumen (contrato O2 §4.2)"
           },
           "additionalParams": {
             "type": "object",
@@ -16842,6 +16799,29 @@
       "EnologicalTreatmentResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -16897,6 +16877,12 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "voidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Anulado por una corrección `VOID` (contrato O2 §9)"
           }
         },
         "required": [
@@ -17100,6 +17086,29 @@
       "FermentationLogResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -17138,6 +17147,12 @@
           "notes": {
             "type": "string",
             "nullable": true
+          },
+          "voidedAt": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true,
+            "description": "Anulado por una corrección `VOID` (contrato O2 §9)"
           }
         },
         "required": [
@@ -17151,6 +17166,29 @@
       "FermentationTankResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -17232,6 +17270,25 @@
             "nullable": true,
             "description": "Volumen al completar la fermentación (Ola 2)"
           },
+          "availableLiters": {
+            "type": "number",
+            "nullable": true,
+            "example": 0,
+            "description": "Litros que quedan por transferir: el volumen final (o el de llenado) menos lo que ya pasó a la crianza o a las destilaciones; 0 con el tanque `TRANSFERRED` o `CLEANED` (lista y detalle)"
+          },
+          "transferLossLiters": {
+            "type": "number",
+            "nullable": true,
+            "example": 100,
+            "description": "Merma de trasiego: lo que quedó sin transferir al pasar a `TRANSFERRED`; `null` mientras el tanque no se ha transferido (lista y detalle)"
+          },
+          "transitions": {
+            "description": "Historial de estados, empezando por el llenado (lista y detalle)",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TankTransitionResponseDto"
+            }
+          },
           "inputs": {
             "description": "Pesajes que entraron al tanque, con sus kilos (lista y detalle)",
             "type": "array",
@@ -17300,6 +17357,29 @@
       "HarvestBatchResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -17541,7 +17621,7 @@
           "url": {
             "type": "string",
             "nullable": true,
-            "description": "URL firmada de corta vida (`GET /v1/uploads/signed-url`)"
+            "description": "URL firmada de corta vida del informe (`null` si el almacenamiento no responde)"
           }
         },
         "required": [
@@ -17947,7 +18027,7 @@
           "url": {
             "type": "string",
             "nullable": true,
-            "description": "URL firmada (pendiente: la legada o `null`)"
+            "description": "URL firmada de corta vida del informe subido por su `key`; con un informe por URL (legado), esa URL"
           }
         },
         "required": [
@@ -19704,6 +19784,29 @@
       "MaturityAnalysisResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -20376,6 +20479,29 @@
       "PhytoDecisionResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "format": "uuid"
@@ -20624,6 +20750,29 @@
       "ProductionBatchResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -22714,9 +22863,67 @@
           "kg"
         ]
       },
+      "TankTransitionResponseDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "FILLING",
+              "FERMENTING",
+              "COMPLETED",
+              "TRANSFERRED",
+              "CLEANED"
+            ],
+            "example": "COMPLETED"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "by": {
+            "nullable": true,
+            "description": "Quién lo registró (`null` = no registrado)",
+            "type": "object",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TraceActorDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "at",
+          "by"
+        ]
+      },
       "TerroirResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"
@@ -23827,6 +24034,29 @@
       "WineAgingResponseDto": {
         "type": "object",
         "properties": {
+          "correctedFields": {
+            "example": [
+              "grossWeightKg"
+            ],
+            "description": "Campos con el valor corregido (vacío si nunca se corrigió)",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "voided": {
+            "type": "boolean",
+            "example": false,
+            "description": "Anulado por una corrección `VOID`: el registro ya no cuenta"
+          },
+          "correctionIds": {
+            "description": "Correcciones del registro, de la más antigua a la más nueva",
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "id": {
             "type": "string",
             "example": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d"

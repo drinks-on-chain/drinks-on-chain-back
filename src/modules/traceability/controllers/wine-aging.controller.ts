@@ -68,7 +68,7 @@ export class WineAgingController {
     status: HttpStatus.CONFLICT,
     type: ApiErrorResponseDto,
     description:
-      'FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
+      'FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
   })
   async createAgingBatch(
     @TenantId() wineryId: string,

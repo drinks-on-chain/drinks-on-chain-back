@@ -21,16 +21,18 @@ import {
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
+import { CorrectionsService } from '@modules/traceability/services/corrections.service';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+} from '@shared/decorators/current-user.decorator';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
-import type { Paginated } from '@shared/interfaces/api-response.interface';
 import {
   ApiErrorCodes,
   ApiLotNotFound,
-  ApiNotImplemented,
   ApiPlatformReadOnly,
   ApiRuleErrors,
 } from './contract-responses';
@@ -48,6 +50,8 @@ import {
 @PlatformReadOnly()
 @Controller('lots')
 export class CorrectionsController {
+  constructor(private readonly corrections: CorrectionsService) {}
+
   @Post(':id/corrections')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
@@ -58,27 +62,45 @@ export class CorrectionsController {
     description:
       'Contrato O2 §9: ningún registro se edita ni se borra; la corrección guarda el valor anterior y el nuevo ' +
       '(`AMEND`) o deja de contar el registro (`VOID`), con motivo. Vuelve a validar las reglas del lote con ' +
-      'la instantánea y, si resuelve una incidencia, la marca `resolvedAt`. Solo quien tiene el rol para crear ' +
-      'ese registro puede corregirlo (S-17).',
+      'la instantánea (candados, balances, D.O.): si incumple una → 422 `TRC_CORRECTION_BREAKS_RULES` con los ' +
+      'detalles de la regla y su `code`; si lo que incumple es una regla de un embotellado ya hecho (candado a ' +
+      'su fecha, balance de volumen o de alcohol), la corrección se registra y abre una incidencia con ' +
+      '`source: CORRECTION` que bloquea el cierre del expediente; si resuelve una incidencia, la marca ' +
+      '`resolvedAt`. Solo quien tiene el rol para crear ese registro puede corregirlo (S-17; si no, 403 ' +
+      '`AUTH_INSUFFICIENT_PERMISSIONS`). Las parcelas se corrigen con `POST /v1/terroirs/{id}/corrections`.',
   })
   @ApiResponse({ status: HttpStatus.CREATED, type: CorrectionDto })
-  @ApiErrorCodes(HttpStatus.NOT_FOUND, ['TRC_LOT_NOT_FOUND', 'NOT_FOUND'])
-  @ApiPlatformReadOnly()
+  @ApiErrorCodes(HttpStatus.NOT_FOUND, [
+    'TRC_LOT_NOT_FOUND',
+    'NOT_FOUND (el registro no existe en el lote)',
+  ])
+  @ApiErrorCodes(HttpStatus.FORBIDDEN, [
+    'TRC_PLATFORM_READ_ONLY',
+    'AUTH_INSUFFICIENT_PERMISSIONS (S-17)',
+  ])
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'TRC_DOSSIER_CLOSED',
     'TRC_LOT_TERMINAL',
+    'TRC_PHYTO_DECISION_FINAL (anular un dictamen con la uva en un tanque)',
+    'TRC_INVALID_STAGE (fuente descartada)',
+    'CONFLICT (registro ya anulado)',
   ])
   @ApiRuleErrors([
     'TRC_CORRECTION_FIELD_NOT_CORRECTABLE',
     'TRC_CORRECTION_BREAKS_RULES',
   ])
-  @ApiNotImplemented('2.7')
   create(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CreateLotCorrectionDto,
-  ): CorrectionDto {
-    throw notImplemented('2.7');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateLotCorrectionDto,
+  ) {
+    return this.corrections.createForLot(
+      wineryId,
+      { id: user.id, role: user.role },
+      id,
+      dto,
+    );
   }
 
   @Get(':id/corrections')
@@ -92,13 +114,12 @@ export class CorrectionsController {
     description: 'Página de correcciones',
   })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.7')
   list(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Query() _query: WineryScopedPaginationQueryDto,
-  ): Paginated<CorrectionDto> {
-    throw notImplemented('2.7');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: WineryScopedPaginationQueryDto,
+  ) {
+    return this.corrections.listForLot(wineryId, id, query);
   }
 }
 
@@ -110,6 +131,8 @@ export class CorrectionsController {
 @PlatformReadOnly()
 @Controller('terroirs')
 export class TerroirCorrectionsController {
+  constructor(private readonly corrections: CorrectionsService) {}
+
   @Post(':id/corrections')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
@@ -128,12 +151,17 @@ export class TerroirCorrectionsController {
     'TRC_CORRECTION_FIELD_NOT_CORRECTABLE',
     'TRC_CORRECTION_BREAKS_RULES',
   ])
-  @ApiNotImplemented('2.7')
   create(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CreateTerroirCorrectionDto,
-  ): CorrectionDto {
-    throw notImplemented('2.7');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateTerroirCorrectionDto,
+  ) {
+    return this.corrections.createForTerroir(
+      wineryId,
+      { id: user.id, role: user.role },
+      id,
+      dto,
+    );
   }
 }

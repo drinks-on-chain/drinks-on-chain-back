@@ -21,17 +21,19 @@ import {
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
-import { notImplemented } from '@modules/lots/domain/trace-errors';
 import { BatchLabAnalysisResponseDto } from '@modules/traceability/dto/batch-lab-analysis-response.dto';
+import { LabAnalysesService } from '@modules/traceability/services/lab-analyses.service';
+import {
+  AuthenticatedUser,
+  CurrentUser,
+} from '@shared/decorators/current-user.decorator';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
-import type { Paginated } from '@shared/interfaces/api-response.interface';
 import {
   ApiErrorCodes,
   ApiLotNotFound,
-  ApiNotImplemented,
   ApiPlatformReadOnly,
   ApiRuleErrors,
 } from './contract-responses';
@@ -45,6 +47,8 @@ import { CreateLotLabAnalysisDto } from './dto/lot-lab-analyses.dto';
 @PlatformReadOnly()
 @Controller('lots')
 export class LotLabAnalysesController {
+  constructor(private readonly labAnalyses: LabAnalysesService) {}
+
   @Post(':id/lab-analyses')
   @HttpCode(HttpStatus.CREATED)
   @Idempotent()
@@ -54,7 +58,9 @@ export class LotLabAnalysesController {
     description:
       'Contrato O2 §8.1–§8.3: un análisis nuevo sustituye al anterior (reanálisis). La conformidad se calcula ' +
       'contra `rules.lab.limits` de la instantánea del lote (singani: metanol, cobre y grado; vino: acidez ' +
-      'volátil y grado); falta alguno → `INCOMPLETE`. Unidades de §8.2.',
+      'volátil y grado); falta alguno → `INCOMPLETE`. Unidades de §8.2. El informe va por su `key` de ' +
+      '`POST /v1/uploads` (de la bodega y existente; si no, 422 `TRC_FILE_NOT_FOUND`) o por su URL (alias ' +
+      'hasta H2); el ensayo no puede ser anterior al embotellado.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -72,13 +78,13 @@ export class LotLabAnalysesController {
     'TRC_DATE_BEFORE_PREVIOUS_STAGE',
     'TRC_FILE_NOT_FOUND',
   ])
-  @ApiNotImplemented('2.7')
   create(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CreateLotLabAnalysisDto,
-  ): BatchLabAnalysisResponseDto {
-    throw notImplemented('2.7');
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateLotLabAnalysisDto,
+  ) {
+    return this.labAnalyses.createForLot(wineryId, user.id, id, dto);
   }
 
   @Get(':id/lab-analyses')
@@ -86,18 +92,18 @@ export class LotLabAnalysesController {
   @ApiOperation({
     summary: 'Análisis de laboratorio del lote',
     description:
-      'Contrato O2 §8.1: todos los análisis del lote, el más reciente primero, con `current: true` en el vigente.',
+      'Contrato O2 §8.1: todos los análisis del lote, el más reciente primero, con `current: true` en el vigente ' +
+      '(ni sustituido por un reanálisis ni anulado por una corrección).',
   })
   @ApiPaginatedResponse(BatchLabAnalysisResponseDto, {
     description: 'Página de análisis del lote',
   })
   @ApiLotNotFound()
-  @ApiNotImplemented('2.7')
   list(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Query() _query: WineryScopedPaginationQueryDto,
-  ): Paginated<BatchLabAnalysisResponseDto> {
-    throw notImplemented('2.7');
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: WineryScopedPaginationQueryDto,
+  ) {
+    return this.labAnalyses.listForLot(wineryId, id, query);
   }
 }

@@ -1076,6 +1076,8 @@ model FermentationTank {
   lotId                 String?              @map("lot_id") @db.Uuid
   finalVolumeLiters     Decimal?             @map("final_volume_liters") @db.Decimal(12, 2)
   createdByMembershipId String?              @map("created_by_membership_id") @db.Uuid
+  /// Transiciones del tanque (§4.2): `[{ status, at, byMembershipId }]` (la respuesta las da en `transitions`)
+  transitionLog         Json                 @default("[]") @map("transition_log") @db.JsonB
 
   // Relaciones
   winery            Winery                  @relation(fields: [wineryId], references: [id], onDelete: Cascade)
@@ -1101,6 +1103,8 @@ model FermentationLog {
   recordedAt         DateTime @map("recorded_at") @db.Timestamptz(6)
   recordedByUserId   String   @map("recorded_by_user_id") @db.Uuid
   notes              String?  @db.Text
+  /// Anulada por una corrección `VOID` (§9): deja de contar
+  voidedAt           DateTime? @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
   fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
@@ -1123,6 +1127,8 @@ model EnologicalTreatment {
   appliedAt            DateTime          @map("applied_at") @db.Timestamptz(6)
   authorizedByMemberId String            @map("authorized_by_member_id") @db.Uuid
   notes                String?           @db.Text
+  /// Anulado por una corrección `VOID` (§9): deja de contar
+  voidedAt             DateTime?         @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
   fermentationTank   FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
@@ -1281,6 +1287,8 @@ model BatchLabAnalysis {
   supersededAt                   DateTime? @map("superseded_at") @db.Timestamptz(6)
   laboratoryReportKey            String?   @map("laboratory_report_key") @db.VarChar(500)
   createdByMembershipId          String?   @map("created_by_membership_id") @db.Uuid
+  /// Anulado por una corrección `VOID` (§9): deja de contar
+  voidedAt                       DateTime? @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
   bottlingBatch    BottlingBatch @relation(fields: [bottlingBatchId], references: [id], onDelete: Cascade)

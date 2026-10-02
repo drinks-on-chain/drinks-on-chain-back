@@ -11,6 +11,7 @@ import {
 } from './domain/do-evaluation';
 import { LotProductType, LotStage } from './domain/lot-stage';
 import { num, tankLiters } from './domain/sources';
+import { parseTankTransitions } from './domain/tank-transitions';
 import { ruleError, stateError, violation } from './domain/trace-errors';
 
 type Tx = Prisma.TransactionClient;
@@ -60,6 +61,63 @@ export async function tankAvailableLiters(
       0,
     );
   return Math.max(0, Math.round((liters - drawn) * 1000) / 1000);
+}
+
+/**
+ * Un tanque `TRANSFERRED` o `CLEANED` ya no es origen de una crianza ni de
+ * una destilación → 409 `TRC_TANK_NOT_COMPLETED` (§5.1, §5.2). Hasta H2 se
+ * admite también el tanque sin completar (`FILLING`/`FERMENTING`) del flujo
+ * anterior a las transiciones: la crianza o la última destilación lo dan por
+ * transferido.
+ */
+export function assertTankIsSource(tank: {
+  id: string;
+  tankCode: string;
+  status: string;
+}): void {
+  if (tank.status !== 'TRANSFERRED' && tank.status !== 'CLEANED') return;
+  throw stateError(
+    ErrorCode.TRC_TANK_NOT_COMPLETED,
+    `El tanque ${tank.tankCode} está ${tank.status}: ya no tiene volumen que transferir`,
+    [
+      violation(ErrorCode.TRC_TANK_NOT_COMPLETED, 'Tanque ya transferido', {
+        field: 'fermentationTankId',
+        meta: { status: tank.status, tankId: tank.id },
+      }),
+    ],
+  );
+}
+
+/**
+ * `→ TRANSFERRED` automático (§4.2): al crear la crianza del tanque, o al
+ * agotarse su volumen con las destilaciones (o `closeTank: true`). Fija el
+ * destino decidido y deja la transición en el historial del tanque.
+ */
+export async function transferTank(
+  tx: Tx,
+  tank: {
+    id: string;
+    status: string;
+    destinationType: string | null;
+    transitionLog: Prisma.JsonValue;
+  },
+  destination: 'WINE_AGING' | 'SINGANI_DIST',
+  at: Date,
+  byMembershipId: string | null,
+): Promise<boolean> {
+  if (tank.status === 'TRANSFERRED' || tank.status === 'CLEANED') return false;
+  await tx.fermentationTank.update({
+    where: { id: tank.id },
+    data: {
+      status: 'TRANSFERRED',
+      ...(tank.destinationType === null && { destinationType: destination }),
+      transitionLog: [
+        ...parseTankTransitions(tank.transitionLog),
+        { status: 'TRANSFERRED', at: at.toISOString(), byMembershipId },
+      ] as unknown as Prisma.InputJsonArray,
+    },
+  });
+  return true;
 }
 
 /** Etapas en las que el lote admite una etapa de proceso. */

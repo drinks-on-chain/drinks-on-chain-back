@@ -12,7 +12,6 @@ import {
   RestStatusEnum,
 } from '@prisma/client';
 import { toPage, toPrismaPage } from '@shared/dto/pagination-query.dto';
-import type { Paginated } from '@shared/interfaces/api-response.interface';
 import { lockLot, refreshLotStage } from '@modules/lots/lot-records';
 import { appendLotEvent, formatQuantity } from '@modules/lots/lot-events';
 import { actorMembership, dbClock } from '@modules/lots/trace-db';
@@ -20,10 +19,13 @@ import {
   assertDestination,
   assertLotDo,
   assertStage,
+  assertTankIsSource,
   decideProductType,
   ensureHarvestLot,
   tankAvailableLiters,
+  transferTank,
 } from '@modules/lots/chain';
+import { laPazNoon } from '@modules/lots/date-rules';
 import {
   addDays,
   calendarDay,
@@ -36,6 +38,7 @@ import { LotLock, restLock } from '@modules/lots/domain/locks';
 import { parseLotRules } from '@modules/lots/domain/lot-rules';
 import { distillationHeart, legacyCuts } from '@modules/lots/domain/sources';
 import { ruleError, violation } from '@modules/lots/domain/trace-errors';
+import { markRows } from '@modules/lots/correction-marks';
 
 type DistillationView<T> = T & {
   lock: LotLock | null;
@@ -79,6 +82,7 @@ export class ProductionBatchesService {
         throw new NotFoundException('El tanque no pertenece a ningún lote');
       }
       const lot = await lockLot(tx, lotId, wineryId, { writable: true });
+      assertTankIsSource(tank);
       assertStage(
         lot,
         ['FERMENTING', 'DISTILLING', 'RESTING'],
@@ -129,7 +133,7 @@ export class ProductionBatchesService {
           );
         }
       }
-      const tankStart = laPazDate(tank.startDate);
+      const tankStart = laPazDate(tank.endDate ?? tank.startDate);
       if (startDay < tankStart || (endDay && endDay < startDay)) {
         const field =
           startDay < tankStart ? 'processStartDate' : 'processEndDate';
@@ -279,6 +283,22 @@ export class ProductionBatchesService {
           resource: { type: 'production_batch', id: created.id },
         });
       }
+      // → TRANSFERRED al agotarse el tanque o con `closeTank` (§4.2)
+      const remaining = await tankAvailableLiters(tx, tank.id);
+      if (
+        dto.closeTank === true ||
+        (dto.inputVolumeLiters !== undefined &&
+          remaining !== null &&
+          remaining <= 1e-6)
+      ) {
+        await transferTank(
+          tx,
+          tank,
+          'SINGANI_DIST',
+          laPazNoon(startDay),
+          membership?.id ?? null,
+        );
+      }
       await refreshLotStage(tx, lot.id, clock.now);
       await this.audit.record(tx, {
         action: AuditAction.PRODUCTION_BATCH_CREATED,
@@ -361,15 +381,15 @@ export class ProductionBatchesService {
       );
     }
     const { today } = await dbClock(this.prisma);
-    return withLock(batch, today);
+    return (
+      await markRows(this.prisma, 'PRODUCTION_BATCH', [withLock(batch, today)])
+    )[0];
   }
 
   async findAll(
     wineryId: string | undefined,
     query: QueryProductionBatchesDto,
-  ): Promise<
-    Paginated<Omit<DistillationView<ProductionBatch>, 'bottlingBatches'>>
-  > {
+  ) {
     const where: Prisma.ProductionBatchWhereInput = {
       ...(wineryId && { wineryId }),
       ...(query.processType && { processType: query.processType }),
@@ -394,12 +414,16 @@ export class ProductionBatchesService {
     ]);
     const { today } = await dbClock(this.prisma);
     return toPage(
-      items.map((i) => {
-        // La lista no trae los embotellados (solo se usan para el cálculo)
-        const { bottlingBatches: _b, ...view } = withLock(i, today);
-        void _b;
-        return view;
-      }),
+      await markRows(
+        this.prisma,
+        'PRODUCTION_BATCH',
+        items.map((i) => {
+          // La lista no trae los embotellados (solo se usan para el cálculo)
+          const { bottlingBatches: _b, ...view } = withLock(i, today);
+          void _b;
+          return view;
+        }),
+      ),
       total,
       query,
     );

@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import {
   IsDateString,
   IsIn,
@@ -62,12 +63,13 @@ export class InspectionReportDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'URL firmada de corta vida (`GET /v1/uploads/signed-url`)',
+    description:
+      'URL firmada de corta vida del informe (`null` si el almacenamiento no responde)',
   })
   url!: string | null;
 }
 
-export class PhytoDecisionResponseDto {
+export class PhytoDecisionResponseDto extends CorrectableResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 
@@ -131,7 +133,7 @@ export class CreateMaturityAnalysisDto {
   notes?: string;
 }
 
-export class MaturityAnalysisResponseDto {
+export class MaturityAnalysisResponseDto extends CorrectableResponseDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
 

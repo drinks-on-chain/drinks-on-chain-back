@@ -11,6 +11,9 @@ import { ProductionBatchesService } from './services/production-batches.service'
 import { BottlingService } from './services/bottling.service';
 import { LabAnalysesService } from './services/lab-analyses.service';
 import { DagBuilderService } from './services/dag-builder.service';
+import { TankTransitionsService } from './services/tank-transitions.service';
+import { StageActionsService } from './services/stage-actions.service';
+import { CorrectionsService } from './services/corrections.service';
 import { FermentationController } from './controllers/fermentation.controller';
 import { WineAgingController } from './controllers/wine-aging.controller';
 import { ProductionBatchesController } from './controllers/production-batches.controller';
@@ -40,6 +43,9 @@ import { TraceabilityDagController } from './controllers/traceability-dag.contro
     BottlingService,
     LabAnalysesService,
     DagBuilderService,
+    TankTransitionsService,
+    StageActionsService,
+    CorrectionsService,
   ],
   exports: [
     TraceabilityStrategyFactory,
@@ -53,6 +59,9 @@ import { TraceabilityDagController } from './controllers/traceability-dag.contro
     BottlingService,
     LabAnalysesService,
     DagBuilderService,
+    TankTransitionsService,
+    StageActionsService,
+    CorrectionsService,
   ],
 })
 export class TraceabilityModule {}

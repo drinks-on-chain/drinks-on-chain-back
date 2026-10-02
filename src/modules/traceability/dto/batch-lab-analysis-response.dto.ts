@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import { ErrorDetailDto } from '@shared/dto/api-error-response.dto';
 import { TraceActorDto } from '@modules/lots/dto/lot.dto';
 import { LabConformityCheckDto } from '@modules/lots/contract/dto/public-passports.dto';
@@ -57,12 +58,13 @@ export class LabReportDto {
   @ApiProperty({
     type: String,
     nullable: true,
-    description: 'URL firmada (pendiente: la legada o `null`)',
+    description:
+      'URL firmada de corta vida del informe subido por su `key`; con un informe por URL (legado), esa URL',
   })
   url!: string | null;
 }
 
-export class BatchLabAnalysisResponseDto {
+export class BatchLabAnalysisResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 
@@ -181,6 +183,14 @@ export class BatchLabAnalysisResponseDto {
     description: 'Sustituido por un reanálisis',
   })
   supersededAt!: Date | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    format: 'date-time',
+    nullable: true,
+    description: 'Anulado por una corrección `VOID` (contrato O2 §9)',
+  })
+  voidedAt?: Date | null;
 
   @ApiPropertyOptional({
     type: () => LabConformityDto,

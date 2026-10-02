@@ -92,6 +92,15 @@ export class CreateDistillationBatchDto {
   isDoEligible?: boolean;
 
   @ApiPropertyOptional({
+    example: true,
+    description:
+      'Última destilación del tanque: pasa a `TRANSFERRED` aunque le quede volumen (queda como merma de trasiego). Sin él, el tanque se transfiere solo al agotarse su volumen (contrato O2 §4.2)',
+  })
+  @IsOptional()
+  @IsBoolean()
+  closeTank?: boolean;
+
+  @ApiPropertyOptional({
     example: {
       headDiscardLiters: 120,
       heartYieldLiters: 1750,
