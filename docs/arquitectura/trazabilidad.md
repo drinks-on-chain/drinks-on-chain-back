@@ -188,7 +188,9 @@ Con ellas la semilla no genera incidencias. Una base que ya tenía la semilla an
 
 Implementadas en la apertura (con su OpenAPI y validadas contra él en e2e): `GET/POST /v1/lots`, `GET/PATCH /v1/lots/{id}`, `POST /v1/lots/{id}/discard`; `POST /v1/lots/{id}/bottling/preview` y `POST /v1/lots/{id}/bottling` (mismo motor que la ruta legada; sin `sources`, todas las fuentes abiertas del lote con todo su volumen); `POST/GET /v1/harvest-batches/{id}/phyto-decisions` y `…/maturity-analyses`; `GET /v1/harvest-batches?lotId=none`; y las rutas actuales con las reglas nuevas y los campos aditivos (`lotId`, `inputs`, `lock`, `balance`, `bottleCodes`, `conformity`, `units`…). `GET /v1/public/wineries` también responde (O2-WEB-1).
 
-Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso de la Etapa 2 que las trae): transiciones del tanque (2.3), descarte de crianza y cierre/descarte de destilación (2.4), códigos de botella y exportaciones (2.6), laboratorio por lote y correcciones (2.7), expediente (2.8), línea de tiempo, grafo, balance, panel, reportes y adjuntos (2.9) y pasaporte público (2.10).
+Implementadas en los pasos 2.3, 2.4 y 2.7 ([arriba](#vinificación-crianza-y-destilación-laboratorio-y-correcciones-pasos-2224-y-27)): transiciones del tanque, descarte de crianza, cierre y descarte de destilación, laboratorio por lote y correcciones.
+
+Publicadas con **501 `NOT_IMPLEMENTED`** (el `details[0].meta.step` dice el paso de la Etapa 2 que las trae): códigos de botella y exportaciones (2.6), expediente (2.8), línea de tiempo, grafo, balance, panel, reportes y adjuntos (2.9) y pasaporte público (2.10).
 
 ## Configuración
 
