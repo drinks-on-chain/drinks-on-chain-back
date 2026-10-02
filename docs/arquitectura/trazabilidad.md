@@ -96,6 +96,63 @@ Estado del recurso → **409**; regla de negocio incumplida → **422**; platafo
 
 El filtro global conserva `code`, `rule`, `expected`, `actual` y `meta` (`normalizeErrorDetails`); el resto de campos se descarta como antes. La lista completa de códigos está en `src/shared/exceptions/error-codes.ts` y en `docs/rules/03-formato-respuestas.md`.
 
+## Vinificación, crianza y destilación, laboratorio y correcciones (pasos 2.2–2.4 y 2.7)
+
+> O2-BE-1 · bloque A (contrato O2 §3.1, §4, §5, §8, §9 y §15). Estas rutas ya **no** responden 501: `POST /v1/fermentation-tanks/{id}/start|complete|clean`, `POST /v1/wine-aging/{id}/discard`, `POST /v1/production-batches/{id}/close|discard`, `POST/GET /v1/lots/{id}/lab-analyses`, `POST/GET /v1/lots/{id}/corrections` y `POST /v1/terroirs/{id}/corrections`. Cada escritura bloquea la fila del lote y deja su evento en `lot_events` y su entrada de bitácora en la misma transacción.
+
+### Transiciones del tanque (§4.2–§4.3)
+
+El estado del tanque cambia solo con **acciones** (`TankTransitionsService`); una acción desde otro estado → 409 `TRC_TANK_INVALID_TRANSITION` con `meta: { from, to }`.
+
+| Acción | De → a | Reglas | Evento · bitácora |
+|---|---|---|---|
+| `start` | `FILLING → FERMENTING` | `startedAt` (por defecto, ahora) ni futuro ni anterior al llenado | `FERMENTATION_STARTED` · `TANK_TRANSITION` |
+| `complete` | `FERMENTING → COMPLETED` | `finalVolumeLiters ≤ volumeFilledLiters` (`TRC_VOLUME_EXCEEDS_AVAILABLE`); `endDate` ni futura ni anterior al llenado; **bifurcación** | `FERMENTATION_COMPLETED` (y `PRODUCT_DECIDED`) · `TANK_TRANSITION` |
+| (automática) | `→ TRANSFERRED` | Al crear la crianza del tanque, al agotarse su volumen con las destilaciones o con `closeTank: true` en la destilación | Historial del tanque |
+| `clean` | `TRANSFERRED → CLEANED` | `cleanedAt` ni futuro ni anterior al fin de la fermentación; libera el `tankCode` (S-7) | `TANK_TRANSITION` |
+
+- **Bifurcación (ERP-09)**: `destination` debe coincidir con el tipo del lote (`WINE ↔ WINE_AGING`, `SINGANI ↔ SINGANI_DIST`; si no, 422 `TRC_DESTINATION_MISMATCH`). Si el lote aún no tiene tipo, la primera bifurcación lo fija y todos sus tanques comparten destino. Con destino singani, la D.O. se evalúa sobre **todos** los pesajes del lote con la instantánea (422 `TRC_DO_NOT_ELIGIBLE`): si falla, nada se guarda y el lote sigue sin tipo.
+- La respuesta del tanque añade `availableLiters` (el volumen final, o el de llenado, menos lo transferido; 0 con el tanque transferido), `transferLossLiters` (lo que quedó sin transferir: la merma de trasiego) y `transitions` (`{ status, at, by }`, empezando por el llenado). El historial se guarda en `fermentation_tanks.transition_log`.
+- Un tanque `TRANSFERRED` o `CLEANED` ya no es origen de una crianza ni de una destilación → 409 `TRC_TANK_NOT_COMPLETED`.
+- `clean` no escribe en la línea de tiempo del lote (no es un hecho de su producción y el lote puede estar ya cerrado): queda en el historial del tanque y en la bitácora.
+
+### Crianza, destilación y reposo (§5)
+
+- **Cierre de la destilación** (`POST …/close`): cortes tipados (`cuts.headsLiters`, `heartLiters`, `tailsLiters`, `vinasseLiters?`) y `heartAbvPercent`. **Balance de masa**: cabezas + corazón + colas (+ vinaza) ≤ entrada → si no, 422 `TRC_MASS_BALANCE_EXCEEDED` (`meta: { inputLiters, outputLiters }`). Sin volumen de entrada registrado → 422 `TRC_VOLUME_MISSING`; ya cerrada → 409 `TRC_DISTILLATION_ALREADY_CLOSED`. El reposo se abre desde `processEndDate` con el `minRestDays` de la **instantánea** del lote (`mandatoryRestUntil`, `restStatus: RESTING`); con todas las destilaciones cerradas el lote pasa a `RESTING`.
+- **Descartes** (`POST /v1/wine-aging/{id}/discard`, `POST /v1/production-batches/{id}/discard`): con motivo; la fuente pasa a `DISCARDED` y deja de contar como fuente abierta del embotellado. Una fuente ya embotellada o descartada → 409 `TRC_INVALID_STAGE`. El evento es interno (los motivos y las mermas no son públicos, S-22) y las incidencias abiertas del lote se reevalúan (p. ej. una fuente abierta en un lote ya embotellado).
+- **Candados** (§5.3): el embotellado los recalcula siempre con la instantánea y el reloj de la base. La tarea diaria **`trace.locks.release`** (worker, 00:05 de America/La_Paz y al arrancar) solo **persiste** el estado: pasa a `READY` las crianzas `AGING` y las destilaciones `RESTING` con `unlockDate ≤ hoy` y escribe `LOCK_RELEASED` en la línea de tiempo y en la bitácora (actor sistema). Es idempotente y segura con varias réplicas (cada lote en su transacción, con su fila bloqueada). Al cerrar una destilación con una fecha que ya cumple el reposo (registro tardío), el candado se libera en el momento.
+
+### Laboratorio del lote (§8)
+
+`POST /v1/lots/{id}/lab-analyses` usa el mismo cálculo de conformidad y de unidades que la ruta legada (`POST /v1/lab-analyses`, alias hasta H2) y añade: lote embotellado (si no, 409 `TRC_LOT_NOT_BOTTLED`) y expediente abierto (409 `TRC_DOSSIER_CLOSED`); informe por su `key` de `POST /v1/uploads`, de la bodega y existente (422 `TRC_FILE_NOT_FOUND`), o por URL (alias hasta H2); ensayo ni futuro ni anterior al embotellado. La respuesta trae `report: { key, sha256, url }` con una URL firmada de corta vida. `GET /v1/lots/{id}/lab-analyses` lista todos, el más reciente primero, con `current: true` en el vigente (ni sustituido por un reanálisis ni anulado por una corrección). El informe del dictamen fitosanitario sigue las mismas reglas (`inspectionReportKey`, URL firmada).
+
+### Correcciones compensatorias (§9; EA-06)
+
+Ningún registro de la trazabilidad tiene ruta de edición ni de borrado. Un error se corrige con un **registro aparte** (`trace_corrections`): objetivo (`target.type`, `target.id`), `kind`, `changes: [{ field, before, after }]`, motivo (10–500) y autor. El recurso pasa a devolver el **valor vigente** y añade `correctedFields`, `voided` y `correctionIds`; el valor original queda en la corrección y en la bitácora (`CORRECTION_REGISTERED`), y los eventos del registro quedan marcados `corrected`.
+
+- **`AMEND`** sobre una **lista cerrada** de campos (`src/modules/lots/domain/corrections.ts`): pesaje (`grossWeightKg`, `tareWeightKg`, `intakeDate`, `temperatureAtIntakeC`, `notes`), análisis de madurez y lecturas (sus valores y fechas), tratamiento (dosis, aditivo, proveedor, fecha, notas), tanque (`volumeFilledLiters`, `finalVolumeLiters`, `startDate`, `endDate`), crianza (`plannedMonths`, `volumeLiters`, `startDate`), destilación (`inputVolumeLiters`, cortes, `heartAbvPercent`, fechas), embotellado (`finalAlcoholAbv`, `bottleType`, `leftover`), laboratorio (sus valores y la fecha del ensayo) y parcela (`altitudeMasl`, `varietyName`, `rawMaterialType`). Otro campo → 422 `TRC_CORRECTION_FIELD_NOT_CORRECTABLE`. No son corregibles el lote de pertenencia, el tipo de producto, el código de lote, los códigos de botella ni el número de botellas.
+- **`VOID`** (el registro deja de contar): lecturas, tratamientos, análisis de madurez, análisis de laboratorio y dictámenes (estos solo mientras la uva no entró a un tanque → si no, 409 `TRC_PHYTO_DECISION_FINAL`). Anular un dictamen devuelve el pesaje al estado de su último dictamen vigente; anular el análisis de laboratorio vigente devuelve la vigencia al anterior.
+- **Quién** (S-17): el rol que puede crear el registro (p. ej. el operario corrige pesajes y lecturas; tanques, crianzas, destilaciones, embotellado y laboratorio, solo dirección y enología) → si no, 403 `AUTH_INSUFFICIENT_PERMISSIONS`.
+- **Valores derivados**: el neto del pesaje (y las entradas del tanque, si toda la uva del pesaje estaba en tanques), el candado de la crianza y del reposo (se recalculan desde la fecha corregida, y el estado `READY`/`AGING`/`RESTING` sigue al cálculo), el metanol en mg/100 mL a.a. y la conformidad del laboratorio, y los litros disponibles del embotellado.
+- **Reglas** (`lotIntegrityViolations`): cada corrección vuelve a evaluar el lote entero con su instantánea (D.O., dictamen de la uva en tanques, kilos y litros disponibles, capacidad, crianza mínima, balance de masa y, si el lote está embotellado, candados a la fecha del embotellado, balance de volumen, merma, alcohol y agua) y compara con la revisión anterior a la corrección:
+  - si la corrección **introduce** una violación → 422 `TRC_CORRECTION_BREAKS_RULES` con los detalles de la regla (`code` interno, `rule`, `expected`, `actual`) y nada se guarda;
+  - si la violación es de un **embotellado ya hecho** (que no se puede deshacer), la corrección se registra —el dato corregido es el verdadero— y abre una incidencia con `source: 'CORRECTION'`, que bloquea el cierre del expediente;
+  - si deja de incumplirse una regla con incidencia abierta, la incidencia queda resuelta (`resolvedAt`, con la corrección que lo logró).
+- **Parcelas** (`POST /v1/terroirs/{id}/corrections`, §3.1): los campos normativos de una parcela usada solo cambian por aquí (el `PATCH` responde 409 `TRC_TERROIR_IN_USE`). La corrección tiene `lotId: null` y reevalúa la D.O. de los lotes singani abiertos que usan la parcela: el que deja de cumplir recibe una incidencia `TRC_DO_NOT_ELIGIBLE` con `source: 'RULES_REEVALUATION'`; el que vuelve a cumplir, la resuelve.
+- Estados que no admiten correcciones: expediente cerrado → 409 `TRC_DOSSIER_CLOSED`; lote descartado → 409 `TRC_LOT_TERMINAL`; lote `REJECTED` → solo la anulación de un dictamen (así se deshace un rechazo erróneo); registro ya anulado → 409 `CONFLICT`; fuente descartada → 409 `TRC_INVALID_STAGE`.
+
+### Precisiones sobre el contrato
+
+| Tema | Lo que hace el backend | Por qué |
+|---|---|---|
+| Tanque sin completar como origen (§5.1, §5.2) | Hasta H2, la crianza y la destilación se admiten también desde un tanque `FILLING`/`FERMENTING` (el flujo anterior a las transiciones) y lo dan por transferido; `TRC_TANK_NOT_COMPLETED` solo para `TRANSFERRED`/`CLEANED` | Compatibilidad con el ERP actual, que no llama a `complete`; no abre ninguna elusión (D.O., destino y volúmenes se comprueban igual) |
+| Limpieza del tanque de un lote descartado (§4.2) | `clean` se admite desde cualquier estado si el lote está `DISCARDED` o `REJECTED` | Un lote terminal no admite transiciones: su tanque quedaría ocupado para siempre (S-7) |
+| Evento del descarte de una fuente (§11.1) | `LOT_DISCARDED` interno con `data.scope: 'SOURCE'` y el recurso de la fuente; bitácora `AGING_DISCARDED`/`DISTILLATION_DISCARDED` | El contrato no define un tipo de evento para el descarte de una crianza o una destilación |
+| `discardedLiters` de la crianza (§5.1) | Informativo (por defecto, todo el volumen): la crianza pasa entera a `DISCARDED` | No hay descartes parciales en el contrato |
+| Corrección que incumple una regla de un embotellado ya hecho (§9) | Se registra y abre una incidencia `CORRECTION` (no 422) | El embotellado no se puede deshacer y el dato corregido es el verdadero; el 422 se reserva para lo que aún se puede evitar |
+| Cómo se guarda una corrección (§9) | El registro pasa a tener el valor vigente; el anterior queda en `trace_corrections.changes` y en la bitácora | Todas las reglas y vistas leen un único valor vigente; no hay rutas de edición ni de borrado |
+| Eventos del outbox `lot.*` (§15) | No se emiten todavía | Su único consumidor es la caché del pasaporte (paso 2.10); un evento sin procesador falla en el worker |
+
 ## Migración de los datos anteriores (§2.6)
 
 1. **Expandir** (`20260928090000_o2_lotes_expand`): tablas nuevas y columnas nulas; la migración **encola** cada pesaje existente en `lot_backfill_pending`.
