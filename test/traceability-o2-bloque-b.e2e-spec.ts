@@ -53,9 +53,15 @@ import { readZipEntries } from './helpers/zip';
 /**
  * Ola 2 · bloque B (O2-BE-1, pasos 2.5, 2.6 y 2.8): embotellado seguro,
  * códigos de botella (listado, CSV, ZIP para la imprenta, anular y sustituir)
- * y expediente del lote con hash canónico y raíz Merkle. En un esquema propio
- * (el worker de otras suites no toca su outbox), con almacenamiento local en
- * una carpeta temporal y las respuestas JSON validadas contra `openapi.json`.
+ * y expediente del lote con hash canónico y raíz Merkle. Con almacenamiento
+ * local en una carpeta temporal y las respuestas JSON validadas contra
+ * `openapi.json`.
+ *
+ * Corre en una **base de datos propia** (no solo un esquema): los candados de
+ * aviso de Postgres son por base de datos, y el de la cadena de la bitácora
+ * lo retiene durante toda su transacción la semilla que cargan otras suites
+ * (decenas de segundos), más de lo que espera una escritura auditada (15 s).
+ * Además, el worker de otras suites no ve su outbox.
  *
  * La cadena anterior al embotellado (pesaje, tanque, destilación o crianza)
  * se siembra con Prisma: sus rutas son de otros pasos de la ola.
@@ -64,16 +70,29 @@ process.env.TRUST_PROXY = '1';
 jest.setTimeout(180_000);
 
 const run = `${Date.now()}${randomBytes(3).toString('hex')}`;
-const schema = `o2b_e2e_${run}`;
-const originalUrl = process.env.DATABASE_URL;
+const database = `o2b_e2e_${run}`;
+const originalUrl = process.env.DATABASE_URL ?? '';
 const PASSPORT = 'https://pasaporte.o2b.test';
 
-function urlWithSchema(url: string, name: string): string {
+function urlWithDatabase(url: string, name: string): string {
   const parsed = new URL(url);
-  parsed.searchParams.set('schema', name);
+  parsed.pathname = `/${name}`;
+  parsed.searchParams.set('schema', 'public');
   return parsed.toString();
 }
-const databaseUrl = urlWithSchema(process.env.DATABASE_URL ?? '', schema);
+const databaseUrl = urlWithDatabase(originalUrl, database);
+
+/** Sentencia de administración en la base original (crear y borrar la propia). */
+async function onOriginalDatabase(sql: string): Promise<void> {
+  const admin = new PrismaClient({
+    datasources: { db: { url: originalUrl } },
+  });
+  try {
+    await admin.$executeRawUnsafe(sql);
+  } finally {
+    await admin.$disconnect();
+  }
+}
 
 /** Día de calendario de hace `n` días (UTC; `n ≥ 2` evita el borde de La Paz). */
 function daysAgo(n: number): string {
@@ -420,20 +439,11 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
   }
 
   beforeAll(async () => {
-    // Esquema nuevo y solo de esta suite: sin el candado global de Prisma
-    // Migrate, que es por base de datos y haría esperar (y caducar a los 10 s)
-    // a las otras suites que migran su propio esquema a la vez
+    await onOriginalDatabase(`CREATE DATABASE "${database}"`);
     execFileSync(
       process.execPath,
       [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
-      {
-        env: {
-          ...process.env,
-          DATABASE_URL: databaseUrl,
-          PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: '1',
-        },
-        stdio: 'pipe',
-      },
+      { env: { ...process.env, DATABASE_URL: databaseUrl }, stdio: 'pipe' },
     );
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = PASSPORT;
@@ -511,11 +521,9 @@ describe('Ola 2 · bloque B: embotellado, códigos de botella y expediente (e2e)
 
   afterAll(async () => {
     await app?.close();
-    const admin = new PrismaClient({
-      datasources: { db: { url: databaseUrl } },
-    });
-    await admin.$executeRawUnsafe(`DROP SCHEMA IF EXISTS "${schema}" CASCADE`);
-    await admin.$disconnect();
+    await onOriginalDatabase(
+      `DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`,
+    );
     rmSync(storageDir, { recursive: true, force: true });
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
