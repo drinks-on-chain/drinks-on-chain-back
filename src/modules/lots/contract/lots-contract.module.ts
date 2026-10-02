@@ -11,7 +11,6 @@ import {
 import { DossierController } from './dossier.controller';
 import { LotBottlingController } from './lot-bottling.controller';
 import { LotLabAnalysesController } from './lot-lab-analyses.controller';
-import { PublicPassportsController } from './public-passports.controller';
 import { PublicWineriesDirectoryController } from './public-wineries.controller';
 import { PublicWineriesDirectoryService } from './public-wineries-directory.service';
 import {
@@ -26,8 +25,9 @@ import { TankTransitionsController } from './tank-transitions.controller';
  * NOT_IMPLEMENTED` hasta que llega su paso de la Etapa 2 (2.3–2.10). Al
  * implementar una, se mueve a su módulo y se retira de aquí. Ya son reales el
  * directorio público de bodegas (`GET /v1/public/wineries`) y el embotellado
- * del lote (`POST /v1/lots/{id}/bottling[/preview]`). Las vistas del lote y
- * sus archivos (paso 2.9) ya viven en `LotViewsModule`.
+ * del lote (`POST /v1/lots/{id}/bottling[/preview]`). Las vistas del lote, sus
+ * archivos y el pasaporte público (pasos 2.9 y 2.10) ya viven en
+ * `LotViewsModule`.
  */
 @Module({
   imports: [PrismaModule, TraceabilityModule, LotViewsModule],
@@ -41,7 +41,6 @@ import { TankTransitionsController } from './tank-transitions.controller';
     TankTransitionsController,
     WineAgingActionsController,
     ProductionActionsController,
-    PublicPassportsController,
     PublicWineriesDirectoryController,
   ],
   providers: [PublicWineriesDirectoryService, LotBottlingService],

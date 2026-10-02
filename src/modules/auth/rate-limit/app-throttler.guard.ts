@@ -12,6 +12,10 @@ import type { Response } from 'express';
 export const GLOBAL_THROTTLER = 'global';
 /** Límite de las rutas de `/auth/*` (por ruta e IP; se ajusta con `@Throttle`). */
 export const AUTH_THROTTLER = 'auth';
+/** Límite del pasaporte público (por IP, todas sus rutas juntas; contrato O2 §12.4). */
+export const PASSPORT_THROTTLER = 'passport';
+/** Límite de los perfiles públicos de bodegas (por IP; contrato O2 §12.4). */
+export const PUBLIC_WINERIES_THROTTLER = 'publicWineries';
 
 export const DEFAULT_RATE_LIMITS = {
   globalPerMinute: 300,
@@ -21,6 +25,10 @@ export const DEFAULT_RATE_LIMITS = {
   refreshPerMinute: 30,
   /** Formulario público de solicitud de alta (por IP). */
   applicationPerMinute: 5,
+  /** Pasaporte público: `/v1/public/passports|lots|bottles` (S-24). */
+  passportPerMinute: 60,
+  /** `/v1/public/wineries` y `/v1/public/wineries/{slug}`. */
+  publicWineriesPerMinute: 120,
 } as const;
 
 function positiveInt(value: unknown, fallback: number): number {
@@ -53,12 +61,23 @@ export const AUTH_RATE_LIMITED_CONTROLLERS: ReadonlySet<string> = new Set([
 const isAuthRoute = (context: ExecutionContext): boolean =>
   AUTH_RATE_LIMITED_CONTROLLERS.has(context.getClass().name);
 
+const PASSPORT_CONTROLLERS: ReadonlySet<string> = new Set([
+  'PublicPassportsController',
+]);
+const PUBLIC_WINERIES_CONTROLLERS: ReadonlySet<string> = new Set([
+  'PublicWineriesController',
+  'PublicWineriesDirectoryController',
+]);
+
 /**
  * Límites de peticiones (SE-06, IAM-07). La IP es la real (`request.ip` con
  * `trust proxy`, ver `configureApp`):
  * - `global`: `RATE_LIMIT_GLOBAL_PER_MINUTE` (300) por IP para toda la API;
  * - `auth`: `RATE_LIMIT_AUTH_PER_MINUTE` (20) por IP y ruta de `/auth/*`, con
- *   límites propios en login, signup y refresh (`@Throttle`).
+ *   límites propios en login, signup y refresh (`@Throttle`);
+ * - `passport`: `RATE_LIMIT_PASSPORT_PER_MINUTE` (60) por IP en el pasaporte
+ *   público, y `publicWineries`: `RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE`
+ *   (120) por IP en los perfiles públicos de bodegas (contrato O2 §12.4).
  */
 export function throttlerOptionsFromConfig(
   config: ConfigService,
@@ -83,6 +102,28 @@ export function throttlerOptionsFromConfig(
           DEFAULT_RATE_LIMITS.authPerMinute,
         ),
         skipIf: (context) => !isAuthRoute(context),
+      },
+      {
+        name: PASSPORT_THROTTLER,
+        ttl: 60_000,
+        limit: positiveInt(
+          config.get('RATE_LIMIT_PASSPORT_PER_MINUTE'),
+          DEFAULT_RATE_LIMITS.passportPerMinute,
+        ),
+        skipIf: (context) => !PASSPORT_CONTROLLERS.has(context.getClass().name),
+        // Un solo contador por IP para todas las rutas del pasaporte
+        generateKey: (_context, tracker, name) => `${name}:${tracker}`,
+      },
+      {
+        name: PUBLIC_WINERIES_THROTTLER,
+        ttl: 60_000,
+        limit: positiveInt(
+          config.get('RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE'),
+          DEFAULT_RATE_LIMITS.publicWineriesPerMinute,
+        ),
+        skipIf: (context) =>
+          !PUBLIC_WINERIES_CONTROLLERS.has(context.getClass().name),
+        generateKey: (_context, tracker, name) => `${name}:${tracker}`,
       },
     ],
   };

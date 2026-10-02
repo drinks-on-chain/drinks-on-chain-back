@@ -117,6 +117,13 @@ export const envValidationSchema = Joi.object({
     .uri({ scheme: ['http', 'https'] })
     .allow('')
     .optional(),
+  // Origen público de la API para los enlaces del pasaporte (expediente
+  // canónico y adjuntos públicos, contrato O2 §12.2). Vacío = rutas relativas
+  // (`/v1/public/lots/…`), que la app resuelve contra su propio proxy.
+  API_PUBLIC_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
   // Relleno de lotes de la migración de la Ola 2 al arrancar la API (false = no)
   LOT_BACKFILL_ON_BOOT: Joi.string().valid('true', 'false').optional(),
 
@@ -153,6 +160,15 @@ export const envValidationSchema = Joi.object({
   RATE_LIMIT_REFRESH_PER_MINUTE: Joi.number().integer().min(1).optional(),
   // Formulario público de solicitud de alta (por IP y minuto)
   RATE_LIMIT_APPLICATION_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  // Pasaporte público (contrato O2 §12.4, S-24): peticiones por minuto e IP,
+  // y códigos inexistentes por ventana antes del 429 PUB_TOO_MANY_LOOKUPS
+  RATE_LIMIT_PASSPORT_PER_MINUTE: Joi.number().integer().min(1).optional(),
+  RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE: Joi.number()
+    .integer()
+    .min(1)
+    .optional(),
+  PASSPORT_MISS_LIMIT: Joi.number().integer().min(1).optional(),
+  PASSPORT_MISS_WINDOW_SECONDS: Joi.number().integer().min(1).optional(),
   // Lista de espera (contrato O1b §1): inscripciones por minuto y por hora
   // por IP real, y por hora por correo. Captcha solo si se exige.
   WAITLIST_LIMIT_IP_MINUTE: Joi.number().integer().min(1).optional(),
