@@ -143,6 +143,21 @@ Ningún registro de la trazabilidad tiene ruta de edición ni de borrado. Un err
 - **Parcelas** (`POST /v1/terroirs/{id}/corrections`, §3.1): los campos normativos de una parcela usada solo cambian por aquí (el `PATCH` responde 409 `TRC_TERROIR_IN_USE`). La corrección tiene `lotId: null` y reevalúa la D.O. de los lotes singani abiertos que usan la parcela: el que deja de cumplir recibe una incidencia `TRC_DO_NOT_ELIGIBLE` con `source: 'RULES_REEVALUATION'`; el que vuelve a cumplir, la resuelve.
 - Estados que no admiten correcciones: expediente cerrado → 409 `TRC_DOSSIER_CLOSED`; lote descartado → 409 `TRC_LOT_TERMINAL`; lote `REJECTED` → solo la anulación de un dictamen (así se deshace un rechazo erróneo); registro ya anulado → 409 `CONFLICT`; fuente descartada → 409 `TRC_INVALID_STAGE`.
 
+### Registros anulados y correcciones en las vistas
+
+Un registro anulado (`voided_at`) **deja de contar** en todo lo que se calcula o se publica, y queda **marcado** donde se muestra el historial. Las marcas de corrección salen siempre de `trace_corrections`.
+
+| Dónde | Registros anulados | Correcciones |
+|---|---|---|
+| Recursos del ERP (tanque con sus lecturas y tratamientos, pesaje, laboratorio…) | Se devuelven marcados: `voided: true` | `correctedFields`, `correctionIds` |
+| Línea de tiempo (`GET /v1/lots/{id}/timeline`) | El evento sigue, con `corrected: true` | Un evento `CORRECTION` por corrección y `corrected: true` en los del registro |
+| Grafo (`GET /v1/lots/{id}/graph` y el legado) | Lecturas y tratamientos anulados no cuentan en las métricas del tanque (`readings`, `lastTemperatureC`, `treatments`); un análisis de laboratorio anulado sigue como nodo con `status: 'VOIDED'` | `corrected: true` en el nodo corregido; la corrección de un análisis de madurez o de un dictamen marca el pesaje, y la de una lectura o un tratamiento, el tanque |
+| Balance y reporte de producción | `labStatus` es el del análisis vigente (ni sustituido ni anulado); el dictamen del pesaje es el de su último dictamen sin anular | Usan siempre el valor vigente |
+| Panel | Una lectura anulada no dispara ni apaga una alerta de fermentación; `bottledWithoutLab` y `readyToClose` miran el análisis vigente | — |
+| Archivos del lote | El informe de un dictamen o de un análisis anulado no se lista | — |
+| Expediente canónico | Siguen, con `voidedAt` ([forma canónica](#forma-canónica-doc-dossier1)); el requisito `LAB_CONFORMING` mira el vigente | Todas, con sus valores anteriores |
+| Pasaporte público | Fuera: ni en `fermentation.readingsCount` ni en `treatments`, ni como laboratorio vigente, ni sus eventos en la línea de tiempo (un dictamen o un análisis anulado) | `corrections: { count, lastAt }` (cuántas y cuándo, S-22) y `corrected: true` en los eventos del registro corregido |
+
 ### Precisiones sobre el contrato
 
 | Tema | Lo que hace el backend | Por qué |
@@ -153,7 +168,7 @@ Ningún registro de la trazabilidad tiene ruta de edición ni de borrado. Un err
 | `discardedLiters` de la crianza (§5.1) | Informativo (por defecto, todo el volumen): la crianza pasa entera a `DISCARDED` | No hay descartes parciales en el contrato |
 | Corrección que incumple una regla de un embotellado ya hecho (§9) | Se registra y abre una incidencia `CORRECTION` (no 422) | El embotellado no se puede deshacer y el dato corregido es el verdadero; el 422 se reserva para lo que aún se puede evitar |
 | Cómo se guarda una corrección (§9) | El registro pasa a tener el valor vigente; el anterior queda en `trace_corrections.changes` y en la bitácora | Todas las reglas y vistas leen un único valor vigente; no hay rutas de edición ni de borrado |
-| Eventos del outbox `lot.*` (§15) | No se emiten todavía | Su único consumidor es la caché del pasaporte (paso 2.10); un evento sin procesador falla en el worker |
+| Eventos del outbox `lot.*` (§15) | Solo se emite `lot.certified` (cierre del expediente), con su procesador en la cola `chain`. `lot.created`, `lot.stage_changed`, `lot.lock_released`, `lot.bottled` y `lot.discarded` **no se emiten en esta ola** | En esta ola su único consumidor sería la caché del pasaporte, que ya se invalida sola: cada lectura compara la marca de estado del lote (§12.4), sin depender de eventos. Un evento sin procesador falla en el worker, así que cada uno se añadirá junto con su consumidor: el anclaje (Ola 3) y los avisos al comprador (Ola 4). Ver [outbox](outbox.md#eventos-y-tareas-de-los-lotes-ola-2) |
 ## Embotellado seguro: precisiones del paso 2.5
 
 `POST /v1/lots/{id}/bottling[/preview]` y la ruta legada usan el mismo motor (`bottling-engine.ts`). Además de la tabla de arriba:
@@ -225,7 +240,15 @@ Contrato O2 §10 y §20. Lo leen todos los miembros (y la plataforma); lo cierra
 
 **Cierre** (con la fila del lote bloqueada): expediente ya cerrado → 409 `TRC_DOSSIER_CLOSED` (`meta.closedAt`, `meta.hash`); lote `REJECTED` o `DISCARDED` → 409 `TRC_LOT_TERMINAL`; requisitos → 422. Después calcula el contenido canónico y su SHA-256, guarda `lot_dossiers`, el lote pasa a `CERTIFIED` y deja el evento `DOSSIER_CLOSED` (público) en la línea de tiempo, la entrada `DOSSIER_CLOSED` en la bitácora y el evento **`lot.certified`** en el outbox (cola `chain`; payload `{ lotId, wineryId, lotCode, hash, bottleMerkleRoot, bottleCount, closedAt }`). El procesador de hoy solo lo registra: el anclaje llega en la Ola 3.
 
-Tras el cierre, las escrituras del lote responden 409 `TRC_LOT_TERMINAL` (`lockLot(…, { writable: true })`). Las que el contrato marca con `TRC_DOSSIER_CLOSED` (laboratorio, correcciones) deben llamar antes a **`assertDossierOpen(tx, lotId)`** (`lot-dossier.ts`). Lo único que el lote sigue admitiendo es anular códigos sin sustituto; el expediente no cambia nunca más.
+Tras el cierre, el lote no admite más registros y el código de la respuesta es el que fija el contrato §13 para cada escritura:
+
+| Escritura con el expediente cerrado | Respuesta |
+|---|---|
+| Laboratorio (`POST /v1/lots/{id}/lab-analyses` y su alias `POST /v1/lab-analyses`, §8.1), correcciones (`POST /v1/lots/{id}/corrections`, §9), archivos (`POST /v1/lots/{id}/attachments`, §11.5), sustituir un código (`replace: true`, §7.2) y un segundo cierre (§10) | 409 **`TRC_DOSSIER_CLOSED`** con `meta: { closedAt, hash }` |
+| El resto (pesajes, tanques, crianzas, destilaciones, embotellado, editar o descartar el lote) | 409 `TRC_LOT_TERMINAL` con `meta.stage: 'CERTIFIED'` (`lockLot(…, { writable: true })`) |
+| Anular un código sin sustituto (S-14) | 200: es lo único que el lote sigue admitiendo |
+
+Las primeras llaman a **`assertDossierOpen(tx, lotId)`** (`lot-dossier.ts`) con la fila del lote bloqueada y antes de comprobar la etapa: una sola definición del error para los tres bloques. El expediente no cambia nunca más.
 
 ### Lo que se guarda (`lot_dossiers`)
 
@@ -271,9 +294,10 @@ JSON canónico **RFC 8785 (JCS)**, UTF-8: propiedades ordenadas por unidades de 
               "finalVolumeLiters", "destinationType", "status", "startDate", "endDate",
               "recordedAt", "recordedBy",
               "inputs": [{ "harvestBatchId", "kg" }],
-              "readings": [{ "id", "recordedAt", "temperatureCelsius", "specificGravity", "phValue" }],
+              "readings": [{ "id", "recordedAt", "temperatureCelsius", "specificGravity", "phValue",
+                             "voidedAt" }],
               "treatments": [{ "id", "treatmentType", "additiveName", "dosageAppliedGPerHl",
-                               "totalAppliedG", "regulatoryAuthCode", "appliedAt" }] }],
+                               "totalAppliedG", "regulatoryAuthCode", "appliedAt", "voidedAt" }] }],
   "agings": [{ "id", "fermentationTankId", "containerType", "containerMaterial", "containerCount",
                "barrelUseCycle", "volumeLiters", "plannedMonths", "startDate", "unlockDate",
                "status", "discardedAt", "recordedAt", "recordedBy" }],
@@ -295,13 +319,15 @@ JSON canónico **RFC 8785 (JCS)**, UTF-8: propiedades ordenadas por unidades de 
                     "sugarFreeDryExtractGl", "overpressureBar", "methanolContentMgL",
                     "methanolMg100mlAa", "copperContentMgL", "conformityStatus",
                     "conformity": { /* LabConformity guardada */ },
-                    "current", "supersededAt", "recordedAt", "recordedBy" }],
+                    "current", "supersededAt", "voidedAt", "recordedAt", "recordedBy" }],
   "corrections": [{ "id", "target": { "type", "id" }, "kind",
                     "changes": [{ "field", "before", "after" }], "createdAt", "createdBy" }],
   "attachments": [{ "kind", "sha256" }],
   "bottleCodes": { "count": 2950, "merkleRoot": "…", "algorithm": "sha256-merkle/serial-code-salt" }
 }
 ```
+
+Los **registros anulados** por una corrección `VOID` (lecturas, tratamientos, análisis de madurez, dictámenes y análisis de laboratorio) **siguen en el expediente, marcados** con su `voidedAt` (los vigentes llevan `null`), junto a la corrección que los anuló: el expediente es la evidencia completa, y quien lo lee sabe qué contó y qué no. `labAnalyses[].current` nunca es un análisis anulado.
 
 El `balance` del expediente se recalcula con los registros vigentes y el volumen entero de las fuentes embotelladas. Las propiedades sin dato van con `null` (nunca se omiten), así la forma es estable.
 
@@ -350,6 +376,8 @@ La semilla determinista (`pnpm seed`) rellena sus lotes con la misma función y 
 | Crianza de CVJ-2026-WINE-003 | `READY` → `BOTTLED` | Ya estaba embotellada |
 
 Con ellas la semilla no genera incidencias. Una base que ya tenía la semilla anterior conserva esos registros y los muestra como incidencias de la migración (así se comporta con datos reales). Los mocks v2 (O2-PK-1) deben adoptar las mismas correcciones y el id de lote `uuidv5('lot:{harvestBatchId}')`.
+
+La semilla escribe las entradas de bitácora de sus lotes (`LOT_MIGRATED`) **como último paso** de su transacción. El candado de la cadena de la bitácora (`pg_advisory_xact_lock`) es de toda la base de datos y dura hasta el `COMMIT`: tomarlo con el primer lote lo retenía mientras se generaban los códigos de botella de los demás, y cualquier otra escritura auditada (también la de otra suite e2e en otro esquema) caducaba esperando. La cadena no cambia: las entradas siguen en la misma transacción y en el orden de los lotes.
 
 ## Rutas
 
@@ -406,6 +434,14 @@ Límites y caché (§12.4, PUB-05):
 - **Freno a la enumeración** (S-24): cada código bien formado que no existe cuenta para su IP; al superar 20 en 10 minutos (ventana fija desde el primero), todas las consultas del pasaporte de esa IP responden 429 `PUB_TOO_MANY_LOOKUPS` con `Retry-After` hasta que acaba la ventana. Los códigos mal formados (422) no cuentan. Contadores en Redis; si Redis no responde, en la memoria del proceso.
 - `Cache-Control: public, max-age=60, stale-while-revalidate=600` y `ETag` (con `If-None-Match` → 304). Lote con el expediente cerrado: `max-age=3600`; el de una botella se queda en 60 s porque su código aún se puede anular (S-14). Los 404 llevan `max-age=30` y se recuerdan 30 s en Redis; 422 y 429, `no-store`.
 - **Caché en Redis de 60 s** del pasaporte del lote, guardada con una marca de su estado (último `seq` de la línea de tiempo, última escritura, etapa, estado de la bodega y del expediente). Cada lectura compara la marca con una consulta ligera: cualquier evento del lote deja la entrada sin efecto, sin depender de que quien escribe avise.
+
+## Recorrido H2 por la API
+
+`test/h2-recorrido.e2e-spec.ts` recorre el caso de §18 del contrato con las rutas de los tres bloques, en una bodega propia y con fechas relativas a hoy (el reposo de 180 días venció hace 5): lote singani con su instantánea → pesaje de 18.400 kg, análisis y dictamen (cada uno con su rol) → tanque de 12.100 L con lecturas y tratamientos → destilación cerrada con cabezas 120 L, corazón 1.500 L al 60 % y colas 210 L → vista previa y embotellado de 2.950 botellas de 75 cL al 40 % con 750 L de agua (2.212,5 L; merma 1,67 %; alcohol puro 885 L ≤ 900 L) → CSV y ZIP de los 2.950 códigos → laboratorio conforme → cierre del expediente → pasaporte del lote y de la botella.
+
+Por el camino comprueba los cabos entre bloques: la **prueba Merkle** del pasaporte reproduce `lot_dossiers.bottle_merkle_root` (un código sustituido o dado de baja antes del cierre no tiene prueba; uno anulado después la conserva y no se puede sustituir, S-14), los registros anulados dejan de contar, las correcciones se ven en el grafo y en el pasaporte, y tras el cierre las correcciones, el laboratorio y los archivos responden `TRC_DOSSIER_CLOSED`. Incluye las pruebas de elusión de §18 que caen en el recorrido (dictamen en el alta, uva sin dictamen al tanque, parcela no apta, cortes mayores que la entrada, embotellado antes del reposo y como vino por la ruta legada, más botellas que litros, agua para inflar botellas, segundo embotellado, cierre con laboratorio incompleto, regla cambiada en el back office a mitad de proceso, grafo de otra bodega, escritura de la plataforma y pasaporte inexistente); las demás están en las suites de los bloques.
+
+`pnpm test:e2e` corre las suites **en serie** (`--runInBand`): comparten Postgres y Redis, y en paralelo compiten por la máquina. `pnpm test:e2e:parallel` conserva la versión rápida.
 
 ## Configuración
 
