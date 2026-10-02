@@ -250,6 +250,7 @@ function source(overrides: Partial<DossierSource> = {}): DossierSource {
         },
         conformityStatus: 'CONFORMING',
         supersededAt: null,
+        voidedAt: null,
         createdAt: at('2026-09-30T18:00:00.000Z'),
         createdByMembershipId: OWNER,
       },
@@ -600,6 +601,77 @@ describe('contenido canónico doc-dossier/1 (§10)', () => {
         { kind: 'VOID', targetType: 'LAB_ANALYSIS', targetId: 'c' },
       ]),
     ).toBe('b');
+    // También por la marca del registro (`voided_at`), sin la corrección
+    expect(
+      currentLabAnalysisId([
+        ...analyses.slice(0, 2),
+        { ...analyses[2], voidedAt: at('2026-10-03T00:00:00Z') },
+      ]),
+    ).toBe('b');
     expect(currentLabAnalysisId([])).toBeNull();
+  });
+
+  it('los registros anulados siguen en el expediente, marcados con voidedAt', () => {
+    const base = source();
+    const voidedAt = at('2026-09-30T12:00:00.000Z');
+    const doc = buildCanonicalDossier(
+      source({
+        tanks: [
+          {
+            ...base.tanks[0],
+            logs: [
+              {
+                id: 'eeeeeeee-0000-4000-8000-000000000001',
+                recordedAt: at('2026-03-18T12:00:00.000Z'),
+                temperatureCelsius: D('24.5'),
+                specificGravity: D('1.085'),
+                phValue: null,
+                voidedAt: null,
+              },
+              {
+                id: 'eeeeeeee-0000-4000-8000-000000000002',
+                recordedAt: at('2026-03-19T12:00:00.000Z'),
+                temperatureCelsius: D('245'),
+                specificGravity: null,
+                phValue: null,
+                voidedAt,
+              },
+            ],
+            treatments: [
+              {
+                id: 'ffffffff-0000-4000-8000-000000000001',
+                treatmentType: 'SO2_ADDITION',
+                additiveName: 'Metabisulfito de potasio',
+                dosageAppliedGPerHl: D('5'),
+                totalAppliedG: null,
+                regulatoryAuthCode: 'SENASAG-ADT-001',
+                appliedAt: at('2026-03-18T13:00:00.000Z'),
+                voidedAt,
+              },
+            ],
+          },
+        ],
+        labAnalyses: [
+          { ...base.labAnalyses[0], supersededAt: voidedAt, voidedAt },
+        ],
+      }),
+    ) as {
+      tanks: {
+        readings: { voidedAt: string | null }[];
+        treatments: { voidedAt: string | null }[];
+      }[];
+      labAnalyses: { current: boolean; voidedAt: string | null }[];
+    };
+    expect(doc.tanks[0].readings.map((r) => r.voidedAt)).toEqual([
+      null,
+      '2026-09-30T12:00:00.000Z',
+    ]);
+    expect(doc.tanks[0].treatments[0].voidedAt).toBe(
+      '2026-09-30T12:00:00.000Z',
+    );
+    expect(doc.labAnalyses[0]).toMatchObject({
+      current: false,
+      voidedAt: '2026-09-30T12:00:00.000Z',
+    });
   });
 });

@@ -293,7 +293,8 @@ export class LotAttachmentsService {
         },
       }),
       this.prisma.batchLabAnalysis.findMany({
-        where: { lotId, laboratoryReportKey: { not: null } },
+        // Como los dictámenes: el informe de un análisis anulado no se lista
+        where: { lotId, laboratoryReportKey: { not: null }, voidedAt: null },
         select: {
           id: true,
           laboratoryReportKey: true,

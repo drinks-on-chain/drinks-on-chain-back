@@ -60,8 +60,9 @@ export const LOT_FIGURES_INCLUDE = {
       availableLiters: true,
       leftoverLiters: true,
       bottlingDate: true,
+      // El vigente: ni sustituido por un reanálisis ni anulado (§9)
       labAnalyses: {
-        where: { supersededAt: null },
+        where: { supersededAt: null, voidedAt: null },
         orderBy: { createdAt: 'desc' as const },
         take: 1,
         select: { conformityStatus: true },

@@ -42,7 +42,11 @@ const NOT_RECORDED = 'No registrado';
 const DAG_INCLUDE = {
   winery: true,
   lot: { select: { dossier: { select: { status: true } } } },
-  labAnalyses: { orderBy: { createdAt: 'desc' as const } },
+  // Los análisis anulados por una corrección no cuentan (§9)
+  labAnalyses: {
+    where: { voidedAt: null },
+    orderBy: { createdAt: 'desc' as const },
+  },
   wineAgingBatch: {
     include: {
       fermentationTank: {

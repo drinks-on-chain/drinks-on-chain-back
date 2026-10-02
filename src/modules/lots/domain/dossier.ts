@@ -215,6 +215,7 @@ export interface DossierTank {
     temperatureCelsius: Dec;
     specificGravity: Dec;
     phValue: Dec;
+    voidedAt: Date | null;
   }[];
   treatments: {
     id: string;
@@ -224,6 +225,7 @@ export interface DossierTank {
     totalAppliedG: Dec;
     regulatoryAuthCode: string;
     appliedAt: Date;
+    voidedAt: Date | null;
   }[];
 }
 
@@ -308,6 +310,7 @@ export interface DossierLabAnalysis {
   conformity: unknown;
   conformityStatus: string | null;
   supersededAt: Date | null;
+  voidedAt: Date | null;
   createdAt: Date;
   createdByMembershipId: string | null;
 }
@@ -389,6 +392,7 @@ export function currentLabAnalysisId(
   analyses: readonly {
     id: string;
     supersededAt: Date | null;
+    voidedAt?: Date | null;
     createdAt: Date;
   }[],
   corrections: readonly Pick<
@@ -402,7 +406,7 @@ export function currentLabAnalysisId(
       .map((c) => c.targetId),
   );
   const candidates = analyses
-    .filter((a) => a.supersededAt === null && !voided.has(a.id))
+    .filter((a) => a.supersededAt === null && !a.voidedAt && !voided.has(a.id))
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   return candidates[0]?.id ?? null;
 }
@@ -511,6 +515,7 @@ export function buildCanonicalDossier(source: DossierSource): Json {
           temperatureCelsius: fixed(l.temperatureCelsius, 2),
           specificGravity: fixed(l.specificGravity, 4),
           phValue: fixed(l.phValue, 2),
+          voidedAt: instant(l.voidedAt),
         }),
       ),
       treatments: byKeyThenId(t.treatments, (x) =>
@@ -523,6 +528,7 @@ export function buildCanonicalDossier(source: DossierSource): Json {
         totalAppliedG: fixed(x.totalAppliedG, 4),
         regulatoryAuthCode: x.regulatoryAuthCode,
         appliedAt: instant(x.appliedAt),
+        voidedAt: instant(x.voidedAt),
       })),
     }),
   );
@@ -680,6 +686,7 @@ export function buildCanonicalDossier(source: DossierSource): Json {
     conformity: plainJson(l.conformity),
     current: l.id === currentLab,
     supersededAt: instant(l.supersededAt),
+    voidedAt: instant(l.voidedAt),
     recordedAt: instant(l.createdAt),
     recordedBy: actor(l.createdByMembershipId),
   }));

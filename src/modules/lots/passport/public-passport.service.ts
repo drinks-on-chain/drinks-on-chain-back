@@ -295,7 +295,7 @@ export class PublicPassportService {
   }
 
   private async buildPassport(lotId: string): Promise<PublicLotPassport> {
-    const [lot, clock, corrections, attachments] = await Promise.all([
+    const [lot, clock, corrections, voids, attachments] = await Promise.all([
       this.prisma.lot.findUniqueOrThrow({
         where: { id: lotId },
         include: PASSPORT_INCLUDE,
@@ -305,6 +305,10 @@ export class PublicPassportService {
         where: { lotId },
         _count: { _all: true },
         _max: { createdAt: true },
+      }),
+      this.prisma.traceCorrection.findMany({
+        where: { lotId, kind: 'VOID' },
+        select: { targetId: true },
       }),
       publicLotAttachments(this.prisma, lotId),
     ]);
@@ -336,6 +340,7 @@ export class PublicPassportService {
         count: corrections._count._all,
         lastAt: corrections._max.createdAt,
       },
+      voidedRecordIds: new Set(voids.map((v) => v.targetId)),
       attachments,
       publicUrl: (path) => `${base}${path}`,
     });
