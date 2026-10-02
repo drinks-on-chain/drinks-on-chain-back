@@ -9,6 +9,7 @@ import {
 } from '../modules/lots/lot-backfill';
 import { resolvePassportBaseUrl } from '../modules/lots/bottle-units';
 import { AuditService } from '../shared/audit/audit.service';
+import type { AuditEventInput } from '../shared/audit/audit.types';
 import type { PrismaService } from '../shared/prisma/prisma.service';
 import { ensurePlatformOrganization, upsertSuperadmin } from './platform.seed';
 import { SeedOptions } from './seed.options';
@@ -109,17 +110,31 @@ export async function runSeed(
       // Lotes de la Ola 2 (§2.6): la trazabilidad sembrada es "anterior" y se
       // rellena con la misma lógica que la migración (idempotente)
       const audit = new AuditService(prisma as unknown as PrismaService);
+      const auditEntries: AuditEventInput[] = [];
       const lots: BackfillResult[] = [];
       for (const h of fx.harvestBatches) {
         lots.push(
           await backfillHarvestChain(tx, h.id, {
             passportBaseUrl: resolvePassportBaseUrl(process.env),
-            audit: (client, input) => audit.record(client, input),
+            // La entrada de bitácora se escribe al final (ver abajo)
+            audit: (_client, input) => {
+              auditEntries.push(input);
+              return Promise.resolve();
+            },
           }),
         );
         await tx.lotBackfillPending.deleteMany({
           where: { harvestBatchId: h.id },
         });
+      }
+      // Bitácora como **último paso** de la transacción: `record` toma el
+      // candado de la cadena hasta el `COMMIT`, y es de toda la base de datos.
+      // Tomarlo con el primer lote lo retenía mientras se generaban los
+      // códigos de botella de los demás (decenas de segundos) y las demás
+      // escrituras auditadas caducaban esperando. Las entradas siguen dentro
+      // de la misma transacción y en el orden de los lotes.
+      for (const entry of auditEntries) {
+        await audit.record(tx, entry);
       }
       return { demo: summary, identity: ident, organizations: orgs, lots };
     },
