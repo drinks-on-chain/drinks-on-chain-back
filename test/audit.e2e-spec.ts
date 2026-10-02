@@ -7,6 +7,7 @@ import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { AuditService } from '../src/shared/audit/audit.service';
 import { deleteIdentityData } from './helpers/identity';
 import { wineryWithOwner } from './helpers/staff-session';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 /**
  * Bitácora con Postgres real (AUD-01, AUD-02): misma transacción que la
@@ -30,6 +31,7 @@ describe('Bitácora (e2e)', () => {
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await resetLoopbackLoginLocks(app);
     prisma = app.get(PrismaService);
     audit = app.get(AuditService);
   });

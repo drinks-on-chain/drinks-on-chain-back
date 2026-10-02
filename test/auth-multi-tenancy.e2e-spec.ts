@@ -10,6 +10,7 @@ import {
   loginWithMfa,
 } from './helpers/identity';
 import { wineryWithOwner } from './helpers/staff-session';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 type Res = request.Response;
 
@@ -55,6 +56,7 @@ describe('Cuenta, sesión y equipo tras H1 (e2e)', () => {
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await resetLoopbackLoginLocks(app);
     prisma = app.get<PrismaService>(PrismaService);
 
     const owned = await wineryWithOwner(app, {

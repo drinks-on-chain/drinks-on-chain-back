@@ -12,6 +12,7 @@ import {
 } from './helpers/identity';
 import { WineryStatusEnum } from '@prisma/client';
 import { createActiveWinery, wineryWithOwner } from './helpers/staff-session';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 /**
  * Estándares de API de la Ola 0 (contrato plan/contratos/o0-… §1–§3):
@@ -41,6 +42,7 @@ describe('Estándares de API · O0-BE-2 (e2e)', () => {
     app = moduleFixture.createNestApplication();
     configureApp(app);
     await app.init();
+    await resetLoopbackLoginLocks(app);
     prisma = app.get<PrismaService>(PrismaService);
 
     // Administrador de plataforma (como el seeder)
