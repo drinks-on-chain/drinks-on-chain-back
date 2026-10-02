@@ -3930,7 +3930,7 @@
           "403": {
             "description": "AUTH_INSUFFICIENT_PERMISSIONS (rol sin permiso o personal de plataforma)",
             "content": {
-              "text/csv": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
@@ -3940,7 +3940,7 @@
           "404": {
             "description": "TRC_LOT_NOT_FOUND",
             "content": {
-              "text/csv": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
@@ -3950,7 +3950,7 @@
           "409": {
             "description": "TRC_LOT_NOT_BOTTLED",
             "content": {
-              "text/csv": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
@@ -3960,7 +3960,7 @@
           "422": {
             "description": "VALIDATION_ERROR",
             "content": {
-              "text/csv": {
+              "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }

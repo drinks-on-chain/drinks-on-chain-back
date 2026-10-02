@@ -16,7 +16,6 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
-  ApiProduces,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -129,7 +128,6 @@ export class BottleCodesController {
       'en `bottle_code_exports` y en la bitácora (`BOTTLE_CODES_EXPORTED`) con el rango. Solo la bodega ' +
       '(la plataforma no exporta códigos: 403).',
   })
-  @ApiProduces('text/csv')
   @ApiOkResponse({
     description: `Archivo CSV (Content-Disposition: attachment). Cabecera: ${BOTTLE_CSV_HEADER}`,
     content: {

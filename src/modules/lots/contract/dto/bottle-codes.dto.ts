@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  IsDefined,
   IsIn,
   IsInt,
   IsOptional,
@@ -216,6 +217,7 @@ export class CreateBottleCodeExportDto {
   toSerial?: number;
 
   @ApiProperty({ type: () => BottleCodeExportQrDto })
+  @IsDefined({ message: 'qr es obligatorio' })
   @ValidateNested()
   @Type(() => BottleCodeExportQrDto)
   qr!: BottleCodeExportQrDto;
