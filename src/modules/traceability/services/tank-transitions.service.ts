@@ -180,6 +180,37 @@ export class TankTransitionsService {
         );
       }
 
+      // Ni menor que lo que ya salió del tanque (destilaciones del flujo
+      // anterior a las transiciones, creadas con el tanque sin completar)
+      const drawn = await tx.productionBatch.aggregate({
+        where: { fermentationTankId: tank.id },
+        _sum: { inputVolumeLiters: true },
+      });
+      const drawnLiters = num(drawn._sum.inputVolumeLiters) ?? 0;
+      if (dto.finalVolumeLiters < drawnLiters - 1e-6) {
+        throw ruleError(
+          ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+          `Del tanque ${tank.tankCode} ya salieron ${drawnLiters} L: el volumen final no puede ser menor`,
+          [
+            violation(
+              ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+              'Volumen final menor que lo ya transferido',
+              {
+                field: 'finalVolumeLiters',
+                expected: drawnLiters,
+                actual: dto.finalVolumeLiters,
+                meta: {
+                  available: dto.finalVolumeLiters,
+                  requested: drawnLiters,
+                  unit: 'L',
+                  tankId: tank.id,
+                },
+              },
+            ),
+          ],
+        );
+      }
+
       // Bifurcación coherente con el destino (ERP-09)
       const product = assertDestination(lot, dto.destination, 'destination');
       if (product) {
@@ -241,7 +272,7 @@ export class TankTransitionsService {
     dto: CleanFermentationTankDto,
   ) {
     await this.prisma.$transaction(async (tx) => {
-      const { tank, lot, clock, membershipId } = await this.load(
+      const { tank, clock, membershipId } = await this.load(
         tx,
         wineryId,
         userId,
@@ -270,7 +301,6 @@ export class TankTransitionsService {
       // La limpieza no es un hecho de la producción del lote (no tiene tipo
       // de evento en §11.1 y el lote puede estar cerrado): queda en el
       // historial del tanque y en la bitácora
-      void lot;
       await this.recordTransition(tx, wineryId, tank, updated, cleanedAt);
     }, AUDIT_TX_OPTIONS);
     return this.fermentation.findTankById(wineryId, tankId);

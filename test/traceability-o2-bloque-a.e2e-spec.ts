@@ -226,7 +226,13 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       process.execPath,
       [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
       {
-        env: { ...process.env, DATABASE_URL: databaseUrl },
+        // Esquema propio: sin el candado global de `migrate deploy`, que
+        // comparten las suites que migran a la vez (espera máxima de 10 s)
+        env: {
+          ...process.env,
+          DATABASE_URL: databaseUrl,
+          PRISMA_SCHEMA_DISABLE_ADVISORY_LOCK: '1',
+        },
         stdio: 'pipe',
       },
     );
@@ -1933,6 +1939,58 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       });
       const empty = await distill({ inputVolumeLiters: 10 }, 409);
       expect(empty.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+    });
+
+    it('flujo anterior a las transiciones (hasta H2): destilar desde un tanque sin completar sigue valiendo', async () => {
+      const { tankId } = await lotWithTank({
+        name: 'Singani flujo anterior bloque A',
+        productType: 'SINGANI',
+        parcel: 'Cañón Viejo',
+        netKg: 500,
+        intakeDaysAgo: 30,
+        tankCode: `TK-A-L-${run}`,
+        filledLiters: 400,
+      });
+      await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        201,
+        {
+          fermentationTankId: tankId,
+          equipmentIdentifier: 'Alambique AL-C',
+          processStartDate: daysAgo(25),
+          inputVolumeLiters: 300,
+        },
+      );
+      const path = `/v1/fermentation-tanks/${tankId}`;
+      let tank = await checked('get', 'cinti', path, 200);
+      expect(tank.body.data).toMatchObject({
+        status: 'FERMENTING',
+        availableLiters: 100,
+      });
+      // Al completarlo, el volumen final no puede ser menor que lo ya destilado
+      const less = await checked('post', 'cinti', `${path}/complete`, 422, {
+        endDate: daysAgo(26),
+        finalVolumeLiters: 250,
+        destination: 'SINGANI_DIST',
+      });
+      expect(details(less)[0]).toMatchObject({
+        code: 'TRC_VOLUME_EXCEEDS_AVAILABLE',
+        field: 'finalVolumeLiters',
+        expected: 300,
+        actual: 250,
+      });
+      await checked('post', 'cinti', `${path}/complete`, 200, {
+        endDate: daysAgo(26),
+        finalVolumeLiters: 380,
+        destination: 'SINGANI_DIST',
+      });
+      tank = await checked('get', 'cinti', path, 200);
+      expect(tank.body.data).toMatchObject({
+        status: 'COMPLETED',
+        availableLiters: 80,
+      });
     });
 
     it('lote descartado: sus tanques no cambian de estado, pero se limpian para liberar el código', async () => {
