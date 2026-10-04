@@ -54,9 +54,9 @@ export class ProductionBatchesController {
   @Idempotent()
   @Roles('OWNER', 'ENOLOGIST')
   @ApiOperation({
-    summary: 'Registrar proceso de destilación de Singani',
+    summary: 'Abrir una destilación de singani',
     description:
-      'Registra la destilación en alambique con balance de masa (cabeza, corazón, cola) y fija el reposo inerte obligatorio de 180 días.',
+      'Abre la destilación de un tanque `COMPLETED` con destino singani (contrato O2 §5.2): `inputVolumeLiters` obligatorio y ≤ lo disponible del tanque; D.O. del lote calculada con su instantánea (EA-03). El fin, los cortes tipados (`cuts`) y el grado del corazón van en `POST /v1/production-batches/{id}/close`, que abre el reposo.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -67,13 +67,13 @@ export class ProductionBatchesController {
     status: HttpStatus.UNPROCESSABLE_ENTITY,
     type: ApiErrorResponseDto,
     description:
-      'VALIDATION_ERROR · TRC_DO_NOT_ELIGIBLE (D.O. calculada sobre los pesajes del lote con su instantánea; `isDoEligible` se ignora) · TRC_DESTINATION_MISMATCH · TRC_VOLUME_EXCEEDS_AVAILABLE · TRC_MASS_BALANCE_EXCEEDED · TRC_DATE_IN_FUTURE · TRC_DATE_BEFORE_PREVIOUS_STAGE',
+      'VALIDATION_ERROR · TRC_DO_NOT_ELIGIBLE (D.O. calculada sobre los pesajes del lote con su instantánea) · TRC_DESTINATION_MISMATCH · TRC_VOLUME_EXCEEDS_AVAILABLE · TRC_DATE_IN_FUTURE · TRC_DATE_BEFORE_PREVIOUS_STAGE',
   })
   @ApiResponse({
     status: HttpStatus.CONFLICT,
     type: ApiErrorResponseDto,
     description:
-      'TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
+      'TRC_TANK_NOT_COMPLETED (tanque sin completar, ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
   })
   async createDistillationBatch(
     @TenantId() wineryId: string,

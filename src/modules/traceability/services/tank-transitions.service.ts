@@ -14,7 +14,6 @@ import {
   assertLotDo,
   assertStage,
   decideProductType,
-  ensureHarvestLot,
 } from '@modules/lots/chain';
 import {
   assertDayNotFuture,
@@ -261,9 +260,16 @@ export class TankTransitionsService {
   }
 
   /**
-   * `TRANSFERRED → CLEANED`: libera el `tankCode` (S-7). El tanque de un lote
-   * descartado o rechazado se limpia desde cualquier estado (su contenido se
-   * retiró con el lote); si no, su código físico quedaría ocupado para siempre.
+   * `TRANSFERRED → CLEANED`: libera el `tankCode` (S-7). Dos casos más, para
+   * que un código físico no quede ocupado para siempre:
+   *
+   * - el tanque de un lote descartado o rechazado se limpia desde cualquier
+   *   estado (su contenido se retiró con el lote);
+   * - un tanque `COMPLETED` del que ya salió vino base (alguna destilación) y
+   *   al que le queda un remanente se cierra aquí: pasa por `TRANSFERRED`
+   *   (el remanente queda como merma de trasiego, `transferLossLiters`) y
+   *   queda `CLEANED`. Sin ninguna salida no se limpia: el vino base del lote
+   *   sigue dentro.
    */
   async clean(
     wineryId: string,
@@ -287,15 +293,30 @@ export class TankTransitionsService {
         tank.endDate ?? tank.startDate,
         'El tanque no se puede limpiar antes de terminar su fermentación',
       );
+      // Con remanente: el cierre (`TRANSFERRED`) queda en el historial
+      const closing: StoredTankTransition[] =
+        tank.status === TankStatusEnum.COMPLETED
+          ? [
+              {
+                status: 'TRANSFERRED',
+                at: cleanedAt.toISOString(),
+                byMembershipId: membershipId,
+              },
+            ]
+          : [];
       const updated = await tx.fermentationTank.update({
         where: { id: tank.id },
         data: {
           status: TankStatusEnum.CLEANED,
-          transitionLog: appendTransition(tank, {
-            status: 'CLEANED',
-            at: cleanedAt.toISOString(),
-            byMembershipId: membershipId,
-          }),
+          transitionLog: [
+            ...parseTankTransitions(tank.transitionLog),
+            ...closing,
+            {
+              status: 'CLEANED',
+              at: cleanedAt.toISOString(),
+              byMembershipId: membershipId,
+            },
+          ] as unknown as Prisma.InputJsonArray,
         },
       });
       // La limpieza no es un hecho de la producción del lote (no tiene tipo
@@ -340,18 +361,13 @@ export class TankTransitionsService {
   ) {
     const found = await tx.fermentationTank.findFirst({
       where: { id: tankId, wineryId },
-      select: { id: true, lotId: true, harvestBatchId: true },
+      select: { id: true, lotId: true },
     });
     if (!found) throw tankNotFound(tankId);
-    const lotId =
-      found.lotId ?? (await ensureHarvestLot(tx, found.harvestBatchId));
     // Limpiar no escribe en el lote: vale aunque esté cerrado o descartado
-    const lot = lotId
-      ? await lockLot(tx, lotId, wineryId, { writable: action !== 'clean' })
-      : null;
-    if (!lot && action !== 'clean') {
-      throw new NotFoundException('El tanque no pertenece a ningún lote');
-    }
+    const lot = await lockLot(tx, found.lotId, wineryId, {
+      writable: action !== 'clean',
+    });
     // Con la fila del lote bloqueada, el estado del tanque ya no cambia
     await tx.$queryRaw`SELECT id FROM fermentation_tanks WHERE id = ${tankId}::uuid FOR UPDATE`;
     const tank = await tx.fermentationTank.findUniqueOrThrow({
@@ -360,14 +376,22 @@ export class TankTransitionsService {
     const withdrawn =
       action === 'clean' &&
       tank.status !== TankStatusEnum.CLEANED &&
-      (lot?.stage === 'DISCARDED' || lot?.stage === 'REJECTED');
-    const invalid = withdrawn
-      ? null
-      : tankTransitionViolation(
-          action,
-          tank.status as TankStatus,
-          tank.tankCode,
-        );
+      (lot.stage === 'DISCARDED' || lot.stage === 'REJECTED');
+    // Completado, con alguna destilación ya salida y un remanente por cerrar
+    const drained =
+      action === 'clean' &&
+      tank.status === TankStatusEnum.COMPLETED &&
+      (await tx.productionBatch.count({
+        where: { fermentationTankId: tank.id },
+      })) > 0;
+    const invalid =
+      withdrawn || drained
+        ? null
+        : tankTransitionViolation(
+            action,
+            tank.status as TankStatus,
+            tank.tankCode,
+          );
     if (invalid) {
       throw stateError(ErrorCode.TRC_TANK_INVALID_TRANSITION, invalid.message, [
         invalid,

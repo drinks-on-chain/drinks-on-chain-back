@@ -3,10 +3,7 @@ import * as bcrypt from 'bcrypt';
 import { DemoSeedSummary, seedDemo, selectDemoPeople } from './demo.seed';
 import { loadMockFixtures, MockFixtures } from './fixtures';
 import { applySeedCorrections, SEED_CORRECTIONS } from './corrections';
-import {
-  backfillHarvestChain,
-  BackfillResult,
-} from '../modules/lots/lot-backfill';
+import { DemoLotsSummary, seedDemoLots } from './lots.seed';
 import { resolvePassportBaseUrl } from '../modules/lots/bottle-units';
 import { AuditService } from '../shared/audit/audit.service';
 import type { AuditEventInput } from '../shared/audit/audit.types';
@@ -31,8 +28,8 @@ export interface SeedResult {
   demo: DemoSeedSummary | null;
   identity: DemoIdentitySummary | null;
   organizations: DemoOrganizationsSummary | null;
-  /** Relleno de lotes de la Ola 2 (uno por pesaje de demostración). */
-  lots?: BackfillResult[];
+  /** Lotes de demostración (Ola 2): creados, ya existentes y saltados. */
+  lots?: DemoLotsSummary;
 }
 
 const silentLogger: SeedLogger = {
@@ -46,8 +43,9 @@ const silentLogger: SeedLogger = {
  * 1. Organización de plataforma (siempre).
  * 2. Superusuario desde `SUPERADMIN_*` (si está definido).
  * 3. Con `SEED_DEMO=true`: personal interno de demo, bodegas del catálogo de
- *    prueba con sus estados y membresías, y la trazabilidad del ERP de los
- *    fixtures de los mocks, en una sola transacción.
+ *    prueba con sus estados y membresías, y los lotes de demostración de los
+ *    fixtures de los mocks con toda su trazabilidad, en una sola transacción.
+ *    Los lotes son de solo inserción: los que ya existen no se tocan.
  */
 export async function runSeed(
   prisma: PrismaClient,
@@ -98,7 +96,7 @@ export async function runSeed(
       : null;
   const { demo, identity, organizations, lots } = await prisma.$transaction(
     async (tx) => {
-      const summary = await seedDemo(tx, fx, hash);
+      const { summary, people: context } = await seedDemo(tx, fx, hash);
       const ident = await seedDemoIdentity(tx, fx, {
         demoPassword: demoOptions.password,
         totpSecret: demoOptions.totpSecret,
@@ -107,26 +105,15 @@ export async function runSeed(
       const orgs = await seedDemoOrganizations(tx, fx, {
         demoPassword: demoOptions.password,
       });
-      // Lotes de la Ola 2 (§2.6): la trazabilidad sembrada es "anterior" y se
-      // rellena con la misma lógica que la migración (idempotente)
+      // Lotes de demostración (después de las bodegas: usan su prefijo de lote)
       const audit = new AuditService(prisma as unknown as PrismaService);
       const auditEntries: AuditEventInput[] = [];
-      const lots: BackfillResult[] = [];
-      for (const h of fx.harvestBatches) {
-        lots.push(
-          await backfillHarvestChain(tx, h.id, {
-            passportBaseUrl: resolvePassportBaseUrl(process.env),
-            // La entrada de bitácora se escribe al final (ver abajo)
-            audit: (_client, input) => {
-              auditEntries.push(input);
-              return Promise.resolve();
-            },
-          }),
-        );
-        await tx.lotBackfillPending.deleteMany({
-          where: { harvestBatchId: h.id },
-        });
-      }
+      const lots = await seedDemoLots(tx, fx, {
+        passportBaseUrl: resolvePassportBaseUrl(process.env),
+        people: context,
+        // La entrada de bitácora se escribe al final (ver abajo)
+        audit: (entry) => auditEntries.push(entry),
+      });
       // Bitácora como **último paso** de la transacción: `record` toma el
       // candado de la cadena hasta el `COMMIT`, y es de toda la base de datos.
       // Tomarlo con el primer lote lo retenía mientras se generaban los
@@ -143,10 +130,7 @@ export async function runSeed(
   logger.log(
     `Datos de demostración de ${fx.source.package} ${fx.source.git ?? fx.source.version} (día de referencia ${fx.source.referenceDay}): ` +
       `${demo.users} personas, ${demo.wineries} bodegas, ${demo.wineryMemberships} membresías de bodega, ` +
-      `${demo.platformMemberships} de plataforma, ${demo.terroirs} parcelas, ${demo.harvestBatches} vendimias, ` +
-      `${demo.fermentationTanks} tanques, ${demo.fermentationLogs} lecturas, ${demo.enologicalTreatments} tratamientos, ` +
-      `${demo.wineAgings} crianzas, ${demo.productionBatches} destilaciones, ${demo.bottlingBatches} embotellados, ` +
-      `${demo.labAnalyses} análisis`,
+      `${demo.platformMemberships} de plataforma y ${demo.terroirs} parcelas`,
   );
   for (const { user, reason } of people.skipped) {
     logger.log(`No se crea ${user.email} (${reason})`);
@@ -170,12 +154,23 @@ export async function runSeed(
   for (const warning of organizations.warnings) {
     logger.warn(`Semilla de bodegas: ${warning}`);
   }
-  const createdLots = lots.filter((l) => l.lotId && !l.skipped);
+  const stages = new Map<string, number>();
+  for (const lot of lots.created) {
+    stages.set(lot.stage, (stages.get(lot.stage) ?? 0) + 1);
+  }
   logger.log(
-    `Lotes (Ola 2): ${createdLots.length} creados, ${lots.filter((l) => l.skipped === 'ALREADY_ASSIGNED').length} ya existían; ` +
-      `${createdLots.reduce((n, l) => n + l.bottleCodes, 0)} códigos de botella; ` +
-      `${createdLots.reduce((n, l) => n + l.issues.length, 0)} incidencias de cumplimiento`,
+    `Lotes de demostración: ${lots.created.length} creados` +
+      (lots.created.length > 0
+        ? ` (${[...stages].map(([stage, n]) => `${n} ${stage}`).join(', ')}; ` +
+          `${lots.created.filter((l) => l.dossierClosed).length} con el expediente cerrado; ` +
+          `${lots.bottleCodes.toLocaleString('es-BO')} códigos de botella)`
+        : '') +
+      `, ${lots.existing} ya existían (no se tocan), ${lots.skipped.length} sin crear; ` +
+      `${lots.unassignedHarvests} pesajes sin lote`,
   );
+  for (const warning of lots.warnings) {
+    logger.warn(`Semilla de lotes: ${warning}`);
+  }
   for (const c of SEED_CORRECTIONS) {
     logger.log(`Corrección de realismo aplicada: ${c.what}`);
   }

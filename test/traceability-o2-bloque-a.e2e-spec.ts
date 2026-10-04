@@ -16,6 +16,7 @@ import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { staffToken } from './helpers/staff-session';
 import { createPlatformUser } from './helpers/identity';
 import { loadOpenApiValidator } from './helpers/openapi-validator';
+import { sha256Of } from './helpers/trace-files';
 
 /**
  * Ola 2 · pasos 2.3, 2.4 y 2.7 (O2-BE-1, bloque A) sobre la semilla de
@@ -239,7 +240,6 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
     prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
     process.env.DATABASE_URL = databaseUrl;
     process.env.PASSPORT_BASE_URL = 'https://pasaporte.e2e.test';
-    process.env.LOT_BACKFILL_ON_BOOT = 'false';
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -305,7 +305,6 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
     }
     process.env.DATABASE_URL = originalUrl;
     delete process.env.PASSPORT_BASE_URL;
-    delete process.env.LOT_BACKFILL_ON_BOOT;
   });
 
   // ───────────────────────────────────────────────────────────────────────────
@@ -700,7 +699,7 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
         'cinti',
         `/v1/lots/${lotId}/lab-analyses`,
         409,
-        labBody(),
+        { ...labBody(), laboratoryReportKey: await reportKey() },
       );
       expect(noLab.body.error.code).toBe('TRC_LOT_NOT_BOTTLED');
     });
@@ -838,6 +837,23 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       });
       expect(logs.find((l) => l.id === logId)?.voidedAt).not.toBeNull();
       expect(logs.find((l) => l.id !== logId)).toMatchObject({ voided: false });
+      // El evento diario de lecturas cuenta solo las vigentes: la anulada sale
+      // del recuento y el evento de su día queda marcado como corregido
+      const readings = await prisma.lotEvent.findMany({
+        where: { lotId, type: 'FERMENTATION_READINGS', resourceId: tankId },
+        select: { data: true, corrected: true, summary: true },
+      });
+      expect(
+        readings.reduce(
+          (n, e) => n + Number((e.data as { count?: number }).count ?? 0),
+          0,
+        ),
+      ).toBe(1);
+      const affected = readings.filter((e) => e.corrected);
+      expect(affected).toHaveLength(1);
+      expect(affected[0].summary).toMatch(
+        /^(1 lectura en |Lecturas anuladas en )/,
+      );
       expect(tank.body.data.treatments[0]).toMatchObject({
         dosageAppliedGPerHl: 6,
         correctedFields: ['dosageAppliedGPerHl'],
@@ -1173,25 +1189,40 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
 
     it('laboratorio del lote: informe por su key, unidades, conformidad calculada y reanálisis (§8)', async () => {
       const path = `/v1/lots/${lotId}/lab-analyses`;
-      const noReport = await checked('post', 'cinti', path, 422, {
-        ...labBody(),
-        laboratoryReportPdfUrl: undefined,
-      });
+      const upload = await http()
+        .post('/v1/uploads?folder=lab')
+        .set('Authorization', `Bearer ${tokens.cinti}`)
+        .set('X-Forwarded-For', nextIp())
+        .attach('file', PDF, 'informe-laboratorio.pdf')
+        .expect(201);
+      const key = upload.body.data.key as string;
+      // La subida devuelve la huella del archivo (contrato O2 §0)
+      expect(upload.body.data.sha256).toBe(sha256Of(PDF));
+
+      const noReport = await checked('post', 'cinti', path, 422, labBody());
       expect(noReport.body.error.code).toBe('VALIDATION_ERROR');
       expect(details(noReport)[0].field).toBe('laboratoryReportKey');
+      // La URL del informe (alias hasta H2) ya no es un campo
+      const byUrl = await checked('post', 'cinti', path, 422, {
+        ...labBody(),
+        laboratoryReportKey: key,
+        laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf',
+      });
+      expect(byUrl.body.error.code).toBe('VALIDATION_ERROR');
+      expect(details(byUrl)[0].field).toBe('laboratoryReportPdfUrl');
       for (const key of [
         `org/${ALTOS}/lab/2026/10/informe.pdf`,
         `org/${CINTI}/lab/2026/10/no-existe.pdf`,
       ]) {
         const missing = await checked('post', 'cinti', path, 422, {
           ...labBody(),
-          laboratoryReportPdfUrl: undefined,
           laboratoryReportKey: key,
         });
         expect(missing.body.error.code).toBe('TRC_FILE_NOT_FOUND');
       }
       const beforeBottling = await checked('post', 'cinti', path, 422, {
         ...labBody(),
+        laboratoryReportKey: key,
         testPerformedAt: daysAgo(30),
       });
       expect(beforeBottling.body.error.code).toBe(
@@ -1199,6 +1230,7 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       );
       const mismatch = await checked('post', 'cinti', path, 422, {
         ...labBody(),
+        laboratoryReportKey: key,
         methanolContentMgL: 48,
         methanolMg100mlAa: 48,
       });
@@ -1212,18 +1244,9 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       );
       expect(operator.body.error.code).toBe('AUTH_INSUFFICIENT_PERMISSIONS');
 
-      const upload = await http()
-        .post('/v1/uploads?folder=lab')
-        .set('Authorization', `Bearer ${tokens.cinti}`)
-        .set('X-Forwarded-For', nextIp())
-        .attach('file', PDF, 'informe-laboratorio.pdf')
-        .expect(201);
-      const key = upload.body.data.key as string;
-
       // Sin metanol: nunca conforme por omisión (EA-08)
       const incomplete = await checked('post', 'cinti', path, 201, {
         ...labBody(),
-        laboratoryReportPdfUrl: undefined,
         laboratoryReportKey: key,
       });
       expect(incomplete.body.data).toMatchObject({
@@ -1233,7 +1256,8 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
         conformsToSenasagStandards: false,
         current: true,
         voided: false,
-        report: { key },
+        // El informe queda atado a sus bytes: la huella se guarda con la `key`
+        report: { key, sha256: sha256Of(PDF) },
         recordedBy: { role: 'OWNER' },
         units: { methanolMg100mlAa: 'mg/100 mL de alcohol anhidro' },
       });
@@ -1242,6 +1266,7 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       // Reanálisis: metanol en mg/L de producto → mg/100 mL a.a. (10 × mgL / grado)
       const complete = await checked('post', 'cinti', path, 201, {
         ...labBody(),
+        laboratoryReportKey: key,
         methanolContentMgL: 48,
       });
       expect(complete.body.data).toMatchObject({
@@ -1941,9 +1966,9 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       expect(empty.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
     });
 
-    it('flujo anterior a las transiciones (hasta H2): destilar desde un tanque sin completar sigue valiendo', async () => {
+    it('un tanque sin completar no es origen de una destilación ni de una crianza (H2: TRC_TANK_NOT_COMPLETED pleno)', async () => {
       const { tankId } = await lotWithTank({
-        name: 'Singani flujo anterior bloque A',
+        name: 'Singani sin completar bloque A',
         productType: 'SINGANI',
         parcel: 'Cañón Viejo',
         netKg: 500,
@@ -1951,6 +1976,84 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
         tankCode: `TK-A-L-${run}`,
         filledLiters: 400,
       });
+      const distillation = {
+        fermentationTankId: tankId,
+        equipmentIdentifier: 'Alambique AL-C',
+        processStartDate: daysAgo(25),
+        inputVolumeLiters: 300,
+      };
+      const early = await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        409,
+        distillation,
+      );
+      expect(early.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+      expect(details(early)[0]).toMatchObject({
+        field: 'fermentationTankId',
+        meta: { status: 'FERMENTING', tankId },
+      });
+      const aging = await checked('post', 'cinti', '/v1/wine-aging', 409, {
+        fermentationTankId: tankId,
+        containerType: 'Barrica',
+        volumeLiters: 300,
+        plannedMonths: 6,
+      });
+      expect(aging.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+      // Nada se escribió: el tanque sigue fermentando con todo su volumen
+      const path = `/v1/fermentation-tanks/${tankId}`;
+      let tank = await checked('get', 'cinti', path, 200);
+      expect(tank.body.data).toMatchObject({
+        status: 'FERMENTING',
+        availableLiters: 400,
+        destinationType: null,
+      });
+
+      await checked('post', 'cinti', `${path}/complete`, 200, {
+        endDate: daysAgo(26),
+        finalVolumeLiters: 380,
+        destination: 'SINGANI_DIST',
+      });
+      await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        201,
+        distillation,
+      );
+      tank = await checked('get', 'cinti', path, 200);
+      expect(tank.body.data).toMatchObject({
+        status: 'COMPLETED',
+        availableLiters: 80,
+        transferLossLiters: null,
+      });
+    });
+
+    it('un tanque COMPLETED con remanente se cierra al limpiarlo: el remanente es merma de trasiego', async () => {
+      const { lotId, tankId } = await lotWithTank({
+        name: 'Singani con remanente bloque A',
+        productType: 'SINGANI',
+        parcel: 'Cañón Viejo',
+        netKg: 900,
+        intakeDaysAgo: 40,
+        tankCode: `TK-A-R-${run}`,
+        filledLiters: 600,
+      });
+      const path = `/v1/fermentation-tanks/${tankId}`;
+      await checked('post', 'cinti', `${path}/complete`, 200, {
+        endDate: daysAgo(30),
+        finalVolumeLiters: 580,
+        destination: 'SINGANI_DIST',
+      });
+      // Sin ninguna salida, el vino base del lote sigue dentro: no se limpia
+      const full = await checked('post', 'cinti', `${path}/clean`, 409, {});
+      expect(full.body.error.code).toBe('TRC_TANK_INVALID_TRANSITION');
+      expect(details(full)[0].meta).toMatchObject({
+        from: 'COMPLETED',
+        to: 'CLEANED',
+      });
+
       await checked(
         'post',
         'cinti',
@@ -1958,39 +2061,54 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
         201,
         {
           fermentationTankId: tankId,
-          equipmentIdentifier: 'Alambique AL-C',
-          processStartDate: daysAgo(25),
-          inputVolumeLiters: 300,
+          equipmentIdentifier: 'Alambique AL-R',
+          processStartDate: daysAgo(28),
+          inputVolumeLiters: 500,
         },
       );
-      const path = `/v1/fermentation-tanks/${tankId}`;
       let tank = await checked('get', 'cinti', path, 200);
-      expect(tank.body.data).toMatchObject({
-        status: 'FERMENTING',
-        availableLiters: 100,
-      });
-      // Al completarlo, el volumen final no puede ser menor que lo ya destilado
-      const less = await checked('post', 'cinti', `${path}/complete`, 422, {
-        endDate: daysAgo(26),
-        finalVolumeLiters: 250,
-        destination: 'SINGANI_DIST',
-      });
-      expect(details(less)[0]).toMatchObject({
-        code: 'TRC_VOLUME_EXCEEDS_AVAILABLE',
-        field: 'finalVolumeLiters',
-        expected: 300,
-        actual: 250,
-      });
-      await checked('post', 'cinti', `${path}/complete`, 200, {
-        endDate: daysAgo(26),
-        finalVolumeLiters: 380,
-        destination: 'SINGANI_DIST',
-      });
-      tank = await checked('get', 'cinti', path, 200);
       expect(tank.body.data).toMatchObject({
         status: 'COMPLETED',
         availableLiters: 80,
       });
+
+      // Con el remanente dentro: limpiar lo cierra (TRANSFERRED) y lo limpia
+      const cleaned = await checked('post', 'cinti', `${path}/clean`, 200, {
+        cleanedAt: `${daysAgo(20)}T15:00:00Z`,
+      });
+      expect(cleaned.body.data).toMatchObject({
+        status: 'CLEANED',
+        availableLiters: 0,
+        transferLossLiters: 80,
+      });
+      expect(
+        (cleaned.body.data.transitions as { status: string }[]).map(
+          (t) => t.status,
+        ),
+      ).toEqual(['FERMENTING', 'COMPLETED', 'TRANSFERRED', 'CLEANED']);
+      // El código físico queda libre y el tanque ya no es origen de nada
+      const more = await checked(
+        'post',
+        'cinti',
+        '/v1/production-batches/distillation',
+        409,
+        {
+          fermentationTankId: tankId,
+          equipmentIdentifier: 'Alambique AL-R',
+          processStartDate: daysAgo(19),
+          inputVolumeLiters: 50,
+        },
+      );
+      expect(more.body.error.code).toBe('TRC_TANK_NOT_COMPLETED');
+      tank = await checked('get', 'cinti', path, 200);
+      expect(tank.body.data.status).toBe('CLEANED');
+      const lot = await checked('get', 'cinti', `/v1/lots/${lotId}`, 200);
+      expect(lot.body.data.stage).toBe('DISTILLING');
+      expect(
+        await prisma.auditEvent.count({
+          where: { action: 'TANK_TRANSITION', resourceId: tankId },
+        }),
+      ).toBe(2);
     });
 
     it('lote descartado: sus tanques no cambian de estado, pero se limpian para liberar el código', async () => {
@@ -2165,7 +2283,7 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
     expect(covered.filter((c) => c.endsWith(' 501'))).toEqual([]);
   });
 
-  /** Análisis de singani completo salvo el metanol. */
+  /** Análisis de singani completo salvo el metanol y el informe (`key`). */
   function labBody() {
     return {
       certifiedLaboratoryName: 'Laboratorio e2e ISO 17025',
@@ -2175,8 +2293,21 @@ describe('Ola 2 · bloque A: vinificación, crianza y destilación, laboratorio 
       totalAcidityTartaricGl: 4.8,
       volatileAcidityAceticGl: 0.22,
       copperContentMgL: 0.02,
-      laboratoryReportPdfUrl: 'https://laboratorio.e2e.test/informe.pdf' as
-        string | undefined,
     };
+  }
+
+  /** `key` de un informe de laboratorio subido por la bodega (una vez). */
+  let uploadedReport: string | undefined;
+  async function reportKey(): Promise<string> {
+    if (!uploadedReport) {
+      const upload = await http()
+        .post('/v1/uploads?folder=lab')
+        .set('Authorization', `Bearer ${tokens.cinti}`)
+        .set('X-Forwarded-For', nextIp())
+        .attach('file', PDF, 'informe-laboratorio.pdf')
+        .expect(201);
+      uploadedReport = upload.body.data.key as string;
+    }
+    return uploadedReport;
   }
 });

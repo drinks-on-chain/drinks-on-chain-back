@@ -10,7 +10,6 @@ import { WineAgingService } from './services/wine-aging.service';
 import { ProductionBatchesService } from './services/production-batches.service';
 import { BottlingService } from './services/bottling.service';
 import { LabAnalysesService } from './services/lab-analyses.service';
-import { DagBuilderService } from './services/dag-builder.service';
 import { TankTransitionsService } from './services/tank-transitions.service';
 import { StageActionsService } from './services/stage-actions.service';
 import { CorrectionsService } from './services/corrections.service';
@@ -19,7 +18,6 @@ import { WineAgingController } from './controllers/wine-aging.controller';
 import { ProductionBatchesController } from './controllers/production-batches.controller';
 import { BottlingController } from './controllers/bottling.controller';
 import { LabAnalysesController } from './controllers/lab-analyses.controller';
-import { TraceabilityDagController } from './controllers/traceability-dag.controller';
 
 @Module({
   imports: [PrismaModule],
@@ -29,7 +27,6 @@ import { TraceabilityDagController } from './controllers/traceability-dag.contro
     ProductionBatchesController,
     BottlingController,
     LabAnalysesController,
-    TraceabilityDagController,
   ],
   providers: [
     WineTraceabilityStrategy,
@@ -42,7 +39,6 @@ import { TraceabilityDagController } from './controllers/traceability-dag.contro
     ProductionBatchesService,
     BottlingService,
     LabAnalysesService,
-    DagBuilderService,
     TankTransitionsService,
     StageActionsService,
     CorrectionsService,
@@ -58,7 +54,6 @@ import { TraceabilityDagController } from './controllers/traceability-dag.contro
     ProductionBatchesService,
     BottlingService,
     LabAnalysesService,
-    DagBuilderService,
     TankTransitionsService,
     StageActionsService,
     CorrectionsService,

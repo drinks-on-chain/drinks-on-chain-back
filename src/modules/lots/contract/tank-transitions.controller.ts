@@ -121,7 +121,10 @@ export class TankTransitionsController {
     summary: 'Limpiar el tanque',
     description:
       'Contrato O2 §4.2: `TRANSFERRED → CLEANED`; libera el `tankCode` para otro tanque (S-7). El tanque de un ' +
-      'lote descartado o rechazado se limpia desde cualquier estado (su contenido se retiró con el lote).',
+      'lote descartado o rechazado se limpia desde cualquier estado (su contenido se retiró con el lote). Un ' +
+      'tanque `COMPLETED` del que ya salió alguna destilación y al que le queda un remanente se cierra aquí: ' +
+      'pasa por `TRANSFERRED` (el remanente queda como merma de trasiego, `transferLossLiters`) y queda ' +
+      '`CLEANED`; sin ninguna salida → 409 (el vino base sigue dentro).',
   })
   @ApiOkResponse({ type: FermentationTankResponseDto })
   @ApiErrorCodes(HttpStatus.NOT_FOUND, TANK_NOT_FOUND)

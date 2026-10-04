@@ -220,8 +220,6 @@ export const ErrorCode = {
   TRC_DISTILLATION_ALREADY_CLOSED: 'TRC_DISTILLATION_ALREADY_CLOSED',
   /** 422 · Embotellar antes del candado (reloj de la base, EA-01). */
   TRC_LOCK_NOT_RELEASED: 'TRC_LOCK_NOT_RELEASED',
-  /** 422 · `productType` enviado distinto del derivado del origen (ruta legada, EA-01). */
-  TRC_PRODUCT_TYPE_MISMATCH: 'TRC_PRODUCT_TYPE_MISMATCH',
   /** 422 · Fuente de otro lote, de otro tipo o no lista. */
   TRC_BOTTLING_SOURCE_INVALID: 'TRC_BOTTLING_SOURCE_INVALID',
   /** 422 · Fuentes abiertas del lote sin incluir ni descartar. */

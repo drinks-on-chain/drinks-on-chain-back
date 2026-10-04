@@ -274,7 +274,6 @@ Motivo ausente en una acción del back office sobre terceros (`@RequiresReason()
 | `TRC_MASS_BALANCE_EXCEEDED` | 422 | Cortes de destilación mayores que la entrada |
 | `TRC_DISTILLATION_ALREADY_CLOSED` | 409 | Cerrar dos veces (paso 2.4) |
 | `TRC_LOCK_NOT_RELEASED` | 422 | Embotellar antes del candado (reloj de la base) |
-| `TRC_PRODUCT_TYPE_MISMATCH` | 422 | `productType` enviado distinto del derivado del origen |
 | `TRC_BOTTLING_SOURCE_INVALID` | 422 | Fuente de otro lote, de otro tipo o no lista |
 | `TRC_BOTTLING_SOURCES_PENDING` | 422 | Fuentes abiertas del lote sin incluir ni descartar |
 | `TRC_LOT_ALREADY_BOTTLED` | 409 | Segundo embotellado del lote |

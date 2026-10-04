@@ -21,13 +21,11 @@ import {
   assertStage,
   assertTankIsSource,
   decideProductType,
-  ensureHarvestLot,
   tankAvailableLiters,
   transferTank,
 } from '@modules/lots/chain';
 import { laPazNoon } from '@modules/lots/date-rules';
 import {
-  addDays,
   calendarDay,
   dateOnly,
   daysBetween,
@@ -36,7 +34,7 @@ import {
 } from '@modules/lots/domain/dates';
 import { LotLock, restLock } from '@modules/lots/domain/locks';
 import { parseLotRules } from '@modules/lots/domain/lot-rules';
-import { distillationHeart, legacyCuts } from '@modules/lots/domain/sources';
+import { distillationHeart } from '@modules/lots/domain/sources';
 import { ruleError, violation } from '@modules/lots/domain/trace-errors';
 import { markRows } from '@modules/lots/correction-marks';
 
@@ -56,11 +54,11 @@ export class ProductionBatchesService {
   ) {}
 
   /**
-   * Destilación del singani (contrato O2 §5.2): la D.O. se calcula en el
-   * servidor sobre todos los pesajes del lote con su instantánea (EA-03;
-   * `isDoEligible` de la entrada se ignora), el destino del tanque debe ser
-   * singani, la entrada ≤ lo disponible del tanque y los cortes ≤ la entrada
-   * (balance de masa). El reposo se cuenta con el mínimo de la instantánea.
+   * Abre una destilación del singani (contrato O2 §5.2): tanque completado
+   * con destino singani, D.O. calculada en el servidor sobre todos los
+   * pesajes del lote con su instantánea (EA-03) y entrada ≤ lo disponible del
+   * tanque. Los cortes, el grado del corazón y el reposo llegan con el cierre
+   * (`POST …/close`).
    */
   async createDistillationBatch(
     wineryId: string,
@@ -76,12 +74,7 @@ export class ProductionBatchesService {
           `Cuba de fermentación con ID ${dto.fermentationTankId} no encontrada en esta bodega`,
         );
       }
-      const lotId =
-        tank.lotId ?? (await ensureHarvestLot(tx, tank.harvestBatchId));
-      if (!lotId) {
-        throw new NotFoundException('El tanque no pertenece a ningún lote');
-      }
-      const lot = await lockLot(tx, lotId, wineryId, { writable: true });
+      const lot = await lockLot(tx, tank.lotId, wineryId, { writable: true });
       assertTankIsSource(tank);
       assertStage(
         lot,
@@ -111,33 +104,22 @@ export class ProductionBatchesService {
       );
       await assertLotDo(tx, lot);
 
-      // Fechas: inicio no futuro ni anterior al tanque; fin ≥ inicio
-      const endDay = dto.processEndDate
-        ? calendarDay(dto.processEndDate)
-        : null;
-      for (const [field, day] of [
-        ['processStartDate', startDay],
-        ['processEndDate', endDay],
-      ] as const) {
-        if (day && day > clock.today) {
-          throw ruleError(
-            ErrorCode.TRC_DATE_IN_FUTURE,
-            'La fecha no puede ser futura',
-            [
-              violation(ErrorCode.TRC_DATE_IN_FUTURE, 'Fecha futura', {
-                field,
-                expected: clock.today,
-                actual: day,
-              }),
-            ],
-          );
-        }
+      // Fechas: inicio no futuro ni anterior al fin de la fermentación
+      if (startDay > clock.today) {
+        throw ruleError(
+          ErrorCode.TRC_DATE_IN_FUTURE,
+          'La fecha no puede ser futura',
+          [
+            violation(ErrorCode.TRC_DATE_IN_FUTURE, 'Fecha futura', {
+              field: 'processStartDate',
+              expected: clock.today,
+              actual: startDay,
+            }),
+          ],
+        );
       }
-      const tankStart = laPazDate(tank.endDate ?? tank.startDate);
-      if (startDay < tankStart || (endDay && endDay < startDay)) {
-        const field =
-          startDay < tankStart ? 'processStartDate' : 'processEndDate';
-        const minimum = startDay < tankStart ? tankStart : startDay;
+      const tankEnd = laPazDate(tank.endDate ?? tank.startDate);
+      if (startDay < tankEnd) {
         throw ruleError(
           ErrorCode.TRC_DATE_BEFORE_PREVIOUS_STAGE,
           'Fecha anterior a la etapa previa',
@@ -146,10 +128,10 @@ export class ProductionBatchesService {
               ErrorCode.TRC_DATE_BEFORE_PREVIOUS_STAGE,
               'Fecha anterior a la etapa previa',
               {
-                field,
-                expected: minimum,
-                actual: field === 'processStartDate' ? startDay : endDay,
-                meta: { minimum },
+                field: 'processStartDate',
+                expected: tankEnd,
+                actual: startDay,
+                meta: { minimum: tankEnd },
               },
             ),
           ],
@@ -157,59 +139,24 @@ export class ProductionBatchesService {
       }
 
       // Entrada ≤ disponible del tanque
-      if (dto.inputVolumeLiters !== undefined) {
-        const available = await tankAvailableLiters(tx, tank.id);
-        if (available !== null && dto.inputVolumeLiters > available + 1e-6) {
-          throw ruleError(
-            ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
-            `Del tanque ${tank.tankCode} quedan ${available} L`,
-            [
-              violation(
-                ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
-                'Litros por encima de lo disponible',
-                {
-                  field: 'inputVolumeLiters',
-                  expected: available,
-                  actual: dto.inputVolumeLiters,
-                  meta: {
-                    available,
-                    requested: dto.inputVolumeLiters,
-                    unit: 'L',
-                    tankId: tank.id,
-                  },
-                },
-              ),
-            ],
-          );
-        }
-      }
-
-      // Cortes (compatibilidad: additionalParams.{headDiscardLiters, heartYieldLiters, tailDiscardLiters})
-      const cuts = legacyCuts(dto.additionalParams);
-      const heart = cuts.heart ?? dto.outputVolumeLiters ?? null;
-      const cutsTotal =
-        cuts.heads !== null || cuts.tails !== null
-          ? (cuts.heads ?? 0) + (heart ?? 0) + (cuts.tails ?? 0)
-          : (dto.outputVolumeLiters ?? 0) + (dto.wasteVolumeLiters ?? 0);
-      if (
-        endDay &&
-        dto.inputVolumeLiters !== undefined &&
-        cutsTotal > dto.inputVolumeLiters + 1e-6
-      ) {
+      const available = await tankAvailableLiters(tx, tank.id);
+      if (available !== null && dto.inputVolumeLiters > available + 1e-6) {
         throw ruleError(
-          ErrorCode.TRC_MASS_BALANCE_EXCEEDED,
-          `Los cortes suman ${cutsTotal} L y la entrada fue de ${dto.inputVolumeLiters} L`,
+          ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+          `Del tanque ${tank.tankCode} quedan ${available} L`,
           [
             violation(
-              ErrorCode.TRC_MASS_BALANCE_EXCEEDED,
-              'Cortes mayores que la entrada',
+              ErrorCode.TRC_VOLUME_EXCEEDS_AVAILABLE,
+              'Litros por encima de lo disponible',
               {
-                field: 'outputVolumeLiters',
-                expected: dto.inputVolumeLiters,
-                actual: cutsTotal,
+                field: 'inputVolumeLiters',
+                expected: available,
+                actual: dto.inputVolumeLiters,
                 meta: {
-                  inputLiters: dto.inputVolumeLiters,
-                  outputLiters: cutsTotal,
+                  available,
+                  requested: dto.inputVolumeLiters,
+                  unit: 'L',
+                  tankId: tank.id,
                 },
               },
             ),
@@ -217,15 +164,9 @@ export class ProductionBatchesService {
         );
       }
 
-      // Reposo con la instantánea (no más 180 días fijos)
-      const mandatoryRestUntil = endDay
-        ? addDays(endDay, lot.rules.singani.minRestDays)
-        : null;
       this.logger.log(
         `Registrando lote de destilación en ${dto.equipmentIdentifier} para bodega ${wineryId}`,
       );
-      const decimal = (v: number | null | undefined) =>
-        v !== undefined && v !== null ? new Prisma.Decimal(v) : null;
       const created = await tx.productionBatch.create({
         data: {
           wineryId,
@@ -233,28 +174,17 @@ export class ProductionBatchesService {
           processType: ProductionProcessEnum.SINGANI_DISTILLATION,
           equipmentIdentifier: dto.equipmentIdentifier,
           processStartDate: toDbDate(startDay),
-          processEndDate: endDay ? toDbDate(endDay) : null,
-          inputVolumeLiters: decimal(dto.inputVolumeLiters),
-          outputVolumeLiters: decimal(dto.outputVolumeLiters),
-          wasteVolumeLiters: decimal(dto.wasteVolumeLiters),
-          initialAlcoholPercentage: decimal(dto.initialAlcoholPercentage),
-          // D.O. calculada (el valor enviado se ignora)
+          inputVolumeLiters: new Prisma.Decimal(dto.inputVolumeLiters),
+          initialAlcoholPercentage:
+            dto.initialAlcoholPercentage !== undefined
+              ? new Prisma.Decimal(dto.initialAlcoholPercentage)
+              : null,
+          // D.O. calculada sobre el lote (acaba de comprobarse)
           isDoEligible: true,
-          mandatoryRestUntil: mandatoryRestUntil
-            ? toDbDate(mandatoryRestUntil)
-            : null,
-          restStatus: endDay
-            ? RestStatusEnum.RESTING
-            : RestStatusEnum.NOT_REQUIRED,
-          additionalParams: dto.additionalParams ?? Prisma.DbNull,
+          // El reposo se abre al cerrar la destilación (§5.2)
+          restStatus: RestStatusEnum.NOT_REQUIRED,
           notes: dto.notes,
           lotId: lot.id,
-          ...(endDay && {
-            headsLiters: decimal(cuts.heads),
-            heartLiters: decimal(heart),
-            tailsLiters: decimal(cuts.tails),
-            heartAbvPercent: decimal(dto.initialAlcoholPercentage),
-          }),
           createdByMembershipId: membership?.id ?? null,
         },
       });
@@ -263,34 +193,13 @@ export class ProductionBatchesService {
         occurredAt: toDbDate(startDay),
         stage: 'DISTILLING',
         actorMembershipId: membership?.id ?? null,
-        summary: `Destilación en ${dto.equipmentIdentifier}${dto.inputVolumeLiters ? ` de ${formatQuantity(dto.inputVolumeLiters, 3)} L` : ''}`,
-        data: { inputVolumeLiters: dto.inputVolumeLiters ?? null, unit: 'L' },
+        summary: `Destilación en ${dto.equipmentIdentifier} de ${formatQuantity(dto.inputVolumeLiters, 3)} L`,
+        data: { inputVolumeLiters: dto.inputVolumeLiters, unit: 'L' },
         resource: { type: 'production_batch', id: created.id },
       });
-      if (endDay) {
-        await appendLotEvent(tx, lot.id, {
-          type: 'DISTILLATION_CLOSED',
-          occurredAt: toDbDate(endDay),
-          stage: 'RESTING',
-          actorMembershipId: membership?.id ?? null,
-          summary: `Destilación cerrada: corazón de ${formatQuantity(heart ?? 0, 3)} L; reposo hasta ${mandatoryRestUntil}`,
-          data: {
-            heartLiters: heart,
-            heartAbvPercent: dto.initialAlcoholPercentage ?? null,
-            restUntil: mandatoryRestUntil,
-            unit: 'L',
-          },
-          resource: { type: 'production_batch', id: created.id },
-        });
-      }
       // → TRANSFERRED al agotarse el tanque o con `closeTank` (§4.2)
       const remaining = await tankAvailableLiters(tx, tank.id);
-      if (
-        dto.closeTank === true ||
-        (dto.inputVolumeLiters !== undefined &&
-          remaining !== null &&
-          remaining <= 1e-6)
-      ) {
+      if (dto.closeTank === true || (remaining !== null && remaining <= 1e-6)) {
         await transferTank(
           tx,
           tank,

@@ -5,7 +5,6 @@ import {
   IsOptional,
   IsNumber,
   IsPositive,
-  IsBoolean,
   IsObject,
   IsUrl,
 } from 'class-validator';
@@ -111,16 +110,6 @@ export class CreateTerroirDto {
   @IsOptional()
   @IsString()
   irrigationSystem?: string;
-
-  @ApiPropertyOptional({
-    example: true,
-    deprecated: true,
-    description:
-      'Se ignora: la aptitud D.O. la calcula el servidor (EA-03, contrato O2 §3.1). Sale de la entrada en H2',
-  })
-  @IsOptional()
-  @IsBoolean()
-  isDoEligible?: boolean;
 
   @ApiPropertyOptional({
     example: 'D.O. Singani',

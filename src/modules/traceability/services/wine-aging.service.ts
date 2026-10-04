@@ -19,7 +19,6 @@ import {
   assertStage,
   assertTankIsSource,
   decideProductType,
-  ensureHarvestLot,
   tankAvailableLiters,
   transferTank,
 } from '@modules/lots/chain';
@@ -72,12 +71,7 @@ export class WineAgingService {
           `Cuba de fermentación con ID ${dto.fermentationTankId} no encontrada en esta bodega`,
         );
       }
-      const lotId =
-        tank.lotId ?? (await ensureHarvestLot(tx, tank.harvestBatchId));
-      if (!lotId) {
-        throw new NotFoundException('El tanque no pertenece a ningún lote');
-      }
-      const lot = await lockLot(tx, lotId, wineryId, { writable: true });
+      const lot = await lockLot(tx, tank.lotId, wineryId, { writable: true });
       if (tank.wineAgingBatch) {
         throw new AppConflictException(
           ErrorCode.FERMENTATION_TANK_ALREADY_TRANSFERRED,

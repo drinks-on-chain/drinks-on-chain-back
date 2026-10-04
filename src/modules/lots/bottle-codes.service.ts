@@ -544,16 +544,21 @@ export class BottleCodesService {
       // Con el lote bloqueado: la fecha de la anulación ordena frente al cierre
       const clock = await lockedClock(tx);
       const membership = await actorMembership(tx, userId, wineryId);
-      const replacement = replace ? await createReplacement(tx, unit) : null;
-      const voided = await tx.bottleUnit.update({
+      // Primero la baja: una serie solo tiene un código activo (índice único
+      // parcial `bottle_units_lot_id_serial_active_key`)
+      await tx.bottleUnit.update({
         where: { id: unit.id },
         data: {
           status: 'VOIDED',
           voidedAt: clock.now,
           voidedByMembershipId: membership?.id ?? null,
           voidReason: reason,
-          replacedByCode: replacement,
         },
+      });
+      const replacement = replace ? await createReplacement(tx, unit) : null;
+      const voided = await tx.bottleUnit.update({
+        where: { id: unit.id },
+        data: { replacedByCode: replacement },
       });
       await tx.lot.update({
         where: { id: lot.id },

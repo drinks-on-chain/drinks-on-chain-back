@@ -1,6 +1,6 @@
 # Trazabilidad confiable: el lote del servidor
 
-> Ola 2 · apertura (O2-BE-1; contrato `plan/contratos/o2-erp-confiable.md` §0–§2, §13, §14, §16, §20; docs-back/01 §9.1 EA-01…EA-08 y SE-07; docs-back/08 §5). Esta página describe lo que ya está en `dev`: el modelo del lote, la instantánea de reglas, la migración de los datos anteriores y los cierres de seguridad. Las rutas que la apertura publicó con 501 `NOT_IMPLEMENTED` ya tienen su lógica (Etapa 2, pasos 2.2–2.10; ver [Rutas](#rutas)): no queda ninguna con 501.
+> Ola 2 · Etapa 2 completa y cerrada en H2 (O2-BE-1; contrato `plan/contratos/o2-erp-confiable.md`; docs-back/01 §9.1 EA-01…EA-08 y SE-07; docs-back/08 §5). Esta página describe lo que hay en `dev` desde `v0.2.0`: el modelo del lote, la instantánea de reglas, los cierres de seguridad, las rutas del contrato (ninguna con 501) y el [cierre H2](#cierre-h2-contracción-v020): la migración *contract* y la retirada de las rutas y los campos legados.
 
 ## Modelo
 
@@ -37,15 +37,15 @@ flowchart LR
 | `bottle_code_exports` | Cada exportación de códigos (CSV o ZIP): rango de series, opciones del QR, estado (`PENDING`/`READY`/`FAILED`), filas, quién la pidió, clave del ZIP en el almacenamiento privado y caducidad (ver [Códigos de botella](#códigos-de-botella-paso-26)) |
 | `lot_dossiers` | Expediente cerrado del lote: `hash`, `canonical` (los bytes hasheados), raíz Merkle y número de códigos, fecha y autor del cierre (ver [Expediente](#expediente-del-lote-y-hash-canónico-paso-28)) |
 | `trace_corrections`, `lot_attachments` | Creadas en la apertura para los pasos 2.7 y 2.9 |
-| `lot_backfill_pending` | Cola del relleno de la migración (ver [Migración](#migración-de-los-datos-anteriores-26)) |
+| `lot_backfill_pending` | Cola del relleno de la apertura (ver [Migración](#migración-de-los-datos-anteriores-26)). Vacía y sin uso desde el cierre H2: se conserva una versión más porque la API anterior la consulta (un rollback de la imagen no revierte migraciones) y se retira en una ola posterior |
 
-Columnas nuevas (todas nulas o con valor por defecto) en la cadena actual: `lot_id` en pesajes, tanques, crianzas, destilaciones, embotellados (única: **un embotellado por lote**) y análisis; `created_by_membership_id` (autoría real, `TraceActor`); `terroir_snapshot` del pesaje; `final_volume_liters` del tanque; `start_date`, `container_count` y descarte de la crianza; cortes (`heads/heart/tails/vinasse_liters`, `heart_abv_percent`) y descarte de la destilación; `available_liters`, remanente y `label_design_key` del embotellado; `methanol_mg_100ml_aa`, `conformity`, `conformity_status`, `superseded_at` y `laboratory_report_key` del análisis. Brix, pH y acidez del pesaje pasan a ser **nulos** sin análisis.
+Columnas nuevas en la cadena anterior a la Ola 2: `lot_id` en pesajes, tanques, crianzas, destilaciones, embotellados (única: **un embotellado por lote**) y análisis — **obligatoria desde el cierre H2** salvo en el pesaje (uva recibida sin lote) —; `created_by_membership_id` (autoría real, `TraceActor`); `terroir_snapshot` del pesaje; `final_volume_liters` del tanque; `start_date`, `container_count` y descarte de la crianza; cortes (`heads/heart/tails/vinasse_liters`, `heart_abv_percent`) y descarte de la destilación; `available_liters`, remanente y `label_design_key` del embotellado; `methanol_mg_100ml_aa`, `conformity`, `conformity_status`, `superseded_at`, `laboratory_report_key` y `laboratory_report_sha256` del análisis. Brix, pH y acidez del pesaje pasan a ser **nulos** sin análisis.
 
 Dos restricciones únicas se relajan: el código de vendimia es único **por bodega** (su secuencia es por bodega) y un embotellado admite **varios análisis** (reanálisis: el nuevo sustituye al anterior, sin 409).
 
-Los actores se guardan por su membresía (`*_membership_id`, sin clave foránea, como en la bitácora) y se resuelven a `TraceActor { membershipId, userId, fullName, role }`; `null` = sistema o no registrado (datos anteriores). Las claves foráneas nuevas son `Restrict`; las antiguas `Cascade` pasan a `Restrict` en el cierre de la ola (H2), junto con `lot_id NOT NULL` (salvo en pesajes).
+Los actores se guardan por su membresía (`*_membership_id`, sin clave foránea, como en la bitácora) y se resuelven a `TraceActor { membershipId, userId, fullName, role }`; `null` = sistema o no registrado (datos anteriores). Todas las claves foráneas de la trazabilidad son `Restrict` (las de las tablas nuevas desde la apertura; las 18 de la cadena anterior que borraban o desenganchaban en cascada, desde el cierre H2): ningún registro desaparece ni pierde su origen o su autor por borrar otro.
 
-El código vive en `src/modules/lots/`: `domain/` (reglas puras y probadas: D.O., laboratorio, candados, balance, códigos de botella, etapa, fechas en La Paz, JSON canónico, árbol Merkle, contenido del expediente, CSV, ZIP y QR), `lot-records.ts` (crear y bloquear lotes, recalcular la etapa), `bottling-engine.ts` (reglas del embotellado), `bottle-codes.service.ts` y `bottle-code-export.builder.ts` (códigos de botella), `lot-dossier.ts` y `dossier.service.ts` (expediente), `jobs/` (procesadores del worker), `lot-backfill.ts` (relleno), `chain.ts` (destino, D.O. y volumen de la cadena) `views/` y `passport/` (vistas y pasaporte público) y `contract/` (controladores de las rutas del contrato).
+El código vive en `src/modules/lots/`: `domain/` (reglas puras y probadas: D.O., laboratorio, candados, balance, códigos de botella, etapa, fechas en La Paz, JSON canónico, árbol Merkle, contenido del expediente, CSV, ZIP y QR), `lot-records.ts` (crear y bloquear lotes, recalcular la etapa), `bottling-engine.ts` (reglas del embotellado), `bottle-codes.service.ts` y `bottle-code-export.builder.ts` (códigos de botella), `lot-dossier.ts` y `dossier.service.ts` (expediente), `jobs/` (procesadores del worker), `chain.ts` (destino, D.O. y volumen de la cadena), `views/` y `passport/` (vistas y pasaporte público) y `contract/` (controladores de las rutas del contrato).
 
 ## Instantánea de reglas (CFG-06)
 
@@ -65,7 +65,7 @@ Todas las validaciones del lote usan **esa** instantánea aunque la configuraci�
 
 La calcula el servidor a partir de los registros (`deriveLotStage`); ninguna ruta la fija salvo el descarte: `ORIGIN` (sin pesajes) → `HARVEST` → `FERMENTING` (algún tanque) → `AGING` (crianza) o `DISTILLING`/`RESTING` (destilaciones abiertas/cerradas) → `BOTTLED` → `CERTIFIED` (expediente cerrado, paso 2.8) → `ANCHORED` (Ola 3). `REJECTED` (todos los pesajes rechazados y ninguno en un tanque) y `DISCARDED` (con motivo: fuentes abiertas a `DISCARDED` y códigos de botella anulados). `REJECTED`, `DISCARDED` y `CERTIFIED` son terminales: toda escritura → 409 `TRC_LOT_TERMINAL`.
 
-El lote nace en origen (`POST /v1/lots`), desde el pesaje (`newLot`) o desde el tanque (`newLot`). Un pesaje puede registrarse **sin lote** (uva recibida, `GET /v1/harvest-batches?lotId=none`); al llenar un tanque con uva sin lote y sin `lotId`/`newLot`, el servidor crea el lote del tanque (compatibilidad con el ERP actual, que no conoce los lotes).
+El lote nace en origen (`POST /v1/lots`), desde el pesaje (`newLot`) o desde el tanque (`newLot`). Un pesaje puede registrarse **sin lote** (uva recibida, `GET /v1/harvest-batches?lotId=none`); al llenar un tanque con uva sin lote y sin `lotId`/`newLot`, el servidor crea el lote del tanque (un tanque siempre pertenece a un lote).
 
 ## Reglas que ya no se pueden eludir
 
@@ -73,14 +73,14 @@ Todas se evalúan en el servidor con la instantánea del lote y el **reloj de la
 
 | Hallazgo | Antes | Ahora |
 |---|---|---|
-| **EA-04** dictamen | `phytosanitaryStatus` en el alta del pesaje (autoaprobación); se fermentaba uva rechazada | El alta solo admite `PENDING_INSPECTION` (otro → 422 `TRC_PHYTO_IN_CREATE`). El dictamen va aparte (`POST …/phyto-decisions`, solo inserción; `APPROVED`/`REJECTED` finales; `REJECTED`/`QUARANTINE` con motivo; nada cambia con la uva en un tanque → 409 `TRC_PHYTO_DECISION_FINAL`). Un tanque exige `APPROVED` (o `PENDING` si la instantánea no lo exige; nunca `REJECTED`/`QUARANTINE`) → 422 `TRC_PHYTO_NOT_APPROVED` con un detalle por pesaje. `PATCH …/phyto-status` es un alias que ya no pisa las notas |
-| **EA-01** tipo del embotellado | La estrategia se elegía con el `productType` que enviaba el cliente (`WINE` sobre una destilación no miraba el reposo) | El tipo se deriva del origen (crianza → `WINE`, destilación → `SINGANI`); uno distinto → 422 `TRC_PRODUCT_TYPE_MISMATCH`. Candados: `unlockDate ≤ hoy` (reloj de la base) **y** `≤ bottlingDate` → si no, 422 `TRC_LOCK_NOT_RELEASED` con `rule`, `unlockDate` y `daysRemaining`. Crianza: inicio + meses de calendario (≥ mínimo de la instantánea); reposo: fin de la destilación + `minRestDays` de la instantánea (no más 180 fijos); con registros anteriores manda la fecha más tardía entre la calculada y la guardada |
+| **EA-04** dictamen | `phytosanitaryStatus` en el alta del pesaje (autoaprobación); se fermentaba uva rechazada | El alta no tiene dictamen: enviar `phytosanitaryStatus` (con cualquier valor) → 422 `TRC_PHYTO_IN_CREATE`. El dictamen va aparte (`POST …/phyto-decisions`, solo inserción; `APPROVED`/`REJECTED` finales; `REJECTED`/`QUARANTINE` con motivo; nada cambia con la uva en un tanque → 409 `TRC_PHYTO_DECISION_FINAL`). Un tanque exige `APPROVED` (o `PENDING` si la instantánea no lo exige; nunca `REJECTED`/`QUARANTINE`) → 422 `TRC_PHYTO_NOT_APPROVED` con un detalle por pesaje |
+| **EA-01** tipo del embotellado | La estrategia se elegía con el `productType` que enviaba el cliente (`WINE` sobre una destilación no miraba el reposo) | El tipo se deriva del origen (crianza → `WINE`, destilación → `SINGANI`) y no es un campo de la entrada. Candados: `unlockDate ≤ hoy` (reloj de la base) **y** `≤ bottlingDate` → si no, 422 `TRC_LOCK_NOT_RELEASED` con `rule`, `unlockDate` y `daysRemaining`. Crianza: inicio + meses de calendario (≥ mínimo de la instantánea); reposo: fin de la destilación + `minRestDays` de la instantánea (no más 180 fijos); con registros anteriores manda la fecha más tardía entre la calculada y la guardada |
 | **EA-02** embotellado ilimitado | Sin balance ni estados terminales | Un embotellado por lote (409 `TRC_LOT_ALREADY_BOTTLED` y restricción única `bottling_batches(lot_id)`); todas las fuentes abiertas entran o se descartan antes (`TRC_BOTTLING_SOURCES_PENDING`); balance de volumen `botellas × cL + remanente ≤ disponible + agua` (`TRC_BOTTLING_EXCEEDS_VOLUME` con `maxBottles`) y merma ≤ `maxLossPercent` (`TRC_BOTTLING_LOSS_ABOVE_TOLERANCE`); alcohol puro embotellado ≤ el del corazón con 0,5 % de tolerancia (`TRC_ALCOHOL_BALANCE_EXCEEDED`); vino sin agua (`TRC_DILUTION_NOT_ALLOWED`); incidencias abiertas bloquean (`TRC_COMPLIANCE_ISSUES_OPEN`). Fuentes a `BOTTLED`, tanques a `TRANSFERRED`, lote a `BOTTLED` y un código por botella, en la misma transacción. `blockchainDataHash` ya no se calcula (el hash válido será el del expediente) |
-| **EA-03** D.O. | La destilación solo validaba si llegaba `isDoEligible: true`; la parcela declaraba su aptitud | Aptitud calculada: altitud ≥ mínimo y cepa entre las exigidas (sin mayúsculas, tildes ni espacios repetidos; sin sinónimos, P-7). Parcelas: `isDoEligible` calculado con los valores efectivos y `doEvaluation`; el valor enviado se ignora. Lote singani: la parcela del pesaje (`TRC_DO_TERROIR_NOT_ELIGIBLE`), el destino singani de un tanque y cada destilación evalúan **todos** los pesajes del lote con la instantánea (`TRC_DO_NOT_ELIGIBLE`, un detalle por regla con `expected`/`actual`). `ELIGIBLE_BY_EXCEPTION` cuando solo cumple por un valor bajo el mínimo legal autorizado (A-31). Destino coherente con el tipo del lote (`TRC_DESTINATION_MISMATCH`) |
+| **EA-03** D.O. | La destilación solo validaba si llegaba `isDoEligible: true`; la parcela declaraba su aptitud | Aptitud calculada: altitud ≥ mínimo y cepa entre las exigidas (sin mayúsculas, tildes ni espacios repetidos; sin sinónimos, P-7). Parcelas: `isDoEligible` calculado con los valores efectivos y `doEvaluation`; no es un campo de la entrada (ni en parcelas ni en la destilación). Lote singani: la parcela del pesaje (`TRC_DO_TERROIR_NOT_ELIGIBLE`), el destino singani de un tanque y cada destilación evalúan **todos** los pesajes del lote con la instantánea (`TRC_DO_NOT_ELIGIBLE`, un detalle por regla con `expected`/`actual`). `ELIGIBLE_BY_EXCEPTION` cuando solo cumple por un valor bajo el mínimo legal autorizado (A-31). Destino coherente con el tipo del lote (`TRC_DESTINATION_MISMATCH`) |
 | **EA-07** secuencias | `count + 1` y sufijo por colisión | `lot_sequences` con `INSERT … ON CONFLICT DO UPDATE … RETURNING` (bloqueo de fila); el valor nunca queda por debajo de lo que ya existe en los datos. Código de vendimia `HARV-{año}-{parcela}-{NNN}` por bodega y año; código de lote `{lotPrefix}-{año}-{WINE\|SINGANI}-{NNN}` por bodega y año, común a los productos; referencia `{lotPrefix}-L{año}-{NNN}` |
 | **EA-08** laboratorio | `conformsToSenasagStandards` `true` por defecto; metanol en mg/L comparado con un límite en mg/100 mL | Conformidad calculada contra `rules.lab.limits` con unidades explícitas (`units` en la respuesta). Metanol en mg/L de producto → mg/100 mL de alcohol anhidro (`10 × mgL / grado`); si llegan ambos y difieren > 1 % → 422. Parámetros exigidos: singani (metanol, cobre, grado), vino (acidez volátil, grado); falta uno → `INCOMPLETE` (nunca conforme por omisión); unidad desconocida → `UNIT_UNKNOWN`. Aviso si el grado medido difiere > 0,5 % vol del etiquetado |
-| **EA-05** (parte) grafo | Métricas fijas (12,80 %, 0,28 g/L), `isCertified: true` fijo, operadores genéricos | Solo datos registrados (métrica vacía si no hay dato), `isCertified` = expediente cerrado, operador desde la membresía o "No registrado" |
-| **SE-07** grafo | `GET /traceability/dag/:id` para cualquier sesión; el pasaporte público aceptaba el id | Solo los miembros de la bodega dueña y el personal de plataforma (ADMIN, OPERATIONS, SUPPORT, SUPERADMIN); cualquier otra sesión → 404. El pasaporte legado solo por código de lote |
+| **EA-05** grafo y pasaporte | Métricas fijas (12,80 %, 0,28 g/L), `isCertified: true` fijo, operadores genéricos | Solo datos registrados (`null` = no registrado), autor desde la membresía, y el estado del expediente en lugar de un «certificado» fijo ([vistas y pasaporte](#vistas-del-lote-y-pasaporte-público-pasos-29-y-210)) |
+| **SE-07** grafo | `GET /traceability/dag/:id` para cualquier sesión; el pasaporte público aceptaba el id | `GET /v1/lots/{id}/graph`: solo los miembros de la bodega dueña y el personal de plataforma (ADMIN, OPERATIONS, SUPPORT, SUPERADMIN); cualquier otra sesión → 404. El grafo por embotellado y el pasaporte legados se retiraron en H2 |
 | **S-25** plataforma | Escribía con `?wineryId=` (contrato O0 §8) | **Solo lee** la trazabilidad (`@PlatformReadOnly()` en parcelas, vendimia, tanques, crianza, destilación, embotellado, laboratorio y lotes): escrituras → 403 `TRC_PLATFORM_READ_ONLY` |
 
 Otras reglas del contrato activas desde la apertura: fechas no futuras (`TRC_DATE_IN_FUTURE`, 5 min de tolerancia en los instantes) ni anteriores a la etapa previa (`TRC_DATE_BEFORE_PREVIOUS_STAGE`) en pesajes, dictámenes, tanques, lecturas, tratamientos, crianzas, destilaciones y laboratorio; entradas de un solo lote por tanque (`TRC_MIXED_LOTS`), kilos ≤ disponibles y llenado ≤ capacidad; código físico del tanque ocupado hasta limpiarlo (409 `TRC_TANK_CODE_IN_USE`); lecturas y tratamientos solo en tanques activos (409 `TRC_TANK_NOT_ACTIVE`); crianza ≥ mínimo de la instantánea (`TRC_AGING_BELOW_MINIMUM`) con `volumeLiters` obligatorio ≤ lo disponible del tanque; destilación con entrada ≤ lo disponible del tanque y cortes ≤ entrada (`TRC_MASS_BALANCE_EXCEEDED`); parcela usada sin `PATCH` de altitud, cepa ni materia prima (409 `TRC_TERROIR_IN_USE`).
@@ -111,22 +111,24 @@ El estado del tanque cambia solo con **acciones** (`TankTransitionsService`); un
 | `start` | `FILLING → FERMENTING` | `startedAt` (por defecto, ahora) ni futuro ni anterior al llenado | `FERMENTATION_STARTED` · `TANK_TRANSITION` |
 | `complete` | `FERMENTING → COMPLETED` | `finalVolumeLiters ≤ volumeFilledLiters` (`TRC_VOLUME_EXCEEDS_AVAILABLE`); `endDate` ni futura ni anterior al llenado; **bifurcación** | `FERMENTATION_COMPLETED` (y `PRODUCT_DECIDED`) · `TANK_TRANSITION` |
 | (automática) | `→ TRANSFERRED` | Al crear la crianza del tanque, al agotarse su volumen con las destilaciones o con `closeTank: true` en la destilación | Historial del tanque |
-| `clean` | `TRANSFERRED → CLEANED` | `cleanedAt` ni futuro ni anterior al fin de la fermentación; libera el `tankCode` (S-7) | `TANK_TRANSITION` |
+| `clean` | `TRANSFERRED → CLEANED` (y `COMPLETED` con remanente, abajo) | `cleanedAt` ni futuro ni anterior al fin de la fermentación; libera el `tankCode` (S-7) | `TANK_TRANSITION` |
 
 - **Bifurcación (ERP-09)**: `destination` debe coincidir con el tipo del lote (`WINE ↔ WINE_AGING`, `SINGANI ↔ SINGANI_DIST`; si no, 422 `TRC_DESTINATION_MISMATCH`). Si el lote aún no tiene tipo, la primera bifurcación lo fija y todos sus tanques comparten destino. Con destino singani, la D.O. se evalúa sobre **todos** los pesajes del lote con la instantánea (422 `TRC_DO_NOT_ELIGIBLE`): si falla, nada se guarda y el lote sigue sin tipo.
 - La respuesta del tanque añade `availableLiters` (el volumen final, o el de llenado, menos lo transferido; 0 con el tanque transferido), `transferLossLiters` (lo que quedó sin transferir: la merma de trasiego) y `transitions` (`{ status, at, by }`, empezando por el llenado). El historial se guarda en `fermentation_tanks.transition_log`.
-- Un tanque `TRANSFERRED` o `CLEANED` ya no es origen de una crianza ni de una destilación → 409 `TRC_TANK_NOT_COMPLETED`.
+- **Solo un tanque `COMPLETED` es origen de una crianza o de una destilación**: sin completar (`FILLING`/`FERMENTING`), ya transferido o limpio → 409 `TRC_TANK_NOT_COMPLETED` con `meta: { status, tankId }` (sin la tolerancia que hubo hasta H2).
+- **Tanque `COMPLETED` con remanente**: si ya salió alguna destilación y queda vino base, `clean` lo cierra y lo limpia en un paso (`COMPLETED → TRANSFERRED → CLEANED` en su historial; el remanente queda como merma de trasiego, `transferLossLiters`). Sin ninguna salida, `clean` responde 409: el vino base del lote sigue dentro.
 - `clean` no escribe en la línea de tiempo del lote (no es un hecho de su producción y el lote puede estar ya cerrado): queda en el historial del tanque y en la bitácora.
 
 ### Crianza, destilación y reposo (§5)
 
+- **Destilación en dos pasos**: `POST /v1/production-batches/distillation` la **abre** (tanque `COMPLETED` con destino singani, `inputVolumeLiters` obligatorio y ≤ lo disponible del tanque, D.O. del lote) y `POST …/close` la **cierra**. Desde H2 no hay alta «todo en uno» ni cortes en `additionalParams`.
 - **Cierre de la destilación** (`POST …/close`): cortes tipados (`cuts.headsLiters`, `heartLiters`, `tailsLiters`, `vinasseLiters?`) y `heartAbvPercent`. **Balance de masa**: cabezas + corazón + colas (+ vinaza) ≤ entrada → si no, 422 `TRC_MASS_BALANCE_EXCEEDED` (`meta: { inputLiters, outputLiters }`). Sin volumen de entrada registrado → 422 `TRC_VOLUME_MISSING`; ya cerrada → 409 `TRC_DISTILLATION_ALREADY_CLOSED`. El reposo se abre desde `processEndDate` con el `minRestDays` de la **instantánea** del lote (`mandatoryRestUntil`, `restStatus: RESTING`); con todas las destilaciones cerradas el lote pasa a `RESTING`.
 - **Descartes** (`POST /v1/wine-aging/{id}/discard`, `POST /v1/production-batches/{id}/discard`): con motivo; la fuente pasa a `DISCARDED` y deja de contar como fuente abierta del embotellado. Una fuente ya embotellada o descartada → 409 `TRC_INVALID_STAGE`. El evento es interno (los motivos y las mermas no son públicos, S-22) y las incidencias abiertas del lote se reevalúan (p. ej. una fuente abierta en un lote ya embotellado).
 - **Candados** (§5.3): el embotellado los recalcula siempre con la instantánea y el reloj de la base. La tarea diaria **`trace.locks.release`** (worker, 00:05 de America/La_Paz y al arrancar) solo **persiste** el estado: pasa a `READY` las crianzas `AGING` y las destilaciones `RESTING` con `unlockDate ≤ hoy` y escribe `LOCK_RELEASED` en la línea de tiempo y en la bitácora (actor sistema). Es idempotente y segura con varias réplicas (cada lote en su transacción, con su fila bloqueada). Al cerrar una destilación con una fecha que ya cumple el reposo (registro tardío), el candado se libera en el momento.
 
 ### Laboratorio del lote (§8)
 
-`POST /v1/lots/{id}/lab-analyses` usa el mismo cálculo de conformidad y de unidades que la ruta legada (`POST /v1/lab-analyses`, alias hasta H2) y añade: lote embotellado (si no, 409 `TRC_LOT_NOT_BOTTLED`) y expediente abierto (409 `TRC_DOSSIER_CLOSED`); informe por su `key` de `POST /v1/uploads`, de la bodega y existente (422 `TRC_FILE_NOT_FOUND`), o por URL (alias hasta H2); ensayo ni futuro ni anterior al embotellado. La respuesta trae `report: { key, sha256, url }` con una URL firmada de corta vida. `GET /v1/lots/{id}/lab-analyses` lista todos, el más reciente primero, con `current: true` en el vigente (ni sustituido por un reanálisis ni anulado por una corrección). El informe del dictamen fitosanitario sigue las mismas reglas (`inspectionReportKey`, URL firmada).
+`POST /v1/lots/{id}/lab-analyses` es la única alta del laboratorio (la legada `POST /v1/lab-analyses` se retiró en H2; `GET /v1/lab-analyses/batch/{bottlingBatchId}` sigue dando el vigente): lote embotellado (si no, 409 `TRC_LOT_NOT_BOTTLED`) y expediente abierto (409 `TRC_DOSSIER_CLOSED`); informe **obligatorio por su `key`** de `POST /v1/uploads`, de la bodega y existente (422 `TRC_FILE_NOT_FOUND`); ensayo ni futuro ni anterior al embotellado. La respuesta trae `report: { key, sha256, url }`: la **huella SHA-256** del archivo se calcula al registrar el análisis y se guarda con él (`laboratory_report_sha256`), y `url` es una URL firmada de corta vida. `GET /v1/lots/{id}/lab-analyses` lista todos, el más reciente primero, con `current: true` en el vigente (ni sustituido por un reanálisis ni anulado por una corrección). El informe del dictamen fitosanitario sigue las mismas reglas (`inspectionReportKey`, huella en `inspection_report_sha256` —que también va en el expediente canónico— y URL firmada). `POST /v1/uploads` devuelve ya la huella (`sha256`) del archivo subido.
 
 ### Correcciones compensatorias (§9; EA-06)
 
@@ -150,8 +152,8 @@ Un registro anulado (`voided_at`) **deja de contar** en todo lo que se calcula o
 | Dónde | Registros anulados | Correcciones |
 |---|---|---|
 | Recursos del ERP (tanque con sus lecturas y tratamientos, pesaje, laboratorio…) | Se devuelven marcados: `voided: true` | `correctedFields`, `correctionIds` |
-| Línea de tiempo (`GET /v1/lots/{id}/timeline`) | El evento sigue, con `corrected: true` | Un evento `CORRECTION` por corrección y `corrected: true` en los del registro |
-| Grafo (`GET /v1/lots/{id}/graph` y el legado) | Lecturas y tratamientos anulados no cuentan en las métricas del tanque (`readings`, `lastTemperatureC`, `treatments`); un análisis de laboratorio anulado sigue como nodo con `status: 'VOIDED'` | `corrected: true` en el nodo corregido; la corrección de un análisis de madurez o de un dictamen marca el pesaje, y la de una lectura o un tratamiento, el tanque |
+| Línea de tiempo (`GET /v1/lots/{id}/timeline`) | El evento sigue, con `corrected: true`. El evento diario de lecturas (`FERMENTATION_READINGS`) se recuenta: `data.count` y su texto reflejan solo las lecturas vigentes de ese día («Lecturas anuladas en TK-03» si no queda ninguna) | Un evento `CORRECTION` por corrección y `corrected: true` en los del registro |
+| Grafo (`GET /v1/lots/{id}/graph`) | Lecturas y tratamientos anulados no cuentan en las métricas del tanque (`readings`, `lastTemperatureC`, `treatments`); un análisis de laboratorio anulado sigue como nodo con `status: 'VOIDED'` | `corrected: true` en el nodo corregido; la corrección de un análisis de madurez o de un dictamen marca el pesaje, y la de una lectura o un tratamiento, el tanque |
 | Balance y reporte de producción | `labStatus` es el del análisis vigente (ni sustituido ni anulado); el dictamen del pesaje es el de su último dictamen sin anular | Usan siempre el valor vigente |
 | Panel | Una lectura anulada no dispara ni apaga una alerta de fermentación; `bottledWithoutLab` y `readyToClose` miran el análisis vigente | — |
 | Archivos del lote | El informe de un dictamen o de un análisis anulado no se lista | — |
@@ -162,7 +164,10 @@ Un registro anulado (`voided_at`) **deja de contar** en todo lo que se calcula o
 
 | Tema | Lo que hace el backend | Por qué |
 |---|---|---|
-| Tanque sin completar como origen (§5.1, §5.2) | Hasta H2, la crianza y la destilación se admiten también desde un tanque `FILLING`/`FERMENTING` (el flujo anterior a las transiciones) y lo dan por transferido; `TRC_TANK_NOT_COMPLETED` solo para `TRANSFERRED`/`CLEANED` | Compatibilidad con el ERP actual, que no llama a `complete`; no abre ninguna elusión (D.O., destino y volúmenes se comprueban igual) |
+| Tanque `COMPLETED` con remanente (§4.2) | `clean` lo cierra (`TRANSFERRED`, remanente = merma de trasiego) y lo limpia si ya salió alguna destilación | El contrato solo cierra el tanque con `closeTank` en la última destilación o al agotarse: un remanente olvidado dejaba el tanque `COMPLETED` y su código ocupado hasta embotellar |
+| Dictamen en el alta del pesaje (§3.2, §16.2) | El campo salió del contrato (OpenAPI) en H2, pero enviarlo sigue respondiendo 422 `TRC_PHYTO_IN_CREATE` (no un `VALIDATION_ERROR` genérico) | El código es el del contrato §13 para ese intento de elusión (§18) y el ERP ya lo traduce |
+| `status` en el alta del tanque (§4.1) | Se conserva, marcado `deprecated` (solo `FILLING`/`FERMENTING`; lo sustituye `startFermentation`) | El contrato lo llama «legado» pero no lo lista en §16.2 para H2 |
+| `doCertificateUrl` de la parcela | Se conserva como campo de la entrada | No es un archivo de la trazabilidad del lote, el contrato no define su `…Key` y el ERP lo envía |
 | Limpieza del tanque de un lote descartado (§4.2) | `clean` se admite desde cualquier estado si el lote está `DISCARDED` o `REJECTED` | Un lote terminal no admite transiciones: su tanque quedaría ocupado para siempre (S-7) |
 | Evento del descarte de una fuente (§11.1) | `LOT_DISCARDED` interno con `data.scope: 'SOURCE'` y el recurso de la fuente; bitácora `AGING_DISCARDED`/`DISTILLATION_DISCARDED` | El contrato no define un tipo de evento para el descarte de una crianza o una destilación |
 | `discardedLiters` de la crianza (§5.1) | Informativo (por defecto, todo el volumen): la crianza pasa entera a `DISCARDED` | No hay descartes parciales en el contrato |
@@ -171,12 +176,12 @@ Un registro anulado (`voided_at`) **deja de contar** en todo lo que se calcula o
 | Eventos del outbox `lot.*` (§15) | Solo se emite `lot.certified` (cierre del expediente), con su procesador en la cola `chain`. `lot.created`, `lot.stage_changed`, `lot.lock_released`, `lot.bottled` y `lot.discarded` **no se emiten en esta ola** | En esta ola su único consumidor sería la caché del pasaporte, que ya se invalida sola: cada lectura compara la marca de estado del lote (§12.4), sin depender de eventos. Un evento sin procesador falla en el worker, así que cada uno se añadirá junto con su consumidor: el anclaje (Ola 3) y los avisos al comprador (Ola 4). Ver [outbox](outbox.md#eventos-y-tareas-de-los-lotes-ola-2) |
 ## Embotellado seguro: precisiones del paso 2.5
 
-`POST /v1/lots/{id}/bottling[/preview]` y la ruta legada usan el mismo motor (`bottling-engine.ts`). Además de la tabla de arriba:
+`POST /v1/lots/{id}/bottling[/preview]` usan el motor `bottling-engine.ts` (la ruta legada `POST /v1/bottling` se retiró en H2; `GET /v1/bottling` y `GET /v1/bottling/{id}` siguen). Además de la tabla de arriba:
 
 - **Fuentes sin repetir**: la misma crianza o destilación dos veces en `sources` → 422 `TRC_BOTTLING_SOURCE_INVALID` (contaría dos veces su volumen y su alcohol).
 - **`liters` no esconde merma**: como hay un embotellado por lote y cada fuente incluida queda `BOTTLED`, `balance.availableLiters` es siempre el volumen **entero** de las fuentes. Si `liters` pide menos, la diferencia se declara en `leftover` o cuenta como merma (y puede superar la tolerada). El alcohol puro disponible (`balance.pureAlcohol.availableLiters`) es solo el de los litros que se toman. Más litros que los de la fuente → 422 `TRC_VOLUME_EXCEEDS_AVAILABLE`.
 - **Tolerancia del balance de alcohol** (S-11): alcohol puro embotellado ≤ alcohol del corazón × 1,005.
-- **Etiqueta**: `labelDesignKey` es la `key` de un archivo subido por la propia bodega (`org/{bodega}/…`); ajena o inexistente → 422 `TRC_FILE_NOT_FOUND` (en la vista previa, una violación más). El detalle del embotellado devuelve `labelDesign: { key, url }` con una URL firmada de corta vida.
+- **Etiqueta**: solo por su `key` (`labelDesignUrl` ya no es un campo de la entrada). `labelDesignKey` es la `key` de un archivo subido por la propia bodega (`org/{bodega}/…`); ajena o inexistente → 422 `TRC_FILE_NOT_FOUND` (en la vista previa, una violación más). El detalle del embotellado devuelve `labelDesign: { key, url }` con una URL firmada de corta vida.
 - **Código de lote**: `{lotPrefix}-{año del embotellado}-{WINE|SINGANI}-{NNN}`; la secuencia (por bodega y año, común a los productos) sale de `lot_sequences` con la fila bloqueada. Probado con embotellados simultáneos de dos bodegas, de tres lotes de la misma bodega (números consecutivos) y del mismo lote (uno entra, el otro 409 `TRC_LOT_ALREADY_BOTTLED`).
 - **Rendimiento**: los códigos se insertan por tandas de 5.000 (`generateBottleUnits`); un lote de 5.000 botellas se embotella en una transacción en pocos segundos.
 
@@ -244,7 +249,7 @@ Tras el cierre, el lote no admite más registros y el código de la respuesta es
 
 | Escritura con el expediente cerrado | Respuesta |
 |---|---|
-| Laboratorio (`POST /v1/lots/{id}/lab-analyses` y su alias `POST /v1/lab-analyses`, §8.1), correcciones (`POST /v1/lots/{id}/corrections`, §9), archivos (`POST /v1/lots/{id}/attachments`, §11.5), sustituir un código (`replace: true`, §7.2) y un segundo cierre (§10) | 409 **`TRC_DOSSIER_CLOSED`** con `meta: { closedAt, hash }` |
+| Laboratorio (`POST /v1/lots/{id}/lab-analyses`, §8.1), correcciones (`POST /v1/lots/{id}/corrections`, §9), archivos (`POST /v1/lots/{id}/attachments`, §11.5), sustituir un código (`replace: true`, §7.2) y un segundo cierre (§10) | 409 **`TRC_DOSSIER_CLOSED`** con `meta: { closedAt, hash }` |
 | El resto (pesajes, tanques, crianzas, destilaciones, embotellado, editar o descartar el lote) | 409 `TRC_LOT_TERMINAL` con `meta.stage: 'CERTIFIED'` (`lockLot(…, { writable: true })`) |
 | Anular un código sin sustituto (S-14) | 200: es lo único que el lote sigue admitiendo |
 
@@ -348,46 +353,112 @@ El expediente es público y los códigos son el antifalsificación de la etiquet
 
 ## Migración de los datos anteriores (§2.6)
 
-1. **Expandir** (`20260928090000_o2_lotes_expand`): tablas nuevas y columnas nulas; la migración **encola** cada pesaje existente en `lot_backfill_pending`.
-2. **Relleno** (`LotBackfillRunner`, al arrancar la API y sin bloquear el arranque; `LOT_BACKFILL_ON_BOOT=false` lo desactiva): cada pesaje en su propia transacción con `FOR UPDATE SKIP LOCKED` (varias instancias se reparten la cola), hasta 5 intentos con `last_error`. Por pesaje (`backfillHarvestChain`, idempotente: un pesaje con lote no se toca):
-   - **Un lote por pesaje** (la regla de `LotView`), id **UUID v5 de `lot:{harvestBatchId}`** en el espacio de nombres de los mocks (`6b2f4c1e-…`), nombre = código de lote si está embotellado o `'{variedad} {año}'`, `productType` derivado (destilación o tanque a singani → `SINGANI`; crianza o tanque a vino → `WINE`; si no, nulo), referencia con la secuencia nueva y `lotCode` del embotellado.
-   - **Instantánea** con `origin: 'MIGRATION'` tomada al migrar.
-   - **Dictamen**: cada estado distinto de `PENDING_INSPECTION` genera un `PhytoDecision` `MIGRATION` con `certifiedByMemberId` como autor. Brix, pH y acidez generan el primer `MaturityAnalysis` (salvo 0/0/0, que en los datos anteriores significaba "sin análisis").
-   - **Entradas de tanque**: el neto del pesaje; con varios tanques del mismo pesaje, repartido por volumen llenado (así no se cuenta dos veces).
-   - Crianza con `start_date` (su fecha de alta en La Paz); cortes de la destilación desde `additionalParams` y el grado del corazón desde `initialAlcoholPercentage`.
-   - **Laboratorio**: conformidad recalculada con la instantánea (el `conformsToSenasagStandards` guardado queda como histórico).
-   - **Códigos de botella** para los embotellados existentes y `qrBatchUrl` reescrita a `{PASSPORT_BASE_URL}/b/{lotCode}`.
-   - Línea de tiempo con los hechos a sus fechas y una entrada de bitácora `LOT_MIGRATED` (actor sistema).
-   - **Revisión de integridad**: D.O. del lote singani, dictamen de la uva en tanques, candado a la fecha del embotellado, balance de volumen y alcohol, agua en vino, volumen de la fuente, salidas del tanque por encima de su volumen, un segundo embotellado del mismo lote y fuentes abiertas en un lote embotellado. Lo que no cumple **no se borra ni se corrige solo**: queda como `ComplianceIssue` `MIGRATION` visible en el lote (y bloquea embotellar hasta corregirlo o descartar el lote).
-3. Un registro anterior que aún no tenga lote (p. ej. si el relleno falló) se rellena **al vuelo** en cuanto una escritura lo necesita (`ensureHarvestLot`).
-4. **Contraer** (cierre de la ola, H2): `lot_id NOT NULL` salvo en pesajes, `Restrict` en las claves antiguas y retirada de lo legado (§16.2).
+Migración *expand/contract* en dos tiempos:
 
-Probado sobre una copia con la semilla de demostración anterior a la migración (Postgres 16): 12 pesajes → 12 lotes, 15.400 códigos de botella, 95 eventos, 10 dictámenes, 11 análisis de madurez, 3 análisis de laboratorio conformes y 4 incidencias en los datos que no cumplían (ver [Semilla](#semilla)). La e2e `traceability-o2` repite el relleno sobre datos anteriores creados a mano (incidencias `TRC_DO_NOT_ELIGIBLE` y `TRC_BOTTLING_EXCEEDS_VOLUME`) y comprueba que una segunda pasada no toca nada.
+1. **Expandir** (apertura, `20260928090000_o2_lotes_expand`): tablas nuevas y columnas nulas; la migración encoló cada pesaje existente en `lot_backfill_pending` y la API, al arrancar, creó **un lote por pesaje** (la regla de `LotView`): id **UUID v5 de `lot:{harvestBatchId}`** en el espacio de nombres de los mocks, instantánea `origin: 'MIGRATION'`, dictámenes y primer análisis de madurez desde el pesaje, entradas de tanque, cortes de la destilación desde `additionalParams`, conformidad de laboratorio recalculada, códigos de botella, línea de tiempo y **revisión de integridad**: lo que no cumplía quedó como `ComplianceIssue` `MIGRATION` (no se borró ni se corrigió solo). Ese relleno (`LotBackfillRunner`, `ensureHarvestLot`, `LOT_BACKFILL_ON_BOOT`) terminó su trabajo y se retiró del código en el cierre H2.
+2. **Contraer** (cierre H2, `20261002180000_o2_contraer_h2`): ver [Cierre H2](#cierre-h2-contracción-v020).
+
+## Cierre H2: contracción (`v0.2.0`)
+
+### Migración *contract* (`20261002180000_o2_contraer_h2`)
+
+| Qué | Detalle |
+|---|---|
+| `lot_id NOT NULL` | En `fermentation_tanks`, `wine_aging_batches`, `production_batches`, `bottling_batches` y `batch_lab_analyses`. `harvest_batches.lot_id` sigue siendo opcional: la uva recibida sin lote es legítima (§2.4) |
+| Fin de las cascadas | Las 18 claves foráneas de la cadena anterior a la Ola 2 que eran `CASCADE` (13) o `SET NULL` (5: las dos fuentes del embotellado y las tres de autoría hacia `winery_members`) pasan a `RESTRICT` |
+| Un código activo por serie | Índice único parcial `bottle_units_lot_id_serial_active_key` (`lot_id`, `serial`) `WHERE status = 'ACTIVE'`: la invariante «códigos activos = botellas» (§7.1), también en la base. Al sustituir un código, primero se anula y después se emite el sustituto |
+| Índices | Los de las claves por las que se consulta la cadena (`winery_id`, `terroir_id`, `harvest_batch_id`, `fermentation_tank_id`, fuentes del embotellado, `bottle_units(bottling_batch_id, status)`…) |
+| `laboratory_report_sha256` | Huella del informe de laboratorio subido (aditiva) |
+
+**Segura sobre datos reales.** El archivo entero es una transacción y empieza con dos comprobaciones que **fallan con un mensaje claro sin aplicar nada**:
+
+- registros de la cadena sin lote (tanques, crianzas, destilaciones, embotellados, análisis): el relleno de la apertura no terminó, o hay un segundo embotellado de un lote ya embotellado (incidencia `TRC_LOT_ALREADY_BOTTLED`), que no tiene lote;
+- series de botella con más de un código activo.
+
+Antes de desplegar, la comprobación (solo lectura) es:
+
+```sql
+SELECT (SELECT count(*) FROM fermentation_tanks WHERE lot_id IS NULL) AS tanques,
+       (SELECT count(*) FROM wine_aging_batches WHERE lot_id IS NULL) AS crianzas,
+       (SELECT count(*) FROM production_batches WHERE lot_id IS NULL) AS destilaciones,
+       (SELECT count(*) FROM bottling_batches WHERE lot_id IS NULL) AS embotellados,
+       (SELECT count(*) FROM batch_lab_analyses WHERE lot_id IS NULL) AS analisis,
+       (SELECT count(*) FROM lot_backfill_pending) AS relleno_pendiente,
+       (SELECT count(*) FROM (SELECT 1 FROM bottle_units WHERE status = 'ACTIVE'
+          GROUP BY lot_id, serial HAVING count(*) > 1) d) AS series_duplicadas;
+```
+
+Todo en cero (salvo `relleno_pendiente`, que solo informa) → la migración se aplica. Si falla en un despliegue, Prisma la deja marcada como fallida y **no arranca ninguna versión** hasta resolverla: corrige los datos, `prisma migrate resolve --rolled-back 20261002180000_o2_contraer_h2` y vuelve a desplegar. Es compatible con la versión anterior de la API (un rollback de la imagen no necesita revertirla): esa versión ya asigna el lote a todo lo que crea y no borra trazabilidad.
+
+Probada en `test/migration-contract.e2e-spec.ts` (estado de la apertura con datos: falla sin aplicar nada con huérfanos y con series duplicadas, se aplica tras corregirlos, y después nada se borra por arrastre) y, a mano, sobre una base con la semilla anterior y sobre una con los datos de la suite.
+
+### Usuario de base sin `DELETE` (preparado, sin aplicar)
+
+El contrato (§1) pide que el usuario de base de la aplicación no tenga `DELETE` sobre las tablas de trazabilidad. Hoy la API se conecta con el **dueño** de la base (a quien no se le pueden quitar permisos), así que hace falta un rol aparte: es un cambio en el Postgres del servidor y lo aplica la coordinación. Queda preparado en `deploy/dev/sql/rol-app-sin-delete.sql` (rol de la aplicación sin `DELETE`/`TRUNCATE` en la trazabilidad ni `UPDATE`/`DELETE` en la bitácora), con `APP_DB_USER`/`APP_DB_PASSWORD` en `deploy/dev/compose.yml` y `MIGRATE_DATABASE_URL` en `docker/entrypoint.sh` (las migraciones las sigue aplicando el dueño). Pasos en [`deploy/README.md`](../../deploy/README.md). Sin esas variables, todo sigue como hasta ahora.
+
+### Rutas y campos retirados
+
+| Retirado | En su lugar |
+|---|---|
+| `PATCH /v1/harvest-batches/{id}/phyto-status` | `POST /v1/harvest-batches/{id}/phyto-decisions` |
+| `POST /v1/bottling` (y `TRC_PRODUCT_TYPE_MISMATCH`) | `POST /v1/lots/{id}/bottling[/preview]` (el tipo se deriva del origen) |
+| `POST /v1/lab-analyses` | `POST /v1/lots/{id}/lab-analyses` |
+| `GET /v1/traceability/dag/{bottlingBatchId}` | `GET /v1/lots/{id}/graph` |
+| `GET /v1/traceability/public/{lotCode}` | `GET /v1/public/passports/{code}` (o `/v1/public/lots/{lotCode}`) |
+| `POST /v1/harvest-batches`: `phytosanitaryStatus`, `brixDegrees`, `initialPh`, `initialAcidityGl` | El dictamen, aparte; el análisis, en `maturity` o en `POST …/maturity-analyses` |
+| `POST`/`PATCH /v1/terroirs`: `isDoEligible` | Calculado (`isDoEligible`, `doEvaluation` en la respuesta) |
+| `POST /v1/fermentation-tanks`: `harvestBatchId`; `inputs` y `volumeFilledLiters` opcionales | `inputs` (≥ 1) y `volumeFilledLiters`, obligatorios |
+| `POST /v1/production-batches/distillation`: `processEndDate`, `outputVolumeLiters`, `wasteVolumeLiters`, `additionalParams`, `isDoEligible`; `inputVolumeLiters` opcional | `inputVolumeLiters` obligatorio; el cierre, en `POST …/{id}/close` con `cuts` tipados |
+| `POST /v1/lots/{id}/bottling[/preview]`: `labelDesignUrl` | `labelDesignKey` |
+| `POST /v1/lots/{id}/lab-analyses`: `laboratoryReportPdfUrl`; `laboratoryReportKey` opcional | `laboratoryReportKey` obligatorio |
+| Crianza o destilación desde un tanque sin completar | 409 `TRC_TANK_NOT_COMPLETED`: antes, `POST /v1/fermentation-tanks/{id}/complete` |
+
+Los campos de **respuesta** no cambian (`labelDesignUrl`, `laboratoryReportPdfUrl`, `phytoInspectionPdfUrl`, `additionalParams`… siguen saliendo con los datos anteriores). Un campo retirado en una entrada responde 422 `VALIDATION_ERROR` en ese campo (`forbidNonWhitelisted`), salvo `phytosanitaryStatus` del pesaje (422 `TRC_PHYTO_IN_CREATE`).
 
 ### Semilla
 
-La semilla determinista (`pnpm seed`) rellena sus lotes con la misma función y aplica **correcciones de realismo** (`src/seed/corrections.ts`) a los fixtures de los mocks 0.3.x que incumplían las reglas nuevas, sin falsear datos:
+La semilla determinista (`pnpm seed`) siembra los **lotes de demostración de `@drinks-on-chain/mocks` 0.5.0** (`src/seed/lots.seed.ts`; fixtures en `src/seed/fixtures/`, versión en `source.json`), con sus mismos ids, registros, autores, fechas y línea de tiempo:
+
+- **21 lotes, uno o más en cada etapa**: `ORIGIN`, `HARVEST` (pendiente y en cuarentena), `FERMENTING` (con y sin tipo decidido), `AGING`, `DISTILLING`, `RESTING`, `BOTTLED` (con laboratorio conforme, no conforme y sin laboratorio), `REJECTED`, `DISCARDED` (antes y después de embotellar) y `CERTIFIED`; más un pesaje sin lote (uva recibida).
+- **Singani Gran Reserva 2026** (`CVJ-2026-SINGANI-004`), el caso de §18, con el **expediente cerrado**: pesaje de 18.400 kg (09-03-2026), tanque de 12.100 L, destilación cerrada el 24-03 (corazón 1.500 L al 60 %), reposo de 180 días hasta el 20-09, 2.950 botellas el 22-09 (una serie sustituida), laboratorio conforme el 23-09 y cierre el 24-09. La huella y la raíz Merkle se calculan al sembrar con los registros reales (los códigos de botella son aleatorios: no son las de los mocks).
+- Un lote con la **excepción legal** de A-31 (`Singani El Portillo 2025`, altitud mínima de 1.500 m autorizada): `ELIGIBLE_BY_EXCEPTION`.
+- La instantánea de reglas de cada lote es la de los fixtures: no depende de la configuración que tenga hoy la bodega.
+
+Todos cumplen las reglas con su instantánea (sin incidencias de cumplimiento) y su cronología es coherente (pesaje → dictamen → tanque → crianza o destilación → reposo ≥ 180 días → embotellado → laboratorio): lo comprueba `test/seed.e2e-spec.ts` con `lotIntegrity` sobre cada lote.
+
+**Solo inserción, también para la semilla.** El lote nace antes que su cadena (los tanques, crianzas, destilaciones, embotellados y análisis siempre llevan su lote) y se crea **entero o no se crea**:
+
+- un lote de demostración que **ya existe no se toca** (ni él ni sus registros): volver a ejecutarla no reescribe la trazabilidad;
+- un lote nuevo cuyo código de vendimia o de lote ya esté en uso se salta, con un aviso en el log;
+- su referencia es la de los mocks si está libre; si no, la siguiente de la bodega.
+
+Personas, bodegas, membresías y parcelas (datos maestros) sí vuelven a su estado inicial, como antes; en una parcela que ya existe no se reescriben la altitud, la cepa ni la materia prima (solo cambian con una corrección, §3.1).
+
+**Correcciones de realismo** (`src/seed/corrections.ts`), para que los mocks las adopten. Las cuatro de la apertura ya están en los mocks 0.5.0; las del cierre H2:
 
 | Registro | Corrección | Por qué |
 |---|---|---|
-| CVJ-2026-SINGANI-002 | Agua 620 L → 630 L | 2.140 × 75 cL = 1.605 L con solo 1.600 L disponibles (980 L de corazón + 620 L) |
-| Destilación AL-02 de marzo de 2026 (TK-02) | Se retira | El tanque ya se destiló entero en 2025 y su lote se embotelló en febrero de 2026 |
-| Tanque TK-07 | Se retira | Lleno con un pesaje en cuarentena |
-| Crianza de CVJ-2026-WINE-003 | `READY` → `BOTTLED` | Ya estaba embotellada |
+| Tanques TK-06, TK-09 y TK-RED-04 | Se retiran (y sus eventos) | Estaban `CLEANED` con 0 L de 0 kg, y TK-06 fechado dos meses antes del pesaje del que decía salir |
+| Tanque TK-08 (lote `CVJ-L2026-001`) | `COMPLETED` → `TRANSFERRED` | Su destilación se llevó los 6.300 L (§4.2) |
+| Tanque TK-01 de Cinti Viejo | `TRANSFERRED` → `CLEANED` (26-05-2025) | Ejemplo real del estado `CLEANED` en lugar de los tanques vacíos |
 
-Con ellas la semilla no genera incidencias. Una base que ya tenía la semilla anterior conserva esos registros y los muestra como incidencias de la migración (así se comporta con datos reales). Los mocks v2 (O2-PK-1) deben adoptar las mismas correcciones y el id de lote `uuidv5('lot:{harvestBatchId}')`.
+Pendiente en los mocks (no es una regla, así que la semilla no lo toca): en los lotes `CVJ-L2026-001` y `ALT-L2026-001` el mosto de los tanques equivale a ~1,0 L por kilo de uva (lo habitual es 0,65–0,75).
 
-La semilla escribe las entradas de bitácora de sus lotes (`LOT_MIGRATED`) **como último paso** de su transacción. El candado de la cadena de la bitácora (`pg_advisory_xact_lock`) es de toda la base de datos y dura hasta el `COMMIT`: tomarlo con el primer lote lo retenía mientras se generaban los códigos de botella de los demás, y cualquier otra escritura auditada (también la de otra suite e2e en otro esquema) caducaba esperando. La cadena no cambia: las entradas siguen en la misma transacción y en el orden de los lotes.
+Lo que la semilla **no** siembra de los mocks: los archivos (informes, etiquetas y adjuntos no existen en el almacenamiento: sus enlaces no abren, y los eventos `FILE_ATTACHED` se omiten), las exportaciones de códigos y los ajustes por bodega.
+
+**Bases sembradas antes del cierre H2** (el servidor de desarrollo): los 12 lotes antiguos ya existen con los mismos ids, así que **se quedan como están**, con las incoherencias de los fixtures 0.3.x que la migración de la apertura dejó como incidencias (p. ej. `CVJ-2026-SINGANI-002`, embotellado el 10-02-2026, con una segunda destilación del 20–22-03-2026 en reposo hasta el 18-09-2026). La semilla añade los 9 lotes nuevos. Para dejar la demostración entera y coherente hay que retirar antes la trazabilidad de las bodegas de demostración: `deploy/dev/sql/reiniciar-trazabilidad-demo.sql` (borra datos: lo decide y lo ejecuta la coordinación, con copia previa) y, después, la semilla.
+
+La semilla escribe las entradas de bitácora de sus lotes (`LOT_MIGRATED`, con el motivo «Semilla de demostración…») **como último paso** de su transacción. El candado de la cadena de la bitácora (`pg_advisory_xact_lock`) es de toda la base de datos y dura hasta el `COMMIT`: tomarlo con el primer lote lo retenía mientras se generaban los códigos de botella de los demás, y cualquier otra escritura auditada (también la de otra suite e2e en otro esquema) caducaba esperando.
 
 ## Rutas
 
-Implementadas en la apertura (con su OpenAPI y validadas contra él en e2e): `GET/POST /v1/lots`, `GET/PATCH /v1/lots/{id}`, `POST /v1/lots/{id}/discard`; `POST /v1/lots/{id}/bottling/preview` y `POST /v1/lots/{id}/bottling` (mismo motor que la ruta legada; sin `sources`, todas las fuentes abiertas del lote con todo su volumen); `POST/GET /v1/harvest-batches/{id}/phyto-decisions` y `…/maturity-analyses`; `GET /v1/harvest-batches?lotId=none`; y las rutas actuales con las reglas nuevas y los campos aditivos (`lotId`, `inputs`, `lock`, `balance`, `bottleCodes`, `conformity`, `units`…). `GET /v1/public/wineries` también responde (O2-WEB-1).
+Implementadas en la apertura (con su OpenAPI y validadas contra él en e2e): `GET/POST /v1/lots`, `GET/PATCH /v1/lots/{id}`, `POST /v1/lots/{id}/discard`; `POST /v1/lots/{id}/bottling/preview` y `POST /v1/lots/{id}/bottling` (sin `sources`, todas las fuentes abiertas del lote con todo su volumen); `POST/GET /v1/harvest-batches/{id}/phyto-decisions` y `…/maturity-analyses`; `GET /v1/harvest-batches?lotId=none`; y las rutas actuales con las reglas nuevas y los campos aditivos (`lotId`, `inputs`, `lock`, `balance`, `bottleCodes`, `conformity`, `units`…). `GET /v1/public/wineries` también responde (O2-WEB-1).
 
 Implementadas en los pasos 2.3, 2.4 y 2.7 ([arriba](#vinificación-crianza-y-destilación-laboratorio-y-correcciones-pasos-2224-y-27)): transiciones del tanque, descarte de crianza, cierre y descarte de destilación, laboratorio por lote y correcciones. La línea de tiempo, el grafo, el balance, el panel, los reportes, los adjuntos (2.9) y el pasaporte público (2.10) también están implementados ([abajo](#vistas-del-lote-y-pasaporte-público-pasos-29-y-210)).
 
 Con lógica desde los pasos 2.6 y 2.8: las cinco rutas de [códigos de botella](#códigos-de-botella-paso-26) y las cuatro del [expediente](#expediente-del-lote-y-hash-canónico-paso-28).
 
-Con esto **ya no queda ninguna ruta del contrato con 501 `NOT_IMPLEMENTED`**: las que se publicaron así en la apertura tienen su lógica desde la Etapa 2 (pasos 2.3–2.10).
+Con esto **ya no queda ninguna ruta del contrato con 501 `NOT_IMPLEMENTED`**: las que se publicaron así en la apertura tienen su lógica desde la Etapa 2 (pasos 2.3–2.10). Las rutas y los campos legados que convivieron con ellas hasta H2 están en [Rutas y campos retirados](#rutas-y-campos-retirados).
 
 ## Vistas del lote y pasaporte público (pasos 2.9 y 2.10)
 
@@ -439,7 +510,7 @@ Límites y caché (§12.4, PUB-05):
 
 `test/h2-recorrido.e2e-spec.ts` recorre el caso de §18 del contrato con las rutas de los tres bloques, en una bodega propia y con fechas relativas a hoy (el reposo de 180 días venció hace 5): lote singani con su instantánea → pesaje de 18.400 kg, análisis y dictamen (cada uno con su rol) → tanque de 12.100 L con lecturas y tratamientos → destilación cerrada con cabezas 120 L, corazón 1.500 L al 60 % y colas 210 L → vista previa y embotellado de 2.950 botellas de 75 cL al 40 % con 750 L de agua (2.212,5 L; merma 1,67 %; alcohol puro 885 L ≤ 900 L) → CSV y ZIP de los 2.950 códigos → laboratorio conforme → cierre del expediente → pasaporte del lote y de la botella.
 
-Por el camino comprueba los cabos entre bloques: la **prueba Merkle** del pasaporte reproduce `lot_dossiers.bottle_merkle_root` (un código sustituido o dado de baja antes del cierre no tiene prueba; uno anulado después la conserva y no se puede sustituir, S-14), los registros anulados dejan de contar, las correcciones se ven en el grafo y en el pasaporte, y tras el cierre las correcciones, el laboratorio y los archivos responden `TRC_DOSSIER_CLOSED`. Incluye las pruebas de elusión de §18 que caen en el recorrido (dictamen en el alta, uva sin dictamen al tanque, parcela no apta, cortes mayores que la entrada, embotellado antes del reposo y como vino por la ruta legada, más botellas que litros, agua para inflar botellas, segundo embotellado, cierre con laboratorio incompleto, regla cambiada en el back office a mitad de proceso, grafo de otra bodega, escritura de la plataforma y pasaporte inexistente); las demás están en las suites de los bloques.
+Por el camino comprueba los cabos entre bloques: la **prueba Merkle** del pasaporte reproduce `lot_dossiers.bottle_merkle_root` (un código sustituido o dado de baja antes del cierre no tiene prueba; uno anulado después la conserva y no se puede sustituir, S-14), los registros anulados dejan de contar, las correcciones se ven en el grafo y en el pasaporte, y tras el cierre las correcciones, el laboratorio y los archivos responden `TRC_DOSSIER_CLOSED`. Incluye las pruebas de elusión de §18 que caen en el recorrido (dictamen en el alta, uva sin dictamen al tanque, parcela no apta, cortes mayores que la entrada, embotellado antes del reposo, tipo de producto declarado, más botellas que litros, agua para inflar botellas, segundo embotellado, cierre con laboratorio incompleto, regla cambiada en el back office a mitad de proceso, grafo de otra bodega, escritura de la plataforma y pasaporte inexistente); las demás están en las suites de los bloques.
 
 `pnpm test:e2e` corre las suites **en serie** (`--runInBand`): comparten Postgres y Redis, y en paralelo compiten por la máquina. `pnpm test:e2e:parallel` conserva la versión rápida.
 
@@ -448,7 +519,6 @@ Por el camino comprueba los cabos entre bloques: la **prueba Merkle** del pasapo
 | Variable | Uso |
 |---|---|
 | `PASSPORT_BASE_URL` | Base del QR: `{PASSPORT_BASE_URL}/b/{código}` (OP-06). Por defecto `APP_URL_MARKETPLACE`; si tampoco, `http://localhost:3005` |
-| `LOT_BACKFILL_ON_BOOT` | `false` desactiva el relleno al arrancar (por defecto activo) |
 | `API_PUBLIC_URL` | Origen público de la API para los enlaces del pasaporte (`dossier.canonicalUrl` y `publicAttachments[].url`). Vacío: rutas relativas (`/v1/public/lots/…`) que la app resuelve contra su proxy |
 | `RATE_LIMIT_PASSPORT_PER_MINUTE` | Peticiones por minuto e IP en el pasaporte público (60) |
 | `RATE_LIMIT_PUBLIC_WINERIES_PER_MINUTE` | Peticiones por minuto e IP en `/v1/public/wineries` (120) |

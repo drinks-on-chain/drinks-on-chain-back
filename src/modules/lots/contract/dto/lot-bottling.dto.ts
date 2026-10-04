@@ -180,15 +180,6 @@ export class CreateLotBottlingDto {
   @IsString()
   @MaxLength(500)
   labelDesignKey?: string;
-
-  @ApiPropertyOptional({
-    deprecated: true,
-    description: 'Alias de `labelDesignKey` hasta H2',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(2000)
-  labelDesignUrl?: string;
 }
 
 // ── Vista previa (§6.1) ────────────────────────────────────────────────────

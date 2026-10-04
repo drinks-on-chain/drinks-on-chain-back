@@ -43,14 +43,13 @@ export interface LotBottlingInput {
   };
   bottleType?: string;
   labelDesignKey?: string;
-  labelDesignUrl?: string;
 }
 
 const BOTTLING_TX_OPTIONS = { maxWait: 10_000, timeout: 120_000 } as const;
 
 /**
- * Embotellado del lote (§6.1–§6.3) con el motor común del embotellado seguro
- * (`bottling-engine.ts`), el mismo que aplica la ruta legada `POST /v1/bottling`.
+ * Embotellado del lote (§6.1–§6.3) con el motor del embotellado seguro
+ * (`bottling-engine.ts`).
  */
 @Injectable()
 export class LotBottlingService {
@@ -150,7 +149,7 @@ export class LotBottlingService {
         clock,
         membershipId: membership?.id ?? null,
         passportBaseUrl,
-        legacy: {
+        primary: {
           wineAgingBatchId: request.sources.find((s) => s.kind === 'AGING')?.id,
           productionBatchId: request.sources.find((s) => s.kind === 'REST')?.id,
         },
@@ -266,6 +265,5 @@ async function toRequest(
     leftover: input.leftover,
     bottleType: input.bottleType,
     labelDesignKey: input.labelDesignKey,
-    labelDesignUrl: input.labelDesignUrl,
   };
 }

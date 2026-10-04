@@ -16,3 +16,11 @@ export function mockId(key: string): string {
 export function platformMembershipId(userId: string): string {
   return mockId(`membership:platform:${userId}`);
 }
+
+/**
+ * Id del lote que los mocks (y la migración de la apertura de la Ola 2)
+ * derivan de un pesaje: UUID v5 de `lot:{harvestBatchId}` (contrato O2 §2.6).
+ */
+export function lotIdOfHarvest(harvestBatchId: string): string {
+  return mockId(`lot:${harvestBatchId}`);
+}

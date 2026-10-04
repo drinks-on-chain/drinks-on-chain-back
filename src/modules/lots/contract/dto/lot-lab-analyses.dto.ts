@@ -8,17 +8,15 @@ import {
   IsOptional,
   IsPositive,
   IsString,
-  IsUrl,
   MaxLength,
   Min,
 } from 'class-validator';
 
 /**
- * `POST /v1/lots/{id}/lab-analyses` (contrato O2 §8.1): el cuerpo actual de
- * `POST /v1/lab-analyses` sin `bottlingBatchId` (lo da el lote) ni
- * `conformsToSenasagStandards` (la conformidad la calcula el servidor, §8.3),
- * con el informe por su `key` y el metanol en mg/100 mL de alcohol anhidro.
- * Unidades explícitas de §8.2.
+ * `POST /v1/lots/{id}/lab-analyses` (contrato O2 §8.1): el embotellado lo da
+ * el lote y la conformidad la calcula el servidor (§8.3), así que no son
+ * campos de la entrada; el informe va por su `key` y el metanol, en mg/L de
+ * producto o en mg/100 mL de alcohol anhidro. Unidades explícitas de §8.2.
  */
 export class CreateLotLabAnalysisDto {
   @ApiProperty({
@@ -172,24 +170,16 @@ export class CreateLotLabAnalysisDto {
   @IsObject()
   additionalParams?: Record<string, unknown>;
 
-  @ApiPropertyOptional({
-    example: 'uploads/2026/10/informe-lab-991.pdf',
+  @ApiProperty({
+    example:
+      'org/0b5c1f3e-8a2d-4c1e-9f7a-2d3e4f5a6b7c/lab-reports/2026/10/1b2c3d4e-5f60-4a7b-8c9d-0e1f2a3b4c5d.pdf',
     description:
-      '`key` del informe firmado (`POST /v1/uploads`); obligatorio salvo que llegue el alias `laboratoryReportPdfUrl`',
+      '`key` del informe firmado (`POST /v1/uploads`), de esta bodega; se guarda con su huella SHA-256',
   })
-  @IsOptional()
   @IsString()
+  @IsNotEmpty()
   @MaxLength(500)
-  laboratoryReportKey?: string;
-
-  @ApiPropertyOptional({
-    deprecated: true,
-    example: 'https://storage.drinksonchain.com/certs/lab-report-2026-991.pdf',
-    description: 'Alias de `laboratoryReportKey` hasta H2',
-  })
-  @IsOptional()
-  @IsUrl({ require_tld: false })
-  laboratoryReportPdfUrl?: string;
+  laboratoryReportKey!: string;
 
   @ApiPropertyOptional({
     example: true,

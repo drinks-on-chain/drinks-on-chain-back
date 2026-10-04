@@ -54,28 +54,17 @@ export class CreateFermentationTankDto {
   @Type(() => CreateLotDto)
   newLot?: CreateLotDto;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     type: () => TankInputDto,
     isArray: true,
     description: 'Pesajes que entran al tanque (≥ 1), todos del mismo lote',
   })
-  @IsOptional()
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(50)
   @ValidateNested({ each: true })
   @Type(() => TankInputDto)
-  inputs?: TankInputDto[];
-
-  @ApiPropertyOptional({
-    example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-    deprecated: true,
-    description:
-      'Legado hasta H2: equivale a `inputs: [{ harvestBatchId }]` (todo lo disponible)',
-  })
-  @IsOptional()
-  @IsUUID()
-  harvestBatchId?: string;
+  inputs!: TankInputDto[];
 
   @ApiProperty({
     example: 'TK-03',
@@ -104,21 +93,20 @@ export class CreateFermentationTankDto {
   @IsString()
   material?: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 10100.0,
     description:
-      'Mosto cargado en litros (≤ capacidad). Obligatorio desde H2; sin él, el balance del embotellado no se puede verificar',
+      'Mosto cargado en litros (≤ capacidad): la base del balance del lote',
   })
-  @IsOptional()
   @IsNumber()
   @IsPositive()
-  volumeFilledLiters?: number;
+  volumeFilledLiters!: number;
 
   @ApiPropertyOptional({
     enum: ['WINE_AGING', 'SINGANI_DIST'],
     example: DestinationTypeEnum.SINGANI_DIST,
     description:
-      'Legado: predeclara la bifurcación; debe coincidir con el tipo del lote (y lo fija si no lo tiene; singani exige la D.O.)',
+      'Predeclara la bifurcación (se decide al completar, `POST …/complete`): debe coincidir con el tipo del lote (y lo fija si no lo tiene; singani exige la D.O.)',
   })
   @IsOptional()
   @IsEnum(DestinationTypeEnum)

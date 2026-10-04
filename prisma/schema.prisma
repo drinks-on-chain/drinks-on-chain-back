@@ -991,6 +991,9 @@ model UserWallet {
 
 // -----------------------------------------------------------------------------
 // ENTIDADES DE TRAZABILIDAD ERP (FASE 4)
+// Solo inserción (contrato O2 §0, §9): ninguna clave foránea de estas tablas
+// borra ni desengancha en cascada (`Restrict`, contracción de H2) y, salvo el
+// pesaje sin lote, todo registro pertenece a un lote.
 // -----------------------------------------------------------------------------
 model Terroir {
   id                       String   @id @default(uuid()) @db.Uuid
@@ -1013,9 +1016,10 @@ model Terroir {
   createdAt                DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // Relaciones
-  winery         Winery         @relation(fields: [wineryId], references: [id], onDelete: Cascade)
+  winery         Winery         @relation(fields: [wineryId], references: [id], onDelete: Restrict)
   harvestBatches HarvestBatch[]
 
+  @@index([wineryId])
   @@map("terroirs")
 }
 
@@ -1039,16 +1043,17 @@ model HarvestBatch {
   certifiedByMemberId   String?         @map("certified_by_member_id") @db.Uuid
   notes                 String?         @db.Text
   createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  /// Lote (Ola 2). Nulo = uva recibida sin lote.
+  /// Lote (Ola 2). Nulo = uva recibida sin lote: la única tabla de la cadena
+  /// en la que el lote es opcional (contrato O2 §2.6.9).
   lotId                 String?         @map("lot_id") @db.Uuid
   /// La parcela tal como era al pesar: `{ parcelName, altitudeMasl, varietyName, rawMaterialType, takenAt }`
   terroirSnapshot       Json?           @map("terroir_snapshot") @db.JsonB
   createdByMembershipId String?         @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
-  winery            Winery                  @relation(fields: [wineryId], references: [id], onDelete: Cascade)
-  terroir           Terroir                 @relation(fields: [terroirId], references: [id], onDelete: Cascade)
-  certifiedByMember WineryMember?           @relation(fields: [certifiedByMemberId], references: [id], onDelete: SetNull)
+  winery            Winery                  @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  terroir           Terroir                 @relation(fields: [terroirId], references: [id], onDelete: Restrict)
+  certifiedByMember WineryMember?           @relation(fields: [certifiedByMemberId], references: [id], onDelete: Restrict)
   lot               Lot?                    @relation(fields: [lotId], references: [id], onDelete: Restrict)
   fermentationTanks FermentationTank[]
   tankInputs        FermentationTankInput[]
@@ -1057,6 +1062,7 @@ model HarvestBatch {
 
   @@unique([wineryId, harvestBatchCode])
   @@index([lotId])
+  @@index([terroirId])
   @@map("harvest_batches")
 }
 
@@ -1073,16 +1079,16 @@ model FermentationTank {
   startDate             DateTime             @map("start_date") @db.Timestamptz(6)
   endDate               DateTime?            @map("end_date") @db.Timestamptz(6)
   createdAt             DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  lotId                 String?              @map("lot_id") @db.Uuid
+  lotId                 String               @map("lot_id") @db.Uuid
   finalVolumeLiters     Decimal?             @map("final_volume_liters") @db.Decimal(12, 2)
   createdByMembershipId String?              @map("created_by_membership_id") @db.Uuid
   /// Transiciones del tanque (§4.2): `[{ status, at, byMembershipId }]` (la respuesta las da en `transitions`)
   transitionLog         Json                 @default("[]") @map("transition_log") @db.JsonB
 
   // Relaciones
-  winery            Winery                  @relation(fields: [wineryId], references: [id], onDelete: Cascade)
-  harvestBatch      HarvestBatch            @relation(fields: [harvestBatchId], references: [id], onDelete: Cascade)
-  lot               Lot?                    @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  winery            Winery                  @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  harvestBatch      HarvestBatch            @relation(fields: [harvestBatchId], references: [id], onDelete: Restrict)
+  lot               Lot                     @relation(fields: [lotId], references: [id], onDelete: Restrict)
   inputs            FermentationTankInput[]
   logs              FermentationLog[]
   treatments        EnologicalTreatment[]
@@ -1090,24 +1096,26 @@ model FermentationTank {
   productionBatches ProductionBatch[]
 
   @@index([lotId])
+  @@index([wineryId, tankCode])
+  @@index([harvestBatchId])
   @@map("fermentation_tanks")
 }
 
 model FermentationLog {
-  id                 String   @id @default(uuid()) @db.Uuid
-  fermentationTankId String   @map("fermentation_tank_id") @db.Uuid
-  temperatureCelsius Decimal  @map("temperature_celsius") @db.Decimal(5, 2)
-  specificGravity    Decimal? @map("specific_gravity") @db.Decimal(6, 4)
-  phValue            Decimal? @map("ph_value") @db.Decimal(4, 2)
-  co2Observations    String?  @map("co2_observations") @db.VarChar(100)
-  recordedAt         DateTime @map("recorded_at") @db.Timestamptz(6)
-  recordedByUserId   String   @map("recorded_by_user_id") @db.Uuid
-  notes              String?  @db.Text
+  id                 String    @id @default(uuid()) @db.Uuid
+  fermentationTankId String    @map("fermentation_tank_id") @db.Uuid
+  temperatureCelsius Decimal   @map("temperature_celsius") @db.Decimal(5, 2)
+  specificGravity    Decimal?  @map("specific_gravity") @db.Decimal(6, 4)
+  phValue            Decimal?  @map("ph_value") @db.Decimal(4, 2)
+  co2Observations    String?   @map("co2_observations") @db.VarChar(100)
+  recordedAt         DateTime  @map("recorded_at") @db.Timestamptz(6)
+  recordedByUserId   String    @map("recorded_by_user_id") @db.Uuid
+  notes              String?   @db.Text
   /// Anulada por una corrección `VOID` (§9): deja de contar
   voidedAt           DateTime? @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
-  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Restrict)
   recordedByUser   User             @relation(fields: [recordedByUserId], references: [id], onDelete: Restrict)
 
   @@index([fermentationTankId])
@@ -1131,9 +1139,10 @@ model EnologicalTreatment {
   voidedAt             DateTime?         @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
-  fermentationTank   FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
+  fermentationTank   FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Restrict)
   authorizedByMember WineryMember     @relation(fields: [authorizedByMemberId], references: [id], onDelete: Restrict)
 
+  @@index([fermentationTankId])
   @@map("enological_treatments")
 }
 
@@ -1151,7 +1160,7 @@ model WineAgingBatch {
   agingStatus           AgingStatusEnum @default(AGING) @map("aging_status")
   notes                 String?         @db.Text
   createdAt             DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  lotId                 String?         @map("lot_id") @db.Uuid
+  lotId                 String          @map("lot_id") @db.Uuid
   /// Inicio de la crianza (el candado se cuenta desde aquí)
   startDate             DateTime?       @map("start_date") @db.Date
   containerCount        Int?            @map("container_count")
@@ -1160,12 +1169,13 @@ model WineAgingBatch {
   createdByMembershipId String?         @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
-  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Cascade)
-  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
-  lot              Lot?             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Restrict)
+  lot              Lot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
   bottlingBatches  BottlingBatch[]
 
   @@index([lotId])
+  @@index([wineryId])
   @@map("wine_aging_batches")
 }
 
@@ -1187,7 +1197,7 @@ model ProductionBatch {
   additionalParams         Json?                 @map("additional_params")
   notes                    String?               @db.Text
   createdAt                DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
-  lotId                    String?               @map("lot_id") @db.Uuid
+  lotId                    String                @map("lot_id") @db.Uuid
   /// Cortes del cierre (Ola 2); los legados quedan en `additionalParams`
   headsLiters              Decimal?              @map("heads_liters") @db.Decimal(10, 3)
   heartLiters              Decimal?              @map("heart_liters") @db.Decimal(10, 3)
@@ -1199,12 +1209,14 @@ model ProductionBatch {
   createdByMembershipId    String?               @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
-  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Cascade)
-  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Cascade)
-  lot              Lot?             @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  winery           Winery           @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  fermentationTank FermentationTank @relation(fields: [fermentationTankId], references: [id], onDelete: Restrict)
+  lot              Lot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
   bottlingBatches  BottlingBatch[]
 
   @@index([lotId])
+  @@index([wineryId])
+  @@index([fermentationTankId])
   @@map("production_batches")
 }
 
@@ -1230,7 +1242,7 @@ model BottlingBatch {
   qrBatchUrl             String?          @map("qr_batch_url") @db.VarChar(500)
   createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   /// Un embotellado por lote (S-10): restricción única
-  lotId                  String?          @unique @map("lot_id") @db.Uuid
+  lotId                  String           @unique @map("lot_id") @db.Uuid
   availableLiters        Decimal?         @map("available_liters") @db.Decimal(12, 3)
   leftoverLiters         Decimal?         @map("leftover_liters") @db.Decimal(12, 3)
   leftoverDisposition    String?          @map("leftover_disposition") @db.VarChar(20)
@@ -1239,15 +1251,18 @@ model BottlingBatch {
   createdByMembershipId  String?          @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
-  winery           Winery             @relation(fields: [wineryId], references: [id], onDelete: Cascade)
-  wineAgingBatch   WineAgingBatch?    @relation(fields: [wineAgingBatchId], references: [id], onDelete: SetNull)
-  productionBatch  ProductionBatch?   @relation(fields: [productionBatchId], references: [id], onDelete: SetNull)
-  releasedByMember WineryMember?      @relation(fields: [releasedByMemberId], references: [id], onDelete: SetNull)
-  lot              Lot?               @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  winery           Winery             @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  wineAgingBatch   WineAgingBatch?    @relation(fields: [wineAgingBatchId], references: [id], onDelete: Restrict)
+  productionBatch  ProductionBatch?   @relation(fields: [productionBatchId], references: [id], onDelete: Restrict)
+  releasedByMember WineryMember?      @relation(fields: [releasedByMemberId], references: [id], onDelete: Restrict)
+  lot              Lot                @relation(fields: [lotId], references: [id], onDelete: Restrict)
   /// Todos los análisis (reanálisis); el vigente es el último sin `supersededAt`
   labAnalyses      BatchLabAnalysis[]
   bottleUnits      BottleUnit[]
 
+  @@index([wineryId, bottlingDate])
+  @@index([wineAgingBatchId])
+  @@index([productionBatchId])
   @@map("bottling_batches")
 }
 
@@ -1277,7 +1292,7 @@ model BatchLabAnalysis {
   conformsToUsaStandards         Boolean   @default(false) @map("conforms_to_usa_standards")
   reviewedByMemberId             String?   @map("reviewed_by_member_id") @db.Uuid
   createdAt                      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  lotId                          String?   @map("lot_id") @db.Uuid
+  lotId                          String    @map("lot_id") @db.Uuid
   /// Metanol en mg/100 mL de alcohol anhidro (calculado si solo llega mg/L)
   methanolMg100mlAa              Decimal?  @map("methanol_mg_100ml_aa") @db.Decimal(9, 3)
   /// Conformidad calculada contra la instantánea del lote (`LabConformity`)
@@ -1286,14 +1301,16 @@ model BatchLabAnalysis {
   /// Sustituido por un análisis posterior (reanálisis)
   supersededAt                   DateTime? @map("superseded_at") @db.Timestamptz(6)
   laboratoryReportKey            String?   @map("laboratory_report_key") @db.VarChar(500)
+  /// SHA-256 (hexadecimal) del informe subido, calculado al registrar el análisis
+  laboratoryReportSha256         String?   @map("laboratory_report_sha256") @db.Char(64)
   createdByMembershipId          String?   @map("created_by_membership_id") @db.Uuid
   /// Anulado por una corrección `VOID` (§9): deja de contar
   voidedAt                       DateTime? @map("voided_at") @db.Timestamptz(6)
 
   // Relaciones
-  bottlingBatch    BottlingBatch @relation(fields: [bottlingBatchId], references: [id], onDelete: Cascade)
-  reviewedByMember WineryMember? @relation(fields: [reviewedByMemberId], references: [id], onDelete: SetNull)
-  lot              Lot?          @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  bottlingBatch    BottlingBatch @relation(fields: [bottlingBatchId], references: [id], onDelete: Restrict)
+  reviewedByMember WineryMember? @relation(fields: [reviewedByMemberId], references: [id], onDelete: Restrict)
+  lot              Lot           @relation(fields: [lotId], references: [id], onDelete: Restrict)
 
   @@index([bottlingBatchId, createdAt])
   @@index([lotId])
@@ -1508,6 +1525,7 @@ model BottleUnit {
 
   @@index([lotId, serial])
   @@index([lotId, status])
+  @@index([bottlingBatchId, status])
   @@map("bottle_units")
 }
 

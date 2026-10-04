@@ -106,9 +106,10 @@ export interface FixtureHarvestBatch {
   grossWeightKg: number;
   tareWeightKg: number;
   netWeightKg: number;
-  brixDegrees: number;
-  initialPh: number;
-  initialAcidityGl: number;
+  /** Último análisis de madurez; nulos sin análisis. */
+  brixDegrees: number | null;
+  initialPh: number | null;
+  initialAcidityGl: number | null;
   temperatureAtIntakeC: number | null;
   phytosanitaryStatus:
     'PENDING_INSPECTION' | 'APPROVED' | 'REJECTED' | 'QUARANTINE';
@@ -116,6 +117,23 @@ export interface FixtureHarvestBatch {
   certifiedByMemberId: string | null;
   notes: string | null;
   createdAt: IsoDate;
+  /** `null` = uva recibida sin lote. */
+  lotId: string | null;
+  terroirSnapshot: {
+    parcelName: string;
+    altitudeMasl: number;
+    varietyName: string;
+    rawMaterialType: string;
+    takenAt: IsoDate;
+  } | null;
+}
+
+/** Quién hizo algo, como lo devuelve la API (`TraceActor`). */
+export interface FixtureActor {
+  membershipId: string;
+  userId: string;
+  fullName: string;
+  role: string;
 }
 
 export interface FixtureFermentationTank {
@@ -137,6 +155,15 @@ export interface FixtureFermentationTank {
   startDate: IsoDate;
   endDate: IsoDate | null;
   createdAt: IsoDate;
+  lotId: string;
+  finalVolumeLiters: number | null;
+  inputs: { harvestBatchId: string; kg: number }[];
+  /** Solo en los tanques creados con las acciones de la Ola 2. */
+  transitions?: {
+    status: 'FILLING' | 'FERMENTING' | 'COMPLETED' | 'TRANSFERRED' | 'CLEANED';
+    at: IsoDate;
+    by: FixtureActor | null;
+  }[];
 }
 
 export interface FixtureFermentationLog {
@@ -188,6 +215,10 @@ export interface FixtureWineAging {
   agingStatus: 'AGING' | 'READY' | 'BOTTLED' | 'DISCARDED';
   notes: string | null;
   createdAt: IsoDate;
+  lotId: string;
+  /** Día de calendario (`YYYY-MM-DD`). */
+  startDate: string | null;
+  containerCount: number | null;
 }
 
 export interface FixtureProductionBatch {
@@ -213,6 +244,12 @@ export interface FixtureProductionBatch {
   additionalParams: object | null;
   notes: string | null;
   createdAt: IsoDate;
+  lotId: string;
+  headsLiters: number | null;
+  heartLiters: number | null;
+  tailsLiters: number | null;
+  vinasseLiters: number | null;
+  heartAbvPercent: number | null;
 }
 
 export interface FixtureBottlingBatch {
@@ -237,6 +274,13 @@ export interface FixtureBottlingBatch {
   anchoredAt: IsoDate | null;
   qrBatchUrl: string | null;
   createdAt: IsoDate;
+  lotId: string;
+  balance: { availableLiters: number } | null;
+  leftover: {
+    liters: number;
+    disposition: 'RETAINED' | 'DISCARDED';
+    notes: string | null;
+  } | null;
 }
 
 export interface FixtureLabAnalysis {
@@ -265,6 +309,109 @@ export interface FixtureLabAnalysis {
   conformsToUsaStandards: boolean;
   reviewedByMemberId: string | null;
   createdAt: IsoDate;
+  lotId: string;
+  methanolMg100mlAa: number | null;
+  conformityStatus: 'CONFORMING' | 'NON_CONFORMING' | 'INCOMPLETE';
+  supersededAt: IsoDate | null;
+  recordedBy: FixtureActor | null;
+  report: { key: string; sha256: string | null } | null;
+}
+
+/** Lote del servidor (contrato O2 §2.1), con la forma de `GET /v1/lots/{id}`. */
+export interface FixtureLot {
+  id: string;
+  wineryId: string;
+  reference: string;
+  lotCode: string | null;
+  name: string;
+  productType: 'WINE' | 'SINGANI' | null;
+  stage:
+    | 'ORIGIN'
+    | 'HARVEST'
+    | 'FERMENTING'
+    | 'AGING'
+    | 'DISTILLING'
+    | 'RESTING'
+    | 'BOTTLED'
+    | 'CERTIFIED'
+    | 'ANCHORED'
+    | 'REJECTED'
+    | 'DISCARDED';
+  stageChangedAt: IsoDate;
+  harvestYear: number;
+  estimatedBottles: number | null;
+  bottles: number | null;
+  labStatus: 'NOT_RECORDED' | 'CONFORMING' | 'NON_CONFORMING' | 'INCOMPLETE';
+  dossierStatus: 'OPEN' | 'CLOSED';
+  createdAt: IsoDate;
+  updatedAt: IsoDate;
+  plannedTerroirIds: string[];
+  plannedFormatCl: number | null;
+  targetAbvPercent: number | null;
+  /** Día de calendario (`YYYY-MM-DD`). */
+  targetReadyDate: string | null;
+  /** Instantánea de reglas (`LotRules`). */
+  rules: { takenAt: IsoDate; origin: 'LOT_CREATION' | 'MIGRATION' } & Record<
+    string,
+    unknown
+  >;
+  discarded: { at: IsoDate; by: FixtureActor | null; reason: string } | null;
+  notes: string | null;
+  createdBy: FixtureActor | null;
+}
+
+export interface FixtureMaturityAnalysis {
+  id: string;
+  harvestBatchId: string;
+  brixDegrees: number;
+  ph: number;
+  acidityGl: number;
+  measuredAt: IsoDate;
+  recordedAt: IsoDate;
+  recordedBy: FixtureActor | null;
+  notes: string | null;
+  source: 'ERP' | 'MIGRATION';
+}
+
+export interface FixturePhytoDecision {
+  id: string;
+  harvestBatchId: string;
+  decision: 'APPROVED' | 'REJECTED' | 'QUARANTINE';
+  decidedAt: IsoDate;
+  recordedAt: IsoDate;
+  decidedBy: FixtureActor | null;
+  inspectionReport: { key: string; sha256: string | null } | null;
+  notes: string | null;
+  source: 'ERP' | 'MIGRATION';
+}
+
+/** Evento de la línea de tiempo del lote (contrato O2 §11.1). */
+export interface FixtureLotEvent {
+  lotId: string;
+  id: string;
+  seq: number;
+  type: string;
+  occurredAt: IsoDate;
+  recordedAt: IsoDate;
+  stage: FixtureLot['stage'];
+  actor: FixtureActor | null;
+  summary: string;
+  data: Record<string, unknown>;
+  resource: { type: string; id: string };
+  visibility: 'PUBLIC' | 'INTERNAL';
+  corrected: boolean;
+}
+
+/** Corrección compensatoria (contrato O2 §9). */
+export interface FixtureCorrection {
+  id: string;
+  lotId: string | null;
+  target: { type: string; id: string };
+  kind: 'AMEND' | 'VOID';
+  changes: { field: string; before: unknown; after: unknown }[];
+  reason: string;
+  createdAt: IsoDate;
+  createdBy: FixtureActor | null;
 }
 
 export interface FixtureInvitation {
@@ -368,6 +515,11 @@ export interface MockFixtures {
   productionBatches: FixtureProductionBatch[];
   bottlingBatches: FixtureBottlingBatch[];
   labAnalyses: FixtureLabAnalysis[];
+  lots: FixtureLot[];
+  maturityAnalyses: FixtureMaturityAnalysis[];
+  phytoDecisions: FixturePhytoDecision[];
+  lotEvents: FixtureLotEvent[];
+  corrections: FixtureCorrection[];
 }
 
 /** Carpeta de los fixtures: junto al código (`src/seed` o `dist/seed`). */
@@ -397,5 +549,10 @@ export function loadMockFixtures(dir: string = FIXTURES_DIR): MockFixtures {
     productionBatches: read(dir, 'production-batches.json'),
     bottlingBatches: read(dir, 'bottling.json'),
     labAnalyses: read(dir, 'lab-analyses.json'),
+    lots: read(dir, 'lots.json'),
+    maturityAnalyses: read(dir, 'maturity-analyses.json'),
+    phytoDecisions: read(dir, 'phyto-decisions.json'),
+    lotEvents: read(dir, 'lot-events.json'),
+    corrections: read(dir, 'corrections.json'),
   };
 }

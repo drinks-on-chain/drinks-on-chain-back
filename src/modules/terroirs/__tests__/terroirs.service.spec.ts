@@ -84,7 +84,6 @@ describe('TerroirsService', () => {
         altitudeMasl: 1850.0,
         rawMaterialType: 'uva',
         varietyName: 'Moscatel de Alejandría',
-        isDoEligible: true,
       };
 
       const result = await service.create(mockWineryId, dto);
@@ -102,7 +101,7 @@ describe('TerroirsService', () => {
       expect(result.doEvaluation.status).toBe('ELIGIBLE');
     });
 
-    it('ignora isDoEligible de la entrada: la D.O. se calcula (EA-03)', async () => {
+    it('calcula la D.O. en el servidor: la entrada no la declara (EA-03)', async () => {
       mockPrismaService.terroir.create.mockImplementation(
         ({ data }: { data: Record<string, unknown> }) =>
           Promise.resolve({ ...mockTerroir, ...data }),
@@ -114,7 +113,6 @@ describe('TerroirsService', () => {
         altitudeMasl: 1540,
         rawMaterialType: 'uva',
         varietyName: 'Moscatel de Alejandria',
-        isDoEligible: true,
       });
 
       expect(prisma.terroir.create).toHaveBeenCalledWith({

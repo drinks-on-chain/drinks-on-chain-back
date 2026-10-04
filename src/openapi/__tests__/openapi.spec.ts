@@ -177,7 +177,6 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/public/waitlist/stats',
       'GET /v1/public/wineries',
       'GET /v1/public/wineries/{slug}',
-      'GET /v1/traceability/public/{lotCode}',
       'POST /v1/auth/forgot-password',
       'POST /v1/auth/login',
       'POST /v1/auth/logout',
@@ -277,7 +276,6 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       .sort();
     expect(idempotent).toEqual([
       'POST /v1/bottle-codes/{code}/void',
-      'POST /v1/bottling',
       'POST /v1/fermentation-tanks',
       'POST /v1/fermentation-tanks/{id}/clean',
       'POST /v1/fermentation-tanks/{id}/complete',
@@ -287,7 +285,6 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/harvest-batches',
       'POST /v1/harvest-batches/{id}/maturity-analyses',
       'POST /v1/harvest-batches/{id}/phyto-decisions',
-      'POST /v1/lab-analyses',
       'POST /v1/lots',
       'POST /v1/lots/{id}/attachments',
       'POST /v1/lots/{id}/attachments/{attachmentId}/visibility',
@@ -332,18 +329,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
         'POST /v1/wineries/my/members/create',
       ];
       expect(ops.map(key).filter((k) => retired.includes(k))).toEqual([]);
-      // Solo quedan marcadas las rutas legadas de la Ola 2, que se retiran en
-      // H2 (contrato O2 §16.2)
-      expect(
-        ops
-          .filter((op) => op.deprecated)
-          .map(key)
-          .sort(),
-      ).toEqual([
-        'GET /v1/traceability/dag/{bottlingBatchId}',
-        'GET /v1/traceability/public/{lotCode}',
-        'PATCH /v1/harvest-batches/{id}/phyto-status',
-      ]);
+      expect(ops.filter((op) => op.deprecated).map(key)).toEqual([]);
     });
 
     it('la sesión no lleva el refresco en el cuerpo ni los campos de compatibilidad', () => {
@@ -381,6 +367,129 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       expect(Object.keys(schema('SignupDto').properties ?? {})).not.toContain(
         'userRole',
       );
+    });
+  });
+
+  describe('retirada en H2 (contrato O2 §16.2)', () => {
+    const schema = (name: string) =>
+      document.components?.schemas?.[name] as SchemaObject;
+    const props = (name: string) => Object.keys(schema(name).properties ?? {});
+
+    it('no quedan las rutas legadas de la trazabilidad', () => {
+      const retired = [
+        'PATCH /v1/harvest-batches/{id}/phyto-status',
+        'POST /v1/bottling',
+        'POST /v1/lab-analyses',
+        'GET /v1/traceability/dag/{bottlingBatchId}',
+        'GET /v1/traceability/public/{lotCode}',
+      ];
+      expect(ops.map(key).filter((k) => retired.includes(k))).toEqual([]);
+      // Sus sustitutas (y las lecturas que se conservan) siguen publicadas
+      expect(ops.map(key)).toEqual(
+        expect.arrayContaining([
+          'POST /v1/harvest-batches/{id}/phyto-decisions',
+          'POST /v1/lots/{id}/bottling',
+          'POST /v1/lots/{id}/lab-analyses',
+          'GET /v1/lots/{id}/graph',
+          'GET /v1/public/passports/{code}',
+          'GET /v1/bottling',
+          'GET /v1/bottling/{id}',
+          'GET /v1/lab-analyses/batch/{bottlingBatchId}',
+        ]),
+      );
+      for (const name of [
+        'CreateBottlingBatchDto',
+        'CreateBatchLabAnalysisDto',
+        'UpdatePhytoStatusDto',
+        'DagGraphResponseDto',
+      ]) {
+        expect({ name, schema: schema(name) }).toEqual({
+          name,
+          schema: undefined,
+        });
+      }
+    });
+
+    it('las entradas no conservan campos obsoletos (salvo `status` del tanque)', () => {
+      const deprecated = Object.entries(document.components?.schemas ?? {})
+        .flatMap(([name, value]) =>
+          Object.entries((value as SchemaObject).properties ?? {})
+            .filter(([, prop]) => (prop as SchemaObject).deprecated)
+            .map(([prop]) => `${name}.${prop}`),
+        )
+        .sort();
+      // `status` del alta del tanque es el único legado que el contrato no
+      // retira en H2 (§4.1): solo admite FILLING o FERMENTING y lo sustituye
+      // `startFermentation`
+      expect(deprecated).toEqual(['CreateFermentationTankDto.status']);
+    });
+
+    it('el pesaje no admite dictamen ni análisis plano en el alta', () => {
+      expect(props('CreateHarvestBatchDto')).toEqual(
+        expect.not.arrayContaining([
+          'phytosanitaryStatus',
+          'brixDegrees',
+          'initialPh',
+          'initialAcidityGl',
+        ]),
+      );
+      expect(props('CreateHarvestBatchDto')).toContain('maturity');
+    });
+
+    it('la D.O. no es un dato de la entrada (parcelas y destilación)', () => {
+      for (const name of [
+        'CreateTerroirDto',
+        'UpdateTerroirDto',
+        'CreateDistillationBatchDto',
+      ]) {
+        expect({ name, props: props(name) }).toEqual({
+          name,
+          props: expect.not.arrayContaining(['isDoEligible']),
+        });
+      }
+      // La respuesta sí la lleva, calculada
+      expect(props('TerroirResponseDto')).toContain('isDoEligible');
+    });
+
+    it('el tanque se llena con `inputs` y con su volumen de mosto', () => {
+      const tank = schema('CreateFermentationTankDto');
+      expect(Object.keys(tank.properties ?? {})).not.toContain(
+        'harvestBatchId',
+      );
+      expect(tank.required).toEqual(
+        expect.arrayContaining(['inputs', 'volumeFilledLiters', 'tankCode']),
+      );
+    });
+
+    it('la destilación se abre con su entrada y se cierra con cortes tipados', () => {
+      const open = schema('CreateDistillationBatchDto');
+      expect(open.required).toContain('inputVolumeLiters');
+      expect(Object.keys(open.properties ?? {})).toEqual(
+        expect.not.arrayContaining([
+          'processEndDate',
+          'outputVolumeLiters',
+          'wasteVolumeLiters',
+          'additionalParams',
+        ]),
+      );
+      expect(schema('CloseDistillationDto').required).toEqual(
+        expect.arrayContaining(['processEndDate', 'cuts', 'heartAbvPercent']),
+      );
+    });
+
+    it('los archivos de la trazabilidad viajan por su `key`, no por una URL', () => {
+      expect(props('CreateLotBottlingDto')).toContain('labelDesignKey');
+      expect(props('CreateLotBottlingDto')).not.toContain('labelDesignUrl');
+      const lab = schema('CreateLotLabAnalysisDto');
+      expect(lab.required).toContain('laboratoryReportKey');
+      expect(Object.keys(lab.properties ?? {})).toEqual(
+        expect.not.arrayContaining([
+          'laboratoryReportPdfUrl',
+          'conformsToSenasagStandards',
+          'bottlingBatchId',
+        ]),
+      );
+      expect(props('CreatePhytoDecisionDto')).toContain('inspectionReportKey');
     });
   });
 });

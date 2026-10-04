@@ -51,7 +51,7 @@ export class WineAgingController {
   @ApiOperation({
     summary: 'Iniciar lote de crianza en barricas',
     description:
-      'Traslada vino de cuba a barricas calculando automáticamente la fecha de bloqueo (lockUntilDate).',
+      'Traslada el vino de un tanque `COMPLETED` con destino vino a su crianza (contrato O2 §5.1) y calcula el candado (`unlockDate`) con el mínimo de la instantánea del lote.',
   })
   @ApiResponse({
     status: HttpStatus.CREATED,
@@ -68,7 +68,7 @@ export class WineAgingController {
     status: HttpStatus.CONFLICT,
     type: ApiErrorResponseDto,
     description:
-      'FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_TANK_NOT_COMPLETED (tanque ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
+      'FERMENTATION_TANK_ALREADY_TRANSFERRED · TRC_TANK_NOT_COMPLETED (tanque sin completar, ya transferido o limpio) · TRC_INVALID_STAGE · TRC_LOT_TERMINAL',
   })
   async createAgingBatch(
     @TenantId() wineryId: string,

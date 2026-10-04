@@ -1780,7 +1780,27 @@ async function markCorrected(
     });
     return;
   }
-  // Lecturas: solo el evento del día de la lectura corregida
+  // Lecturas: el evento del día de la lectura corregida, con su recuento
+  // de lecturas vigentes (una anulada deja de contar, §9)
+  const tank = await tx.fermentationTank.findUniqueOrThrow({
+    where: { id: applied.resource.id },
+    select: {
+      tankCode: true,
+      logs: {
+        where: { voidedAt: null },
+        select: { recordedAt: true, temperatureCelsius: true },
+        orderBy: { recordedAt: 'asc' },
+      },
+    },
+  });
+  const byDay = new Map<string, { count: number; last: number }>();
+  for (const log of tank.logs) {
+    const day = laPazDate(log.recordedAt);
+    byDay.set(day, {
+      count: (byDay.get(day)?.count ?? 0) + 1,
+      last: log.temperatureCelsius.toNumber(),
+    });
+  }
   const events = await tx.lotEvent.findMany({
     where: {
       lotId,
@@ -1789,15 +1809,34 @@ async function markCorrected(
     },
     select: { id: true, data: true },
   });
-  const event = events.find(
-    (e) => (e.data as Record<string, unknown>)?.day === applied.readingsDay,
-  );
-  if (event) {
+  for (const event of events) {
+    const data = (event.data ?? {}) as Record<string, unknown>;
+    const day = typeof data.day === 'string' ? data.day : null;
+    if (day === null) continue;
+    const current = byDay.get(day) ?? { count: 0, last: null };
+    const corrected = day === applied.readingsDay;
+    if (!corrected && Number(data.count ?? -1) === current.count) continue;
     await tx.lotEvent.update({
       where: { id: event.id },
-      data: { corrected: true },
+      data: {
+        ...(corrected && { corrected: true }),
+        summary: readingsSummary(current.count, tank.tankCode),
+        data: {
+          ...data,
+          count: current.count,
+          lastTemperatureC: current.last,
+        } as Prisma.InputJsonObject,
+      },
     });
   }
+}
+
+/** Texto del evento diario de lecturas de un tanque (§11.1). */
+export function readingsSummary(count: number, tankCode: string): string {
+  if (count === 0) return `Lecturas anuladas en ${tankCode}`;
+  return count === 1
+    ? `1 lectura en ${tankCode}`
+    : `${count} lecturas en ${tankCode}`;
 }
 
 function toCorrectionView(

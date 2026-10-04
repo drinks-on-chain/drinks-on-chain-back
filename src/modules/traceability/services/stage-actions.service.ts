@@ -5,7 +5,6 @@ import { AuditAction } from '@shared/audit/audit.actions';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import type { ErrorDetail } from '@shared/interfaces/api-response.interface';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { ensureHarvestLot } from '@modules/lots/chain';
 import {
   CloseDistillationDto,
   DiscardProductionBatchDto,
@@ -65,10 +64,7 @@ export class StageActionsService {
     await this.prisma.$transaction(async (tx) => {
       const found = await tx.wineAgingBatch.findFirst({
         where: { id, wineryId },
-        select: {
-          lotId: true,
-          fermentationTank: { select: { harvestBatchId: true } },
-        },
+        select: { lotId: true },
       });
       if (!found) throw agingNotFound(id);
       const { lot, clock, membershipId } = await this.lockSourceLot(
@@ -76,7 +72,6 @@ export class StageActionsService {
         wineryId,
         userId,
         found.lotId,
-        found.fermentationTank.harvestBatchId,
       );
       const aging = await tx.wineAgingBatch.findUniqueOrThrow({
         where: { id },
@@ -178,10 +173,7 @@ export class StageActionsService {
     await this.prisma.$transaction(async (tx) => {
       const found = await tx.productionBatch.findFirst({
         where: { id, wineryId },
-        select: {
-          lotId: true,
-          fermentationTank: { select: { harvestBatchId: true } },
-        },
+        select: { lotId: true },
       });
       if (!found) throw distillationNotFound(id);
       const { lot, clock, membershipId } = await this.lockSourceLot(
@@ -189,7 +181,6 @@ export class StageActionsService {
         wineryId,
         userId,
         found.lotId,
-        found.fermentationTank.harvestBatchId,
       );
       const batch = await tx.productionBatch.findUniqueOrThrow({
         where: { id },
@@ -338,10 +329,7 @@ export class StageActionsService {
     await this.prisma.$transaction(async (tx) => {
       const found = await tx.productionBatch.findFirst({
         where: { id, wineryId },
-        select: {
-          lotId: true,
-          fermentationTank: { select: { harvestBatchId: true } },
-        },
+        select: { lotId: true },
       });
       if (!found) throw distillationNotFound(id);
       const { lot, clock, membershipId } = await this.lockSourceLot(
@@ -349,7 +337,6 @@ export class StageActionsService {
         wineryId,
         userId,
         found.lotId,
-        found.fermentationTank.harvestBatchId,
       );
       const batch = await tx.productionBatch.findUniqueOrThrow({
         where: { id },
@@ -409,14 +396,9 @@ export class StageActionsService {
     tx: Tx,
     wineryId: string,
     userId: string,
-    lotId: string | null,
-    harvestBatchId: string,
+    lotId: string,
   ): Promise<{ lot: LockedLot; clock: DbClock; membershipId: string | null }> {
-    const resolved = lotId ?? (await ensureHarvestLot(tx, harvestBatchId));
-    if (!resolved) {
-      throw new NotFoundException('El registro no pertenece a ningún lote');
-    }
-    const lot = await lockLot(tx, resolved, wineryId, { writable: true });
+    const lot = await lockLot(tx, lotId, wineryId, { writable: true });
     const clock = await dbClock(tx);
     const membership = await actorMembership(tx, userId, wineryId);
     return { lot, clock, membershipId: membership?.id ?? null };
