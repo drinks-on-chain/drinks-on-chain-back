@@ -1,10 +1,7 @@
 import {
   Controller,
   Get,
-  Post,
-  Body,
   Param,
-  HttpCode,
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
@@ -14,55 +11,30 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiNotFoundResponse,
-  ApiConflictResponse,
 } from '@nestjs/swagger';
 import { LabAnalysesService } from '../services/lab-analyses.service';
-import { CreateBatchLabAnalysisDto } from '../dto/create-batch-lab-analysis.dto';
 import { BatchLabAnalysisResponseDto } from '../dto/batch-lab-analysis-response.dto';
-import {
-  CurrentUser,
-  AuthenticatedUser,
-} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
-import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Laboratorio Físico-Químico')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('lab-analyses')
+/**
+ * Lectura del análisis vigente de un embotellado. El alta es
+ * `POST /v1/lots/{id}/lab-analyses` (contrato O2 §8.1): la ruta legada
+ * `POST /v1/lab-analyses` se retiró en H2.
+ */
 export class LabAnalysesController {
   constructor(private readonly labAnalysesService: LabAnalysesService) {}
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @Idempotent()
-  @Roles('OWNER', 'ENOLOGIST')
-  @ApiOperation({
-    summary: 'Registrar informe analítico oficial de laboratorio',
-    description:
-      'Registra los parámetros físico-químicos (ABV, acidez, SO2, metanol, cobre) y dictamina conformidad SENASAG.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Informe de laboratorio registrado',
-    type: BatchLabAnalysisResponseDto,
-  })
-  @ApiConflictResponse({
-    description: 'El lote ya tiene un informe oficial registrado',
-  })
-  async create(
-    @TenantId() wineryId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateBatchLabAnalysisDto,
-  ) {
-    return this.labAnalysesService.create(wineryId, user.id, dto);
-  }
 
   @Get('batch/:bottlingBatchId')
   @Roles('OWNER', 'ENOLOGIST', 'AGRONOMIST', 'ACCOUNTANT')

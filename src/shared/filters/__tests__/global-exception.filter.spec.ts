@@ -216,6 +216,35 @@ describe('normalizeErrorDetails', () => {
     ]);
   });
 
+  it('conserva la ampliación de las reglas (code, rule, expected, actual, meta)', () => {
+    expect(
+      normalizeErrorDetails([
+        {
+          field: 'bottlingDate',
+          message: 'Reposo mínimo sin cumplir',
+          code: 'TRC_LOCK_NOT_RELEASED',
+          rule: 'trazabilidad.singani.reposoMinimoDias',
+          expected: '2026-10-12',
+          actual: '2026-09-27',
+          meta: { daysRemaining: 15 },
+          internal: 'se descarta',
+        },
+        { field: null, message: 'm', meta: ['no es objeto'] },
+      ]),
+    ).toEqual([
+      {
+        field: 'bottlingDate',
+        message: 'Reposo mínimo sin cumplir',
+        code: 'TRC_LOCK_NOT_RELEASED',
+        rule: 'trazabilidad.singani.reposoMinimoDias',
+        expected: '2026-10-12',
+        actual: '2026-09-27',
+        meta: { daysRemaining: 15 },
+      },
+      { field: null, message: 'm' },
+    ]);
+  });
+
   it('null, objetos y listas vacías → null', () => {
     expect(normalizeErrorDetails(null)).toBeNull();
     expect(normalizeErrorDetails(undefined)).toBeNull();

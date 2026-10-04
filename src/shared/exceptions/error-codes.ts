@@ -168,6 +168,112 @@ export const ErrorCode = {
     'FERMENTATION_TANK_ALREADY_TRANSFERRED',
   /** 422 · No hay estrategia de trazabilidad para el tipo de bebida. */
   TRACEABILITY_STRATEGY_NOT_FOUND: 'TRACEABILITY_STRATEGY_NOT_FOUND',
+
+  // ── Trazabilidad confiable (contrato O2 §13) ──────────────
+  // Estado del recurso → 409; regla de negocio incumplida → 422. El detalle
+  // de cada violación (regla, exigido, registrado, meta) va en `details`.
+  /** 404 · Lote inexistente o de otra bodega. */
+  TRC_LOT_NOT_FOUND: 'TRC_LOT_NOT_FOUND',
+  /** 409 · Acción no permitida en la etapa del lote (`meta.stage`, `meta.allowed`). */
+  TRC_INVALID_STAGE: 'TRC_INVALID_STAGE',
+  /** 409 · Escritura en un lote `REJECTED`, `DISCARDED` o `CERTIFIED`. */
+  TRC_LOT_TERMINAL: 'TRC_LOT_TERMINAL',
+  /** 422 · Tipo de producto distinto de `WINE`/`SINGANI` (S-1). */
+  TRC_PRODUCT_NOT_SUPPORTED: 'TRC_PRODUCT_NOT_SUPPORTED',
+  /** 422 · Pesaje de otra añada que la del lote. */
+  TRC_HARVEST_YEAR_MISMATCH: 'TRC_HARVEST_YEAR_MISMATCH',
+  /** 422 · Parcela no apta D.O. para un lote singani (un detalle por regla). */
+  TRC_DO_TERROIR_NOT_ELIGIBLE: 'TRC_DO_TERROIR_NOT_ELIGIBLE',
+  /** 422 · Lote no apto D.O. al bifurcar o destilar (por pesaje y regla). */
+  TRC_DO_NOT_ELIGIBLE: 'TRC_DO_NOT_ELIGIBLE',
+  /** 409 · `PATCH` de un campo normativo en una parcela usada. */
+  TRC_TERROIR_IN_USE: 'TRC_TERROIR_IN_USE',
+  /** 422 · Dictamen fitosanitario en el alta del pesaje (EA-04). */
+  TRC_PHYTO_IN_CREATE: 'TRC_PHYTO_IN_CREATE',
+  /** 422 · Uva sin dictamen aprobado hacia un tanque (un detalle por pesaje). */
+  TRC_PHYTO_NOT_APPROVED: 'TRC_PHYTO_NOT_APPROVED',
+  /** 409 · Dictamen sobre uno final o sobre uva ya en un tanque. */
+  TRC_PHYTO_DECISION_FINAL: 'TRC_PHYTO_DECISION_FINAL',
+  /** 422 · Entradas de lotes distintos en un tanque (S-4). */
+  TRC_MIXED_LOTS: 'TRC_MIXED_LOTS',
+  /** 409 · Tanque físico ocupado (S-7). */
+  TRC_TANK_CODE_IN_USE: 'TRC_TANK_CODE_IN_USE',
+  /** 422 · Llenado mayor que la capacidad del tanque. */
+  TRC_TANK_CAPACITY_EXCEEDED: 'TRC_TANK_CAPACITY_EXCEEDED',
+  /** 409 · Transición de tanque no válida (`meta.from`, `meta.to`). */
+  TRC_TANK_INVALID_TRANSITION: 'TRC_TANK_INVALID_TRANSITION',
+  /** 409 · Lectura o tratamiento en un tanque cerrado. */
+  TRC_TANK_NOT_ACTIVE: 'TRC_TANK_NOT_ACTIVE',
+  /** 409 · Crianza o destilación desde un tanque sin completar. */
+  TRC_TANK_NOT_COMPLETED: 'TRC_TANK_NOT_COMPLETED',
+  /** 422 · Destino incoherente con el tipo del lote. */
+  TRC_DESTINATION_MISMATCH: 'TRC_DESTINATION_MISMATCH',
+  /** 422 · Kilos o litros por encima de lo disponible. */
+  TRC_VOLUME_EXCEEDS_AVAILABLE: 'TRC_VOLUME_EXCEEDS_AVAILABLE',
+  /** 422 · Volumen imprescindible sin registrar (también como incidencia). */
+  TRC_VOLUME_MISSING: 'TRC_VOLUME_MISSING',
+  /** 422 · Meses de crianza bajo el mínimo de la instantánea. */
+  TRC_AGING_BELOW_MINIMUM: 'TRC_AGING_BELOW_MINIMUM',
+  /** 422 · Cortes de destilación mayores que la entrada. */
+  TRC_MASS_BALANCE_EXCEEDED: 'TRC_MASS_BALANCE_EXCEEDED',
+  /** 409 · Cerrar una destilación dos veces. */
+  TRC_DISTILLATION_ALREADY_CLOSED: 'TRC_DISTILLATION_ALREADY_CLOSED',
+  /** 422 · Embotellar antes del candado (reloj de la base, EA-01). */
+  TRC_LOCK_NOT_RELEASED: 'TRC_LOCK_NOT_RELEASED',
+  /** 422 · Fuente de otro lote, de otro tipo o no lista. */
+  TRC_BOTTLING_SOURCE_INVALID: 'TRC_BOTTLING_SOURCE_INVALID',
+  /** 422 · Fuentes abiertas del lote sin incluir ni descartar. */
+  TRC_BOTTLING_SOURCES_PENDING: 'TRC_BOTTLING_SOURCES_PENDING',
+  /** 409 · Segundo embotellado del lote (S-10, EA-02). */
+  TRC_LOT_ALREADY_BOTTLED: 'TRC_LOT_ALREADY_BOTTLED',
+  /** 422 · Botellas × volumen > disponible (EA-02). */
+  TRC_BOTTLING_EXCEEDS_VOLUME: 'TRC_BOTTLING_EXCEEDS_VOLUME',
+  /** 422 · Merma por encima de la tolerada por la instantánea. */
+  TRC_BOTTLING_LOSS_ABOVE_TOLERANCE: 'TRC_BOTTLING_LOSS_ABOVE_TOLERANCE',
+  /** 422 · Alcohol puro embotellado > alcohol puro del corazón (S-11). */
+  TRC_ALCOHOL_BALANCE_EXCEEDED: 'TRC_ALCOHOL_BALANCE_EXCEEDED',
+  /** 422 · Agua en un vino (S-12). */
+  TRC_DILUTION_NOT_ALLOWED: 'TRC_DILUTION_NOT_ALLOWED',
+  /** 422 · Embotellar o cerrar con incidencias de cumplimiento abiertas. */
+  TRC_COMPLIANCE_ISSUES_OPEN: 'TRC_COMPLIANCE_ISSUES_OPEN',
+  /** 409 · Laboratorio o códigos antes del embotellado. */
+  TRC_LOT_NOT_BOTTLED: 'TRC_LOT_NOT_BOTTLED',
+  /** 404 · Código de botella de otra bodega o inexistente. */
+  TRC_BOTTLE_CODE_NOT_FOUND: 'TRC_BOTTLE_CODE_NOT_FOUND',
+  /** 409 · Anular dos veces un código de botella. */
+  TRC_BOTTLE_CODE_ALREADY_VOIDED: 'TRC_BOTTLE_CODE_ALREADY_VOIDED',
+  /** 409 · Descarga de una exportación pendiente. */
+  TRC_EXPORT_NOT_READY: 'TRC_EXPORT_NOT_READY',
+  /** 422 · Campo fuera de la lista de corregibles. */
+  TRC_CORRECTION_FIELD_NOT_CORRECTABLE: 'TRC_CORRECTION_FIELD_NOT_CORRECTABLE',
+  /** 422 · La corrección incumple una regla (detalles con su `code`). */
+  TRC_CORRECTION_BREAKS_RULES: 'TRC_CORRECTION_BREAKS_RULES',
+  /** 422 · Cierre del expediente sin requisitos (un detalle por requisito). */
+  TRC_DOSSIER_NOT_READY: 'TRC_DOSSIER_NOT_READY',
+  /** 409 · Escritura tras el cierre del expediente. */
+  TRC_DOSSIER_CLOSED: 'TRC_DOSSIER_CLOSED',
+  /** 422 · Fecha futura (5 min de tolerancia en los instantes). */
+  TRC_DATE_IN_FUTURE: 'TRC_DATE_IN_FUTURE',
+  /** 422 · Fecha anterior a la etapa previa. */
+  TRC_DATE_BEFORE_PREVIOUS_STAGE: 'TRC_DATE_BEFORE_PREVIOUS_STAGE',
+  /** 422 · `key` de archivo inexistente o de otra organización. */
+  TRC_FILE_NOT_FOUND: 'TRC_FILE_NOT_FOUND',
+  /** 422 · Reporte de producción con más de 10 000 filas. */
+  TRC_REPORT_TOO_LARGE: 'TRC_REPORT_TOO_LARGE',
+  /** 403 · Escritura de la plataforma en la trazabilidad (S-25: solo lee). */
+  TRC_PLATFORM_READ_ONLY: 'TRC_PLATFORM_READ_ONLY',
+
+  // ── Pasaporte público (contrato O2 §12) ───────────────────
+  /** 404 · Pasaporte inexistente. */
+  PUB_CODE_NOT_FOUND: 'PUB_CODE_NOT_FOUND',
+  /** 422 · Código imposible o con control inválido. */
+  PUB_CODE_MALFORMED: 'PUB_CODE_MALFORMED',
+  /** 429 · Demasiados códigos inexistentes desde una IP (con `Retry-After`). */
+  PUB_TOO_MANY_LOOKUPS: 'PUB_TOO_MANY_LOOKUPS',
+
+  // ── Contrato publicado sin lógica todavía ─────────────────
+  /** 501 · Ruta del contrato publicada en el OpenAPI cuya lógica llega en un paso posterior. */
+  NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
 } as const;
 
 export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -183,6 +289,7 @@ export function errorCodeForStatus(status: number): string {
     422: ErrorCode.UNPROCESSABLE_ENTITY,
     429: ErrorCode.TOO_MANY_REQUESTS,
     500: ErrorCode.INTERNAL_ERROR,
+    501: ErrorCode.NOT_IMPLEMENTED,
     502: ErrorCode.BAD_GATEWAY,
     503: ErrorCode.SERVICE_UNAVAILABLE,
   };

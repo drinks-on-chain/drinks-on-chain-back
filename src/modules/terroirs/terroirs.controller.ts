@@ -24,17 +24,20 @@ import { CreateTerroirDto } from './dto/create-terroir.dto';
 import { UpdateTerroirDto } from './dto/update-terroir.dto';
 import { QueryTerroirsDto } from './dto/query-terroirs.dto';
 import { TerroirResponseDto } from './dto/terroir-response.dto';
+import { ApiErrorResponseDto } from '@shared/dto/api-error-response.dto';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Terroirs y Parcelas')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('terroirs')
@@ -107,12 +110,18 @@ export class TerroirsController {
   @ApiOperation({
     summary: 'Actualizar datos de una parcela',
     description:
-      'Permite modificar datos agronómicos, polígono perimetral o estado activo.',
+      'Permite modificar datos agronómicos, polígono perimetral o estado activo. En una parcela con pesajes, la altitud, la cepa y la materia prima (campos con efecto en la D.O.) no cambian por aquí: se corrigen con `POST /v1/terroirs/{id}/corrections` (contrato O2 §3.1).',
   })
   @ApiResponse({
     status: HttpStatus.OK,
     description: 'Parcela actualizada',
     type: TerroirResponseDto,
+  })
+  @ApiResponse({
+    status: HttpStatus.CONFLICT,
+    type: ApiErrorResponseDto,
+    description:
+      'TRC_TERROIR_IN_USE (campo normativo de una parcela usada; `meta.fields`)',
   })
   @ApiNotFoundResponse({ description: 'Parcela no encontrada' })
   async update(

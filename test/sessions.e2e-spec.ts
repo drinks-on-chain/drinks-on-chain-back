@@ -659,7 +659,7 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
   });
 
   describe('plataforma sobre una bodega (OP-07)', () => {
-    it('las escrituras exigen ?wineryId=; con él, operan sobre esa bodega', async () => {
+    it('la trazabilidad es de solo lectura para la plataforma (S-25): 403 TRC_PLATFORM_READ_ONLY; lee con ?wineryId=', async () => {
       const body = {
         parcelName: `Plataforma ${run}`,
         surfaceHectares: 1,
@@ -667,21 +667,14 @@ describe('Sesiones y membresías · O0-BE-4 (e2e)', () => {
         rawMaterialType: 'Uva',
         varietyName: 'Malbec',
       };
-      const missing = await http()
-        .post('/v1/terroirs')
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(body)
-        .expect(422);
-      expect(missing.body.error.details).toEqual([
-        expect.objectContaining({ field: 'wineryId' }),
-      ]);
-
-      const created = await http()
-        .post(`/v1/terroirs?wineryId=${wineryA}`)
-        .set('Authorization', `Bearer ${adminToken}`)
-        .send(body)
-        .expect(201);
-      expect(created.body.data.wineryId).toBe(wineryA);
+      for (const path of ['/v1/terroirs', `/v1/terroirs?wineryId=${wineryA}`]) {
+        const res = await http()
+          .post(path)
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send(body)
+          .expect(403);
+        expect(res.body.error.code).toBe('TRC_PLATFORM_READ_ONLY');
+      }
 
       const listed = await http()
         .get(`/v1/terroirs?wineryId=${wineryA}`)

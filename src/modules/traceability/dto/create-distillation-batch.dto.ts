@@ -1,4 +1,3 @@
-import { Prisma } from '@prisma/client';
 import {
   IsUUID,
   IsNotEmpty,
@@ -8,14 +7,21 @@ import {
   IsPositive,
   IsDateString,
   IsBoolean,
-  IsObject,
+  Max,
+  MaxLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
+/**
+ * `POST /v1/production-batches/distillation` (contrato O2 §5.2): abre la
+ * destilación con el vino base que entra. El fin, los cortes tipados y el
+ * grado del corazón van en `POST /v1/production-batches/{id}/close`.
+ */
 export class CreateDistillationBatchDto {
   @ApiProperty({
     example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d',
-    description: 'ID del tanque de vino base fermentado a destilar',
+    description:
+      'Tanque `COMPLETED` con destino `SINGANI_DIST` del que sale el vino base',
   })
   @IsUUID()
   @IsNotEmpty()
@@ -27,80 +33,45 @@ export class CreateDistillationBatchDto {
   })
   @IsString()
   @IsNotEmpty()
+  @MaxLength(100)
   equipmentIdentifier!: string;
 
   @ApiProperty({
     example: '2026-04-01',
-    description: 'Fecha de inicio del ciclo de destilación (YYYY-MM-DD)',
+    description:
+      'Inicio de la destilación (YYYY-MM-DD): no futuro ni anterior al fin de la fermentación',
   })
   @IsDateString()
   @IsNotEmpty()
   processStartDate!: string;
 
-  @ApiPropertyOptional({
-    example: '2026-04-03',
-    description: 'Fecha de finalización y corte definitivo (YYYY-MM-DD)',
-  })
-  @IsOptional()
-  @IsDateString()
-  processEndDate?: string;
-
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: 10000.0,
-    description: 'Volumen total de vino base cargado al alambique (litros)',
+    description:
+      'Vino base cargado al alambique (litros): ≤ lo disponible del tanque',
   })
-  @IsOptional()
   @IsNumber()
   @IsPositive()
-  inputVolumeLiters?: number;
+  inputVolumeLiters!: number;
 
   @ApiPropertyOptional({
-    example: 1750.0,
-    description: 'Volumen obtenido de corazón noble de destilado (litros)',
+    example: 11.8,
+    description: 'Grado alcohólico del vino base que entra (% v/v)',
   })
   @IsOptional()
   @IsNumber()
   @IsPositive()
-  outputVolumeLiters?: number;
-
-  @ApiPropertyOptional({
-    example: 570.0,
-    description: 'Volumen total de descarte (cabezas + colas) en litros',
-  })
-  @IsOptional()
-  @IsNumber()
-  @IsPositive()
-  wasteVolumeLiters?: number;
-
-  @ApiPropertyOptional({
-    example: 70.2,
-    description: 'Graduación alcohólica del corazón de destilación (% ABV)',
-  })
-  @IsOptional()
-  @IsNumber()
-  @IsPositive()
+  @Max(100)
   initialAlcoholPercentage?: number;
 
   @ApiPropertyOptional({
     example: true,
-    description: 'Elegible para Denominación de Origen Singani',
+    description:
+      'Última destilación del tanque: pasa a `TRANSFERRED` aunque le quede volumen (queda como merma de trasiego). Sin él, el tanque se transfiere solo al agotarse su volumen (contrato O2 §4.2)',
   })
   @IsOptional()
   @IsBoolean()
-  isDoEligible?: boolean;
-
-  @ApiPropertyOptional({
-    example: {
-      headDiscardLiters: 120,
-      heartYieldLiters: 1750,
-      tailDiscardLiters: 450,
-      vaporTempC: 84.5,
-    },
-    description: 'Parámetros técnicos de corte y balance térmico',
-  })
-  @IsOptional()
-  @IsObject()
-  additionalParams?: Prisma.InputJsonObject;
+  closeTank?: boolean;
 
   @ApiPropertyOptional({
     example:
@@ -109,5 +80,6 @@ export class CreateDistillationBatchDto {
   })
   @IsOptional()
   @IsString()
+  @MaxLength(4000)
   notes?: string;
 }

@@ -6,6 +6,7 @@ import {
 import { PLATFORM_ORGANIZATION_ID } from '../modules/organizations/organization.constants';
 import { FixtureUser, FixtureWineryMember, MockFixtures } from './fixtures';
 import { platformMembershipId } from './ids';
+import type { DemoPeopleContext } from './lots.seed';
 
 /**
  * Datos de demostración (0.10, OPS-09) a partir de los fixtures de los mocks,
@@ -13,10 +14,11 @@ import { platformMembershipId } from './ids';
  * con los mocks y con el backend.
  *
  * Idempotente: cada fila se escribe con `upsert` por su id fijo (o por su
- * clave natural: correo, persona + organización) y las lecturas de
- * fermentación con `createMany({ skipDuplicates })`. Volver a ejecutarla
- * devuelve los datos de demostración a su estado inicial sin duplicar nada y
- * sin tocar lo que se haya creado aparte.
+ * clave natural: correo, persona + organización). Volver a ejecutarla
+ * devuelve las personas, las bodegas y las parcelas de demostración a su
+ * estado inicial sin duplicar nada y sin tocar lo que se haya creado aparte.
+ * La trazabilidad (pesajes, tanques… y sus lotes) es de solo inserción y va
+ * aparte, en `lots.seed.ts`: lo que ya existe no se reescribe.
  */
 
 /** Roles de plataforma de demostración (el superusuario sale del entorno). */
@@ -30,14 +32,12 @@ export interface DemoSeedSummary {
   wineryMemberships: number;
   wallets: number;
   terroirs: number;
-  harvestBatches: number;
-  fermentationTanks: number;
-  fermentationLogs: number;
-  enologicalTreatments: number;
-  wineAgings: number;
-  productionBatches: number;
-  bottlingBatches: number;
-  labAnalyses: number;
+}
+
+/** Ids en la base de las personas de demostración (los usa `lots.seed.ts`). */
+export interface DemoSeedResult {
+  summary: DemoSeedSummary;
+  people: DemoPeopleContext;
 }
 
 export interface DemoPeople {
@@ -89,13 +89,6 @@ const json = (
 ): Prisma.InputJsonValue | typeof Prisma.DbNull =>
   value === null ? Prisma.DbNull : (value as Prisma.InputJsonValue);
 
-function required<T>(value: T | undefined, what: string): T {
-  if (value === undefined) {
-    throw new Error(`Semilla: falta ${what} en los fixtures`);
-  }
-  return value;
-}
-
 /** Quién autoriza los tratamientos de una bodega (los mocks no lo guardan). */
 function treatmentAuthorizer(
   members: readonly FixtureWineryMember[],
@@ -111,7 +104,7 @@ export async function seedDemo(
   tx: Prisma.TransactionClient,
   fx: MockFixtures,
   passwordHash: string,
-): Promise<DemoSeedSummary> {
+): Promise<DemoSeedResult> {
   const { included } = selectDemoPeople(fx);
 
   // ---------------------------------------------------------------------------
@@ -282,9 +275,6 @@ export async function seedDemo(
     }
   }
 
-  const memberRef = (id: string | null): string | null =>
-    id === null ? null : required(memberIds.get(id), `el miembro ${id}`);
-
   // ---------------------------------------------------------------------------
   // Billeteras de las personas creadas
   // ---------------------------------------------------------------------------
@@ -311,8 +301,8 @@ export async function seedDemo(
   }
 
   // ---------------------------------------------------------------------------
-  // Trazabilidad: parcelas → vendimia → tanques (lecturas y tratamientos) →
-  // crianza o destilación → embotellado → laboratorio
+  // Parcelas (datos maestros editables: se devuelven a su estado inicial). La
+  // trazabilidad que cuelga de ellas la siembra `seedDemoLots`
   // ---------------------------------------------------------------------------
   for (const t of fx.terroirs) {
     const data = {
@@ -333,227 +323,33 @@ export async function seedDemo(
       doCertificateUrl: t.doCertificateUrl,
       isActive: t.isActive,
     };
+    // Altitud, cepa y materia prima deciden la D.O. de los lotes que usan la
+    // parcela: en una que ya existe solo cambian con una corrección (§3.1)
+    const {
+      altitudeMasl: _altitude,
+      varietyName: _variety,
+      rawMaterialType: _material,
+      ...editable
+    } = data;
+    void _altitude;
+    void _variety;
+    void _material;
     await tx.terroir.upsert({
       where: { id: t.id },
-      update: data,
+      update: editable,
       create: { id: t.id, ...data, createdAt: date(t.createdAt) },
-    });
-  }
-
-  for (const h of fx.harvestBatches) {
-    const data = {
-      wineryId: h.wineryId,
-      terroirId: h.terroirId,
-      harvestBatchCode: h.harvestBatchCode,
-      intakeDate: date(h.intakeDate),
-      harvestYear: h.harvestYear,
-      grossWeightKg: h.grossWeightKg,
-      tareWeightKg: h.tareWeightKg,
-      netWeightKg: h.netWeightKg,
-      brixDegrees: h.brixDegrees,
-      initialPh: h.initialPh,
-      initialAcidityGl: h.initialAcidityGl,
-      temperatureAtIntakeC: h.temperatureAtIntakeC,
-      phytosanitaryStatus: h.phytosanitaryStatus,
-      phytoInspectionPdfUrl: h.phytoInspectionPdfUrl,
-      certifiedByMemberId: memberRef(h.certifiedByMemberId),
-      notes: h.notes,
-    };
-    await tx.harvestBatch.upsert({
-      where: { id: h.id },
-      update: data,
-      create: { id: h.id, ...data, createdAt: date(h.createdAt) },
-    });
-  }
-
-  const tankWinery = new Map<string, string>();
-  for (const t of fx.fermentationTanks) {
-    tankWinery.set(t.id, t.wineryId);
-    const data = {
-      wineryId: t.wineryId,
-      harvestBatchId: t.harvestBatchId,
-      tankCode: t.tankCode,
-      capacityLiters: t.capacityLiters,
-      material: t.material,
-      volumeFilledLiters: t.volumeFilledLiters,
-      destinationType: t.destinationType,
-      status: t.status,
-      startDate: date(t.startDate),
-      endDate: optionalDate(t.endDate),
-    };
-    await tx.fermentationTank.upsert({
-      where: { id: t.id },
-      update: data,
-      create: { id: t.id, ...data, createdAt: date(t.createdAt) },
-    });
-  }
-
-  // Lecturas y tratamientos: solo se añaden (son registros históricos)
-  await tx.fermentationLog.createMany({
-    data: fx.fermentationLogs.map((l) => ({
-      id: l.id,
-      fermentationTankId: l.fermentationTankId,
-      temperatureCelsius: l.temperatureCelsius,
-      specificGravity: l.specificGravity,
-      phValue: l.phValue,
-      co2Observations: l.co2Observations,
-      recordedAt: date(l.recordedAt),
-      recordedByUserId: required(
-        memberUsers.get(l.recordedByMemberId),
-        `la persona del miembro ${l.recordedByMemberId}`,
-      ),
-      notes: l.notes,
-    })),
-    skipDuplicates: true,
-  });
-
-  await tx.enologicalTreatment.createMany({
-    data: fx.enologicalTreatments.map((t) => {
-      const wineryId = required(
-        tankWinery.get(t.fermentationTankId),
-        `el tanque ${t.fermentationTankId}`,
-      );
-      return {
-        id: t.id,
-        fermentationTankId: t.fermentationTankId,
-        treatmentType: t.treatmentType,
-        additiveName: t.additiveName,
-        additiveSupplier: t.additiveSupplier,
-        dosageAppliedGPerHl: t.dosageAppliedGPerHl,
-        totalAppliedG: t.totalAppliedG,
-        regulatoryAuthCode: t.regulatoryAuthCode,
-        appliedAt: date(t.appliedAt),
-        authorizedByMemberId: required(
-          authorizerByWinery.get(wineryId),
-          `quien autorice los tratamientos de la bodega ${wineryId}`,
-        ),
-        notes: t.notes,
-      };
-    }),
-    skipDuplicates: true,
-  });
-
-  for (const a of fx.wineAgings) {
-    const data = {
-      wineryId: a.wineryId,
-      fermentationTankId: a.fermentationTankId,
-      containerType: a.containerType,
-      containerMaterial: a.containerMaterial,
-      containerCode: a.containerCode,
-      barrelUseCycle: a.barrelUseCycle,
-      volumeLiters: a.volumeLiters,
-      plannedMonths: a.plannedMonths,
-      lockUntilDate: date(a.lockUntilDate),
-      agingStatus: a.agingStatus,
-      notes: a.notes,
-    };
-    await tx.wineAgingBatch.upsert({
-      where: { id: a.id },
-      update: data,
-      create: { id: a.id, ...data, createdAt: date(a.createdAt) },
-    });
-  }
-
-  for (const p of fx.productionBatches) {
-    const data = {
-      wineryId: p.wineryId,
-      fermentationTankId: p.fermentationTankId,
-      processType: p.processType,
-      equipmentIdentifier: p.equipmentIdentifier,
-      processStartDate: date(p.processStartDate),
-      processEndDate: optionalDate(p.processEndDate),
-      inputVolumeLiters: p.inputVolumeLiters,
-      outputVolumeLiters: p.outputVolumeLiters,
-      wasteVolumeLiters: p.wasteVolumeLiters,
-      initialAlcoholPercentage: p.initialAlcoholPercentage,
-      isDoEligible: p.isDoEligible,
-      mandatoryRestUntil: optionalDate(p.mandatoryRestUntil),
-      restStatus: p.restStatus,
-      additionalParams: json(p.additionalParams),
-      notes: p.notes,
-    };
-    await tx.productionBatch.upsert({
-      where: { id: p.id },
-      update: data,
-      create: { id: p.id, ...data, createdAt: date(p.createdAt) },
-    });
-  }
-
-  for (const b of fx.bottlingBatches) {
-    const data = {
-      wineryId: b.wineryId,
-      wineAgingBatchId: b.wineAgingBatchId,
-      productionBatchId: b.productionBatchId,
-      productType: b.productType,
-      internationalLotCode: b.internationalLotCode,
-      finalAlcoholAbv: b.finalAlcoholAbv,
-      waterDilutionLiters: b.waterDilutionLiters,
-      totalBottlesPackaged: b.totalBottlesPackaged,
-      packagingFormatCl: b.packagingFormatCl,
-      bottleType: b.bottleType,
-      labelDesignUrl: b.labelDesignUrl,
-      bottlingDate: date(b.bottlingDate),
-      releasedByMemberId: memberRef(b.releasedByMemberId),
-      blockchainAnchorTxHash: b.blockchainAnchorTxHash,
-      blockchainDataHash: b.blockchainDataHash,
-      isAnchoredOnChain: b.isAnchoredOnChain,
-      anchoredAt: optionalDate(b.anchoredAt),
-      qrBatchUrl: b.qrBatchUrl,
-    };
-    await tx.bottlingBatch.upsert({
-      where: { id: b.id },
-      update: data,
-      create: { id: b.id, ...data, createdAt: date(b.createdAt) },
-    });
-  }
-
-  for (const l of fx.labAnalyses) {
-    const data = {
-      bottlingBatchId: l.bottlingBatchId,
-      certifiedLaboratoryName: l.certifiedLaboratoryName,
-      accreditedLabCertificationCode: l.accreditedLabCertificationCode,
-      analysisRequestDate: optionalDate(l.analysisRequestDate),
-      testPerformedAt: date(l.testPerformedAt),
-      actualAlcoholAbv: l.actualAlcoholAbv,
-      totalAlcoholAbv: l.totalAlcoholAbv,
-      totalAcidityTartaricGl: l.totalAcidityTartaricGl,
-      volatileAcidityAceticGl: l.volatileAcidityAceticGl,
-      freeSulfurDioxideMgL: l.freeSulfurDioxideMgL,
-      totalSulfurDioxideMgL: l.totalSulfurDioxideMgL,
-      reducingSugarsGl: l.reducingSugarsGl,
-      totalDryExtractGl: l.totalDryExtractGl,
-      sugarFreeDryExtractGl: l.sugarFreeDryExtractGl,
-      overpressureBar: l.overpressureBar,
-      methanolContentMgL: l.methanolContentMgL,
-      copperContentMgL: l.copperContentMgL,
-      additionalParams: json(l.additionalParams),
-      laboratoryReportPdfUrl: l.laboratoryReportPdfUrl,
-      conformsToSenasagStandards: l.conformsToSenasagStandards,
-      conformsToEuStandards: l.conformsToEuStandards,
-      conformsToUsaStandards: l.conformsToUsaStandards,
-      reviewedByMemberId: memberRef(l.reviewedByMemberId),
-    };
-    await tx.batchLabAnalysis.upsert({
-      where: { id: l.id },
-      update: data,
-      create: { id: l.id, ...data, createdAt: date(l.createdAt) },
     });
   }
 
   return {
-    users: included.length,
-    platformMemberships,
-    wineries: fx.wineries.length,
-    wineryMemberships,
-    wallets,
-    terroirs: fx.terroirs.length,
-    harvestBatches: fx.harvestBatches.length,
-    fermentationTanks: fx.fermentationTanks.length,
-    fermentationLogs: fx.fermentationLogs.length,
-    enologicalTreatments: fx.enologicalTreatments.length,
-    wineAgings: fx.wineAgings.length,
-    productionBatches: fx.productionBatches.length,
-    bottlingBatches: fx.bottlingBatches.length,
-    labAnalyses: fx.labAnalyses.length,
+    summary: {
+      users: included.length,
+      platformMemberships,
+      wineries: fx.wineries.length,
+      wineryMemberships,
+      wallets,
+      terroirs: fx.terroirs.length,
+    },
+    people: { memberIds, memberUsers, authorizerByWinery },
   };
 }

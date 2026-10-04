@@ -14,6 +14,10 @@ import { SETTINGS_CATALOG, settingEntry } from './settings.catalog';
 import { ResolvedMap, SETTINGS_CACHE, SettingsCache } from './settings.cache';
 import { validateSettingValue } from './settings.validation';
 import {
+  readSettingsSnapshot,
+  resolveSettingsFromDatabase,
+} from './settings.resolve';
+import {
   SETTING_AGGREGATE,
   SETTING_CHANGED,
   SettingChangedPayload,
@@ -135,24 +139,7 @@ export class SettingsService {
    * no de la caché: fija reglas para siempre.
    */
   async snapshot(wineryId: string): Promise<SettingsSnapshot> {
-    const map = await this.loadFromDatabase(wineryId);
-    const values: SettingsSnapshot['values'] = {};
-    const sources: SettingsSnapshot['sources'] = {};
-    const legalExceptions: string[] = [];
-    for (const entry of SETTINGS_CATALOG) {
-      if (entry.appliesAt !== 'LOT') continue;
-      const resolved = map[entry.key];
-      values[entry.key] = resolved.value;
-      sources[entry.key] = resolved.source;
-      if (resolved.legalException) legalExceptions.push(entry.key);
-    }
-    return {
-      wineryId,
-      takenAt: new Date().toISOString(),
-      values,
-      sources,
-      legalExceptions,
-    };
+    return readSettingsSnapshot(this.prisma, wineryId);
   }
 
   /** Cambia el estándar general (CFG-02). */
@@ -550,43 +537,7 @@ export class SettingsService {
   private async loadFromDatabase(
     wineryId: string | null,
   ): Promise<ResolvedMap> {
-    const [globals, overrides] = await Promise.all([
-      this.prisma.settingGlobalValue.findMany(),
-      wineryId
-        ? this.prisma.settingOverride.findMany({ where: { wineryId } })
-        : Promise.resolve([]),
-    ]);
-    const globalByKey = new Map(globals.map((g) => [g.key, g]));
-    const overrideByKey = new Map(overrides.map((o) => [o.key, o]));
-
-    const map: ResolvedMap = {};
-    for (const entry of SETTINGS_CATALOG) {
-      const override = overrideByKey.get(entry.key);
-      const global = globalByKey.get(entry.key);
-      if (override && entry.levels !== 'GLOBAL') {
-        map[entry.key] = {
-          key: entry.key,
-          value: override.value as SettingValue,
-          source: 'WINERY',
-          legalException: override.legalException,
-        };
-      } else if (global && entry.levels !== 'WINERY') {
-        map[entry.key] = {
-          key: entry.key,
-          value: global.value as SettingValue,
-          source: 'GLOBAL',
-          legalException: false,
-        };
-      } else {
-        map[entry.key] = {
-          key: entry.key,
-          value: entry.default,
-          source: 'DEFAULT',
-          legalException: false,
-        };
-      }
-    }
-    return map;
+    return resolveSettingsFromDatabase(this.prisma, wineryId);
   }
 
   private async targetWineries(

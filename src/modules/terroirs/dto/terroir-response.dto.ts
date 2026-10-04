@@ -1,7 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CorrectableResponseDto } from '@modules/lots/dto/correction-marks.dto';
 import { HarvestBatchResponseDto } from '@modules/harvest-batches/dto/harvest-batch-response.dto';
+import { DoEvaluationDto } from '@modules/lots/dto/lot.dto';
 
-export class TerroirResponseDto {
+export class TerroirResponseDto extends CorrectableResponseDto {
   @ApiProperty({ example: 'a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d' })
   id!: string;
 
@@ -53,8 +55,19 @@ export class TerroirResponseDto {
   })
   irrigationSystem?: string | null;
 
-  @ApiProperty({ example: true })
+  @ApiProperty({
+    example: true,
+    description:
+      'Aptitud D.O. Singani **calculada** por el servidor con los valores efectivos de la bodega (altitud y cepa; EA-03). En la entrada se ignora',
+  })
   isDoEligible!: boolean;
+
+  @ApiPropertyOptional({
+    type: () => DoEvaluationDto,
+    description:
+      'Detalle de la evaluación D.O. (`rulesSource: EFFECTIVE_SETTINGS`); en las rutas de parcelas (no en las anidadas)',
+  })
+  doEvaluation?: DoEvaluationDto;
 
   @ApiPropertyOptional({
     type: String,

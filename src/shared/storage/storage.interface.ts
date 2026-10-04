@@ -22,6 +22,9 @@ export interface ObjectStorage {
   /** `true` si el objeto existe. */
   exists(key: string): Promise<boolean>;
 
+  /** Contenido del objeto, o `null` si no existe (huella y tamaño de un adjunto). */
+  get(key: string): Promise<Buffer | null>;
+
   /** Borra un objeto (no falla si no existe). */
   delete(key: string): Promise<void>;
 

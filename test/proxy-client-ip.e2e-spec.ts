@@ -12,6 +12,7 @@ import {
   signProxyRequest,
 } from '../src/shared/middleware/proxy-client-ip';
 import { deleteIdentityData } from './helpers/identity';
+import { resetLoopbackLoginLocks } from './helpers/login-locks';
 
 /**
  * IP real del cliente detrás del proxy de las apps (O1-OPS-1, contrato O1
@@ -57,6 +58,7 @@ async function createApp(secret: string): Promise<INestApplication> {
   const app = moduleFixture.createNestApplication();
   configureApp(app);
   await app.init();
+  await resetLoopbackLoginLocks(app);
   return app;
 }
 

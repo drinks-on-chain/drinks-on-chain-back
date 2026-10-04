@@ -71,6 +71,31 @@ Toda colección devuelve una página:
 }
 ```
 
+### Errores de reglas de la trazabilidad (Ola 2, contrato O2 §0 y §13)
+Estado del recurso → **409**; regla de negocio incumplida → **422**; escritura de la plataforma en la trazabilidad → **403 `TRC_PLATFORM_READ_ONLY`**. `details` amplía la forma anterior de manera **aditiva** con el código de cada violación, la regla de la instantánea del lote, lo exigido, lo registrado y datos para que la UI explique cuándo se podrá hacer. El `code` de la respuesta es el de la primera violación; `details` las trae todas.
+```json
+{
+  "success": false,
+  "statusCode": 422,
+  "error": {
+    "code": "TRC_LOCK_NOT_RELEASED",
+    "message": "Reposo mínimo de 180 días: disponible el 2026-10-13 (faltan 16 días)",
+    "details": [
+      {
+        "field": "bottlingDate",
+        "message": "Reposo mínimo de 180 días: disponible el 2026-10-13 (faltan 16 días)",
+        "code": "TRC_LOCK_NOT_RELEASED",
+        "rule": "trazabilidad.singani.reposoMinimoDias",
+        "expected": "2026-10-13",
+        "actual": "2026-09-27",
+        "meta": { "sourceId": "…", "kind": "REST", "unlockDate": "2026-10-13", "daysRemaining": 16 }
+      }
+    ]
+  }
+}
+```
+Una ruta del contrato publicada sin lógica todavía responde **501 `NOT_IMPLEMENTED`** con `details[0].meta.step` (el paso que la trae). Las de la Ola 2 ya tienen todas su lógica: hoy ninguna ruta responde 501.
+
 ---
 
 ## Implementación
@@ -221,6 +246,59 @@ Motivo ausente en una acción del back office sobre terceros (`@RequiresReason()
 | `TRACEABILITY_STRATEGY_NOT_FOUND` | 422 | No hay estrategia de trazabilidad para el tipo de bebida |
 | `FERMENTATION_TANK_WRONG_STATUS` | 422 | Operación no válida en el estado actual |
 | `FERMENTATION_TANK_DESTINATION_LOCKED` | 422 | El destino ya fue definido y no puede cambiarse |
+
+### ERP — Trazabilidad confiable (Ola 2, contrato O2 §13; `docs/arquitectura/trazabilidad.md`)
+| Código | HTTP | Descripción |
+|---|---|---|
+| `TRC_LOT_NOT_FOUND` | 404 | Lote inexistente o de otra bodega |
+| `TRC_INVALID_STAGE` | 409 | Acción no permitida en la etapa del lote (`meta.stage`, `meta.allowed`) |
+| `TRC_LOT_TERMINAL` | 409 | Escritura en un lote `REJECTED`, `DISCARDED` o `CERTIFIED` |
+| `TRC_PRODUCT_NOT_SUPPORTED` | 422 | Tipo distinto de `WINE`/`SINGANI` |
+| `TRC_HARVEST_YEAR_MISMATCH` | 422 | Pesaje de otra añada |
+| `TRC_DO_TERROIR_NOT_ELIGIBLE` | 422 | Parcela no apta D.O. para un lote singani |
+| `TRC_DO_NOT_ELIGIBLE` | 422 | Lote no apto D.O. al bifurcar o destilar (y como incidencia) |
+| `TRC_TERROIR_IN_USE` | 409 | `PATCH` de un campo normativo en una parcela usada |
+| `TRC_PHYTO_IN_CREATE` | 422 | Dictamen en el alta del pesaje (EA-04) |
+| `TRC_PHYTO_NOT_APPROVED` | 422 | Uva sin dictamen aprobado hacia un tanque |
+| `TRC_PHYTO_DECISION_FINAL` | 409 | Dictamen sobre uno final o sobre uva ya en un tanque |
+| `TRC_MIXED_LOTS` | 422 | Entradas de lotes distintos en un tanque |
+| `TRC_TANK_CODE_IN_USE` | 409 | Tanque físico ocupado |
+| `TRC_TANK_CAPACITY_EXCEEDED` | 422 | Llenado mayor que la capacidad |
+| `TRC_TANK_INVALID_TRANSITION` | 409 | Transición de tanque no válida (paso 2.3) |
+| `TRC_TANK_NOT_ACTIVE` | 409 | Lectura o tratamiento en un tanque cerrado |
+| `TRC_TANK_NOT_COMPLETED` | 409 | Crianza o destilación desde un tanque sin completar (paso 2.3) |
+| `TRC_DESTINATION_MISMATCH` | 422 | Destino incoherente con el tipo del lote |
+| `TRC_VOLUME_EXCEEDS_AVAILABLE` | 422 | Kilos o litros por encima de lo disponible |
+| `TRC_VOLUME_MISSING` | 422 | Volumen imprescindible sin registrar (también como incidencia) |
+| `TRC_AGING_BELOW_MINIMUM` | 422 | Crianza bajo el mínimo de la instantánea |
+| `TRC_MASS_BALANCE_EXCEEDED` | 422 | Cortes de destilación mayores que la entrada |
+| `TRC_DISTILLATION_ALREADY_CLOSED` | 409 | Cerrar dos veces (paso 2.4) |
+| `TRC_LOCK_NOT_RELEASED` | 422 | Embotellar antes del candado (reloj de la base) |
+| `TRC_BOTTLING_SOURCE_INVALID` | 422 | Fuente de otro lote, de otro tipo o no lista |
+| `TRC_BOTTLING_SOURCES_PENDING` | 422 | Fuentes abiertas del lote sin incluir ni descartar |
+| `TRC_LOT_ALREADY_BOTTLED` | 409 | Segundo embotellado del lote |
+| `TRC_BOTTLING_EXCEEDS_VOLUME` | 422 | Botellas × volumen > disponible (`meta.maxBottles`) |
+| `TRC_BOTTLING_LOSS_ABOVE_TOLERANCE` | 422 | Merma por encima de la tolerada |
+| `TRC_ALCOHOL_BALANCE_EXCEEDED` | 422 | Alcohol puro embotellado > disponible |
+| `TRC_DILUTION_NOT_ALLOWED` | 422 | Agua en un vino |
+| `TRC_COMPLIANCE_ISSUES_OPEN` | 422 | Embotellar o cerrar con incidencias abiertas |
+| `TRC_LOT_NOT_BOTTLED` | 409 | Laboratorio o códigos antes del embotellado |
+| `TRC_BOTTLE_CODE_NOT_FOUND` | 404 | Código de botella inexistente o de otra bodega |
+| `TRC_BOTTLE_CODE_ALREADY_VOIDED` | 409 | Anular dos veces |
+| `TRC_EXPORT_NOT_READY` | 409 | Descarga de una exportación pendiente |
+| `TRC_CORRECTION_FIELD_NOT_CORRECTABLE` | 422 | Campo fuera de la lista de corregibles |
+| `TRC_CORRECTION_BREAKS_RULES` | 422 | La corrección incumple una regla |
+| `TRC_DOSSIER_NOT_READY` | 422 | Cierre del expediente sin requisitos |
+| `TRC_DOSSIER_CLOSED` | 409 | Escritura tras el cierre |
+| `TRC_DATE_IN_FUTURE` | 422 | Fecha futura |
+| `TRC_DATE_BEFORE_PREVIOUS_STAGE` | 422 | Fecha anterior a la etapa previa |
+| `TRC_FILE_NOT_FOUND` | 422 | `key` de archivo inexistente o ajena |
+| `TRC_REPORT_TOO_LARGE` | 422 | Reporte con más de 10 000 filas |
+| `TRC_PLATFORM_READ_ONLY` | 403 | Escritura de la plataforma en la trazabilidad (S-25) |
+| `PUB_CODE_NOT_FOUND` | 404 | Pasaporte inexistente |
+| `PUB_CODE_MALFORMED` | 422 | Código imposible o con control inválido |
+| `PUB_TOO_MANY_LOOKUPS` | 429 | Demasiados códigos inexistentes (`Retry-After`) |
+| `NOT_IMPLEMENTED` | 501 | Ruta del contrato publicada sin lógica todavía |
 
 ### ERP — Embotellado
 | Código | HTTP | Descripción |

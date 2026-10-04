@@ -1,11 +1,8 @@
 import {
   Controller,
   Get,
-  Post,
-  Body,
   Param,
   Query,
-  HttpCode,
   HttpStatus,
   ParseUUIDPipe,
 } from '@nestjs/common';
@@ -15,57 +12,31 @@ import {
   ApiResponse,
   ApiBearerAuth,
   ApiNotFoundResponse,
-  ApiUnprocessableEntityResponse,
 } from '@nestjs/swagger';
 import { BottlingService } from '../services/bottling.service';
-import { CreateBottlingBatchDto } from '../dto/create-bottling-batch.dto';
 import { QueryBottlingBatchesDto } from '../dto/query-bottling-batches.dto';
 import { BottlingBatchResponseDto } from '../dto/bottling-batch-response.dto';
-import {
-  CurrentUser,
-  AuthenticatedUser,
-} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
-import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   OrgType,
+  PlatformReadOnly,
   RequireActiveOrg,
   Roles,
 } from '@modules/auth/decorators/authorization.decorators';
 
 @ApiTags('Fraccionamiento y Embotellado')
 @ApiBearerAuth()
+@PlatformReadOnly()
 @OrgType('WINERY')
 @RequireActiveOrg()
 @Controller('bottling')
+/**
+ * Lectura de los embotellados. El alta es `POST /v1/lots/{id}/bottling`
+ * (contrato O2 §6.1): la ruta legada `POST /v1/bottling` se retiró en H2.
+ */
 export class BottlingController {
   constructor(private readonly bottlingService: BottlingService) {}
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @Idempotent()
-  @Roles('OWNER', 'ENOLOGIST')
-  @ApiOperation({
-    summary: 'Registrar lote de embotellado y fraccionamiento',
-    description:
-      'Valida elegibilidad D.O. del lote de origen, calcula dilución de agua, genera código de lote internacional y URL QR.',
-  })
-  @ApiResponse({
-    status: HttpStatus.CREATED,
-    description: 'Lote de embotellado registrado',
-    type: BottlingBatchResponseDto,
-  })
-  @ApiUnprocessableEntityResponse({
-    description: 'Reglas D.O. incumplidas (ej: reposo inerte < 180 días)',
-  })
-  async create(
-    @TenantId() wineryId: string,
-    @CurrentUser() user: AuthenticatedUser,
-    @Body() dto: CreateBottlingBatchDto,
-  ) {
-    return this.bottlingService.create(wineryId, user.id, dto);
-  }
 
   @Get()
   @Roles('OWNER', 'ENOLOGIST', 'ACCOUNTANT')

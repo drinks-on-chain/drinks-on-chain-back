@@ -22,6 +22,7 @@ import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
 import {
   AUDIENCE_KEY,
   ORG_TYPES_KEY,
+  PLATFORM_READ_ONLY_KEY,
   REQUIRE_ACTIVE_ORG_KEY,
   ROLES_KEY,
 } from '../decorators/authorization.decorators';
@@ -104,6 +105,18 @@ export class AuthorizationGuard implements CanActivate {
       const activeType = user.organizationType;
       if (activeType && orgTypes.includes(activeType)) {
         this.checkRoles(user, roles);
+      } else if (
+        orgTypes.includes('WINERY') &&
+        activeType === 'PLATFORM' &&
+        !isReadMethod(request.method) &&
+        this.meta<boolean>(PLATFORM_READ_ONLY_KEY, context)
+      ) {
+        // S-25: la plataforma solo lee la trazabilidad (contrato O2 §20)
+        throw new AppException(
+          403,
+          ErrorCode.TRC_PLATFORM_READ_ONLY,
+          'La plataforma solo lee la trazabilidad: las escrituras las hace la bodega',
+        );
       } else if (
         orgTypes.includes('WINERY') &&
         activeType === 'PLATFORM' &&

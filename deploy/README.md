@@ -107,3 +107,45 @@ docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env lo
   docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env exec api node dist/seed.js
   ```
 - **Copias**: pendientes (`pg_dump` diario fuera del servidor, O0-OPS-2); no forman parte de este script.
+
+## Cierre H2 (`v0.2.0`): antes y después del despliegue
+
+Detalle en [`docs/arquitectura/trazabilidad.md`](../docs/arquitectura/trazabilidad.md#cierre-h2-contracción-v020). Nada de esto lo ejecuta la CI ni la aplicación: lo decide y lo aplica la coordinación.
+
+### 1. Antes de desplegar: comprobar la base (solo lectura)
+
+La migración `20261002180000_o2_contraer_h2` falla con un mensaje claro, sin aplicar nada, si queda algún registro de la cadena sin lote o alguna serie de botella con dos códigos activos. Una migración fallida queda marcada en `_prisma_migrations` y **ninguna versión de la API arranca** (tampoco la anterior, en el rollback) hasta resolverla, así que compruébalo antes:
+
+```sql
+SELECT (SELECT count(*) FROM fermentation_tanks WHERE lot_id IS NULL) AS tanques,
+       (SELECT count(*) FROM wine_aging_batches WHERE lot_id IS NULL) AS crianzas,
+       (SELECT count(*) FROM production_batches WHERE lot_id IS NULL) AS destilaciones,
+       (SELECT count(*) FROM bottling_batches WHERE lot_id IS NULL) AS embotellados,
+       (SELECT count(*) FROM batch_lab_analyses WHERE lot_id IS NULL) AS analisis,
+       (SELECT count(*) FROM (SELECT 1 FROM bottle_units WHERE status = 'ACTIVE'
+          GROUP BY lot_id, serial HAVING count(*) > 1) d) AS series_duplicadas;
+```
+
+Todo en cero → se puede desplegar. Si no, no despliegues: hay que asignar un lote a esos registros (o anular los códigos duplicados) primero. Si aun así la migración falla en un despliegue: corrige los datos y, con la conexión del dueño,
+
+```bash
+docker compose -p doc-dev -f deploy/dev/compose.yml --env-file ~/doc-dev/.env run --rm --no-deps \
+  --entrypoint ./node_modules/.bin/prisma api migrate resolve --rolled-back 20261002180000_o2_contraer_h2
+```
+
+y vuelve a desplegar.
+
+### 2. Usuario de base sin `DELETE` en la trazabilidad (opcional, preparado)
+
+Hoy la API se conecta con el dueño de la base, al que no se le pueden quitar permisos. Para cumplir el contrato (§1) hace falta un rol aparte:
+
+1. Copia de la base (`pg_dump`).
+2. Una contraseña nueva para el rol en `~/doc-dev/.env` (`APP_DB_USER=doc_app`, `APP_DB_PASSWORD=…`, generada con `openssl rand -hex 32`), sin imprimirla.
+3. [`dev/sql/rol-app-sin-delete.sql`](dev/sql/rol-app-sin-delete.sql) como el dueño, con la contraseña en el entorno (`DOC_APP_PASSWORD`), nunca como argumento. El script es idempotente y lleva el comando en su cabecera.
+4. Un despliegue: la API y el worker se conectan con `APP_DB_USER`; las migraciones siguen yendo con el dueño (`MIGRATE_DATABASE_URL`, que el `compose.yml` ya define).
+
+La semilla también funciona con ese rol (`exec api node dist/seed.js`). Para deshacerlo, quita las dos variables y despliega. Una tabla nueva de trazabilidad en una migración futura hay que añadirla a la lista del script y repetirlo.
+
+### 3. Lotes de demostración ya sembrados (opcional)
+
+La semilla es de solo inserción: los lotes de demostración que ya existen en el servidor **no se reescriben** (conservan los datos de los fixtures 0.3.x, con sus incidencias de migración) y solo se crean los que faltan. Para tener los 21 lotes coherentes hay que retirar antes la trazabilidad de las tres bodegas de demostración con [`dev/sql/reiniciar-trazabilidad-demo.sql`](dev/sql/reiniciar-trazabilidad-demo.sql) (borra datos: copia antes, `-v confirmar=si`) y volver a sembrar. Se pierde lo registrado a mano en esas bodegas.

@@ -143,7 +143,9 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
 /**
  * Normaliza `details` a `[{ field, message }]` o `null` (contrato O0 §1):
- * - una lista de `{ field, message }` se conserva;
+ * - una lista de `{ field, message }` se conserva, con la ampliación aditiva
+ *   de las reglas de la trazabilidad (contrato O2 §0): `code`, `rule`,
+ *   `expected`, `actual` y `meta` si vienen;
  * - una cadena suelta pasa a `{ field: null, message }`;
  * - cualquier otra forma (objetos con datos internos, p. ej. de la red) se
  *   descarta: queda en los logs, nunca en la respuesta.
@@ -161,11 +163,30 @@ export function normalizeErrorDetails(details: unknown): ErrorDetail[] | null {
       item !== null &&
       typeof (item as { message?: unknown }).message === 'string'
     ) {
-      const { field, message } = item as { field?: unknown; message: string };
-      normalized.push({
-        field: typeof field === 'string' && field.length > 0 ? field : null,
-        message,
-      });
+      const source = item as Record<string, unknown> & { message: string };
+      const detail: ErrorDetail = {
+        field:
+          typeof source.field === 'string' && source.field.length > 0
+            ? source.field
+            : null,
+        message: source.message,
+      };
+      if (typeof source.code === 'string') detail.code = source.code;
+      if (typeof source.rule === 'string') detail.rule = source.rule;
+      if ('expected' in source && source.expected !== undefined) {
+        detail.expected = source.expected;
+      }
+      if ('actual' in source && source.actual !== undefined) {
+        detail.actual = source.actual;
+      }
+      if (
+        typeof source.meta === 'object' &&
+        source.meta !== null &&
+        !Array.isArray(source.meta)
+      ) {
+        detail.meta = source.meta as Record<string, unknown>;
+      }
+      normalized.push(detail);
     }
   }
   return normalized.length > 0 ? normalized : null;

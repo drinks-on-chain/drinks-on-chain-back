@@ -35,6 +35,7 @@ import {
   ALLOWED_DECLARED_MIME_TYPES,
   MAX_UPLOAD_BYTES,
   fileTypeForKey,
+  generatedFileTypeForKey,
 } from '@shared/storage/file-type';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import { AppException } from '@shared/exceptions/app.exception';
@@ -169,7 +170,8 @@ export class UploadsController {
         'URL firmada inválida o caducada',
       );
     }
-    const type = fileTypeForKey(key);
+    const uploaded = fileTypeForKey(key);
+    const type = uploaded ?? generatedFileTypeForKey(key);
     if (!type || !(await this.storage.exists(key))) {
       throw new AppException(
         404,
@@ -184,7 +186,8 @@ export class UploadsController {
     res.setHeader('Content-Type', type.mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', `private, max-age=${remaining}`);
-    res.setHeader('Content-Disposition', 'inline');
+    // Lo subido se muestra; lo generado por el backend (ZIP) se descarga
+    res.setHeader('Content-Disposition', uploaded ? 'inline' : 'attachment');
     res.sendFile(this.storage.resolvePath(key));
   }
 }

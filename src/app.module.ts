@@ -22,6 +22,8 @@ import { WineriesModule } from './modules/wineries/wineries.module';
 import { TerroirsModule } from './modules/terroirs/terroirs.module';
 import { HarvestBatchesModule } from './modules/harvest-batches/harvest-batches.module';
 import { TraceabilityModule } from './modules/traceability/traceability.module';
+import { LotsModule } from './modules/lots/lots.module';
+import { LotsContractModule } from './modules/lots/contract/lots-contract.module';
 import { StorageModule } from './shared/storage/storage.module';
 import { UploadsModule } from './modules/uploads/uploads.module';
 import { IdempotencyModule } from './shared/idempotency/idempotency.module';
@@ -64,6 +66,8 @@ import { WaitlistModule } from './modules/waitlist/waitlist.module';
     TerroirsModule,
     HarvestBatchesModule,
     TraceabilityModule,
+    LotsModule,
+    LotsContractModule,
     UploadsModule,
     SettingsModule,
     MailModule,
