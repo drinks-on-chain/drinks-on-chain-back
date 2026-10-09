@@ -52,7 +52,7 @@
     "@nestjs/swagger": "^11.0.6",
     "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "^6.4.1",
-    "@stellar/stellar-sdk": "^13.3.0",
+    "@stellar/stellar-sdk": "17.2.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.41.6",
     "class-transformer": "^0.5.1",
@@ -153,7 +153,7 @@
       "^@config/(.*)$": "<rootDir>/config/$1"
     },
     "transformIgnorePatterns": [
-      "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib)"
+      "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib|uint8array-extras|@exodus|eventsource|eventsource-parser|smol-toml|feaxios|is-retry-allowed)"
     ]
   }
 }
