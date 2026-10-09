@@ -8,6 +8,7 @@ import type {
   SchemaObject,
 } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import { generateOpenApiDocument } from '../document';
+import { O3_STEP_3_3_ROUTES } from '@modules/tokenization/o3-implemented-routes';
 import { BEARER_AUTH, serializeOpenApiDocument } from '../openapi';
 
 type Operation = OperationObject & { method: string; path: string };
@@ -604,13 +605,20 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/tokenization-requests/{id}/resubmit',
     ];
 
-    it('publica las 54 rutas del contrato, todas con su 501 NOT_IMPLEMENTED', () => {
+    /** Rutas con lógica: ya no declaran 501 (paso 3.3). */
+    const IMPLEMENTED = new Set<string>(O3_STEP_3_3_ROUTES);
+    const PENDING_ROUTES = O3_ROUTES.filter((route) => !IMPLEMENTED.has(route));
+
+    it('publica las 54 rutas del contrato; las pendientes de su paso, con su 501 NOT_IMPLEMENTED', () => {
+      expect(O3_ROUTES).toHaveLength(54);
+      expect(O3_ROUTES.filter((route) => !find(route))).toEqual([]);
+      expect(PENDING_ROUTES).toHaveLength(54 - O3_STEP_3_3_ROUTES.length);
       const declared = ops
         .filter((op) => op.responses['501'])
         .map(key)
         .sort();
-      expect(declared).toEqual(O3_ROUTES);
-      for (const route of O3_ROUTES) {
+      expect(declared).toEqual(PENDING_ROUTES);
+      for (const route of PENDING_ROUTES) {
         const response = find(route).responses['501'] as {
           description: string;
           content?: Record<string, { schema?: unknown }>;
