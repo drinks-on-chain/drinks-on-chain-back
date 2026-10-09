@@ -4,6 +4,7 @@ import { PlatformAccountsService } from './accounts/platform-accounts.service';
 import { ChainCoreModule } from './chain-core.module';
 import { PublicChainRegistryService } from './identity/public-chain-registry.service';
 import { WineryChainActionsService } from './identity/winery-chain-actions.service';
+import { ChainMonitoringService } from './monitoring/chain-monitoring.service';
 import { PlatformChainController } from './platform-chain.controller';
 import {
   PublicChainController,
@@ -37,6 +38,7 @@ import {
     PlatformAccountsService,
     WineryChainActionsService,
     PublicChainRegistryService,
+    ChainMonitoringService,
   ],
   exports: [ChainCoreModule],
 })

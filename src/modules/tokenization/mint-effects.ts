@@ -222,6 +222,18 @@ export async function validateMintChunk(
   ) {
     return reject('la bodega no tiene un contrato vigente en esta red');
   }
+  // Bodega suspendida o revocada (decisión de la coordinación, 09-10-2026):
+  // la emisión no se envía ni se da por fallida; espera a que se reactive
+  const winery = await db.winery.findUnique({
+    where: { id: collection.wineryId },
+    select: { certificationStatus: true },
+  });
+  if (winery?.certificationStatus !== 'ACTIVE') {
+    throw new IntentOnHold(
+      'CHN_WINERY_NOT_ACTIVE',
+      `La bodega está ${winery?.certificationStatus ?? 'sin estado'}: la emisión espera a que se reactive`,
+    );
+  }
   if (contract.paused || account.status === 'PAUSED') {
     reject('el contrato de la bodega está pausado en la red');
   }
@@ -369,13 +381,14 @@ export async function applyMintChunkConfirmed(
     INSERT INTO tokens (
       id, collection_id, winery_id, lot_id, contract_id, token_id,
       bottle_number, status, owner_kind, owner_address, mint_id, mint_tx_id,
-      created_at, updated_at
+      onchain_owner, onchain_checked_at, created_at, updated_at
     )
     SELECT gen_random_uuid(), ${collection.id}::uuid,
       ${collection.wineryId}::uuid, ${collection.lotId}::uuid,
       ${contract.id}::uuid, ${firstTokenId}::int + g,
       ${params.firstBottleNumber}::int + g, 'MINTED', 'WINERY',
-      ${ownerAddress}, ${mint.id}::uuid, ${transaction.id}::uuid, ${at}, ${at}
+      ${ownerAddress}, ${mint.id}::uuid, ${transaction.id}::uuid,
+      ${ownerAddress}, ${at}, ${at}, ${at}
     FROM generate_series(0, ${params.amount}::int - 1) AS g`;
 
   const allRanges: MintRange[] = [

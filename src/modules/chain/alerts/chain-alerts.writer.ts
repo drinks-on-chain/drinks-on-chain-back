@@ -18,13 +18,16 @@ export interface ChainAlertInput {
   message: string;
   expected?: Prisma.InputJsonValue;
   actual?: Prisma.InputJsonValue;
+  /** Conciliación que la detectó (§8.2). */
+  runId?: string | null;
 }
 
 /**
  * Escritura de alertas de la cadena (contrato O3 §8.2). Una sola abierta por
  * código y sujeto (índice único parcial `chain_alerts_open_code_subject_key`);
- * cada alerta nueva publica `chain.alert.raised` en la misma transacción. La
- * bandeja y su resolución llegan con el paso 3.6.
+ * cada alerta nueva publica `chain.alert.raised` en la misma transacción (el
+ * worker avisa por correo a operaciones de las `CRITICAL`). La bandeja y su
+ * resolución a mano están en `monitoring/chain-monitoring.service.ts`.
  */
 @Injectable()
 export class ChainAlertsWriter {
@@ -59,6 +62,7 @@ export class ChainAlertsWriter {
         message: input.message,
         expected: input.expected ?? Prisma.DbNull,
         actual: input.actual ?? Prisma.DbNull,
+        runId: input.runId ?? null,
       },
     });
     await this.outbox.add<ChainAlertRaisedPayload>(db, {

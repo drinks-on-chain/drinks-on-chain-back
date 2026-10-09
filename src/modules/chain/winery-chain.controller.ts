@@ -77,7 +77,7 @@ export class PlatformWineryChainController {
     summary: 'Cuenta de una bodega en la red',
     description:
       'Contrato O3 §3.4: identidad (cuenta y contrato), NFT por lote, anclajes, últimas transacciones y lo ' +
-      'pagado por la plataforma por esa bodega. Las colecciones (`totals`, `byLot`) llegan con los pasos 3.4–3.6.',
+      'pagado por la plataforma por esa bodega (`totals` y `byLot` salen de sus colecciones).',
   })
   @ApiOkResponse({ type: WineryChainAccountViewDto })
   @ApiRoleForbidden()

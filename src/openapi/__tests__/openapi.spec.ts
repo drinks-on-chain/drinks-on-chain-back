@@ -11,6 +11,7 @@ import { generateOpenApiDocument } from '../document';
 import {
   O3_STEP_3_3_ROUTES,
   O3_STEP_3_5_ROUTES,
+  O3_STEP_3_6_ROUTES,
 } from '@modules/tokenization/o3-implemented-routes';
 import { BEARER_AUTH, serializeOpenApiDocument } from '../openapi';
 
@@ -624,23 +625,28 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/platform/wineries/{id}/chain/provision',
       'POST /v1/platform/wineries/{id}/chain/unpause',
     ];
-    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las de los pasos 3.3 y 3.5. */
+    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las de los pasos 3.3, 3.5 y 3.6. */
     const O3_IMPLEMENTED = new Set<string>([
       ...O3_CHAIN_IMPLEMENTED,
       ...O3_STEP_3_3_ROUTES,
       ...O3_STEP_3_5_ROUTES,
+      ...O3_STEP_3_6_ROUTES,
     ]);
     const O3_PENDING = O3_ROUTES.filter((route) => !O3_IMPLEMENTED.has(route));
 
-    it('publica las 54 rutas del contrato; las pendientes de su paso, con su 501 NOT_IMPLEMENTED', () => {
+    it('publica las 54 rutas del contrato y ninguna responde ya 501 NOT_IMPLEMENTED', () => {
       expect(O3_ROUTES).toHaveLength(54);
       expect(O3_ROUTES.filter((route) => !find(route))).toEqual([]);
       expect(O3_IMPLEMENTED.size).toBe(
         O3_CHAIN_IMPLEMENTED.length +
           O3_STEP_3_3_ROUTES.length +
-          O3_STEP_3_5_ROUTES.length,
+          O3_STEP_3_5_ROUTES.length +
+          O3_STEP_3_6_ROUTES.length,
       );
-      expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.size);
+      // Paso 3.6: se acabaron las rutas pendientes
+      expect(O3_IMPLEMENTED.size).toBe(54);
+      expect(O3_PENDING).toEqual([]);
+      expect(JSON.stringify(document)).not.toContain('NOT_IMPLEMENTED: llega');
       const declared = ops
         .filter((op) => op.responses['501'])
         .map(key)

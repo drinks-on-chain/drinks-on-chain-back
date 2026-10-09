@@ -45,3 +45,24 @@ export const O3_STEP_3_3_ROUTES: readonly string[] = [
 export const O3_STEP_3_5_ROUTES: readonly string[] = [
   'GET /v1/public/lots/{lotCode}/verification',
 ];
+
+/**
+ * Rutas a las que dio lógica el paso 3.6 (indexador, conciliación y alertas,
+ * cierre del lote con faltante): con ellas ninguna de las 54 rutas de la ola
+ * responde ya `501`.
+ */
+export const O3_STEP_3_6_ROUTES: readonly string[] = [
+  // Back office · indexador, conciliación y alertas (§8.1 y §8.2)
+  'GET /v1/platform/chain/events',
+  'GET /v1/platform/chain/reconciliation/runs',
+  'GET /v1/platform/chain/reconciliation/runs/{id}',
+  'POST /v1/platform/chain/reconciliation/runs',
+  'GET /v1/platform/chain/alerts',
+  'POST /v1/platform/chain/alerts/{id}/resolve',
+  // Cierre del lote con faltante (§8.4)
+  'GET /v1/platform/lot-closures',
+  'GET /v1/platform/collections/{id}/closure',
+  'POST /v1/platform/collections/{id}/closure/decide',
+  'POST /v1/platform/collections/{id}/closure/items/{tokenId}/resolve',
+  'GET /v1/collections/{id}/closure',
+];

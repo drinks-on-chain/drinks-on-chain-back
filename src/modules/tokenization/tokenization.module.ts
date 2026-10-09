@@ -3,6 +3,7 @@ import { OutboxModule } from '@shared/outbox/outbox.module';
 import { ChainModule } from '@modules/chain/chain.module';
 import { PassportLookupLimiter } from '@modules/lots/passport/passport-lookup-limiter';
 import { MailModule } from '@modules/mail/mail.module';
+import { LotClosureService } from './closure/lot-closure.service';
 import { CollectionImagesService } from './collection-images.service';
 import { CollectionsService } from './collections.service';
 import { ErpTokenizationController } from './erp-tokenization.controller';
@@ -25,8 +26,9 @@ import { TokenizationRequestsService } from './tokenization-requests.service';
  * emisión `PENDING` + `tokenization.request_approved`), colecciones y lo
  * público. La red entra por `TOKENIZATION_CHAIN_PORT`
  * (`ChainTokenizationAdapter`): identidad de la bodega e intenciones
- * `MINT_BATCH` por el outbox; el firmante del worker las envía. El cierre
- * con faltante sigue con 501 hasta el paso 3.6.
+ * `MINT_BATCH` por el outbox; el firmante del worker las envía. Paso 3.6:
+ * cierre del lote con faltante (`closure/`), calculado al embotellar,
+ * anular un código o descartar el lote, con sus quemas `BURN_UNSOLD`.
  */
 @Module({
   imports: [ChainModule, MailModule, OutboxModule],
@@ -46,6 +48,7 @@ import { TokenizationRequestsService } from './tokenization-requests.service';
     CollectionImagesService,
     TokenizationRequestsService,
     CollectionsService,
+    LotClosureService,
     PublicTokenizationService,
     // Mismo freno por IP que el pasaporte (§6.5): los contadores viven en Redis
     PassportLookupLimiter,

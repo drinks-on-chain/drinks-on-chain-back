@@ -10,6 +10,7 @@ import { QueueRegistry } from '../../../worker/queue-registry.service';
 import {
   CHAIN_ANCHOR_BACKFILL_JOB,
   CHAIN_IDENTITY_BACKFILL_JOB,
+  CHAIN_TTL_REVIEW_JOB,
   CHAIN_TX_CONFIRM_JOB,
   CHAIN_TX_PROCESS_JOB,
   type ChainTxJobData,
@@ -72,6 +73,16 @@ export class ChainJobsQueue {
       CHAIN_ANCHOR_BACKFILL_JOB,
       {},
       { jobId: 'anchor-backfill', delay: delayMs },
+    );
+  }
+
+  /** Revisión del TTL fuera de su hora: una emisión deja entradas nuevas (§8.3). */
+  ttlReview(delayMs = 0): Promise<void> {
+    return this.add(
+      QUEUE_CHAIN,
+      CHAIN_TTL_REVIEW_JOB,
+      {},
+      { jobId: 'ttl-review', delay: delayMs },
     );
   }
 

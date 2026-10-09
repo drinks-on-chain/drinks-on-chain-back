@@ -71,6 +71,8 @@ function database(
     request?: Record<string, unknown>;
     earlier?: { quantity: number; status: string }[];
     lot?: Record<string, unknown> | null;
+    /** Estado de la bodega (`certificationStatus`). */
+    winery?: string;
   } = {},
 ) {
   const account = {
@@ -140,6 +142,11 @@ function database(
     },
     collection: { update: jest.fn() },
     lot: { findFirst: jest.fn().mockResolvedValue(lot) },
+    winery: {
+      findUnique: jest
+        .fn()
+        .mockResolvedValue({ certificationStatus: over.winery ?? 'ACTIVE' }),
+    },
   };
 }
 
@@ -198,6 +205,29 @@ describe('MINT_BATCH · validación antes de firmar (§2.2)', () => {
       where: { id: COLLECTION },
       data: { mintStatus: 'IN_PROGRESS' },
     });
+  });
+
+  it.each(['SUSPENDED', 'REVOKED'])(
+    'bodega %s: la emisión no se envía ni falla, espera (CHN_WINERY_NOT_ACTIVE)',
+    async (status) => {
+      // También con el contrato ya pausado en la red (bodega revocada)
+      for (const contract of [{}, { paused: true }]) {
+        const db = database({ winery: status, contract });
+        const error = await validate(db).catch((e: unknown) => e);
+        expect(error).toBeInstanceOf(IntentOnHold);
+        expect((error as IntentOnHold).code).toBe('CHN_WINERY_NOT_ACTIVE');
+        expect((error as IntentOnHold).message).toContain(status);
+        expect(db.mint.update).not.toHaveBeenCalled();
+        expect(db.collection.update).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it('con la bodega suspendida y la emisión apagada manda la bodega', async () => {
+    const db = database({ winery: 'SUSPENDED' });
+    await expect(
+      validateMintChunk(db as never, tx(), { mintEnabled: false }),
+    ).rejects.toMatchObject({ code: 'CHN_WINERY_NOT_ACTIVE' });
   });
 
   it('un reintento tras FAILED vuelve a validar y a IN_PROGRESS', async () => {

@@ -1,4 +1,12 @@
 import type { ChainTransaction, Prisma } from '@prisma/client';
+import {
+  Account,
+  Contract,
+  Keypair,
+  SorobanDataBuilder,
+  type Transaction,
+  type xdr,
+} from '@stellar/stellar-sdk';
 import type { OutboxService } from '@shared/outbox/outbox.service';
 import type { PrismaService } from '@shared/prisma/prisma.service';
 import { ChainAlertsWriter } from '../alerts/chain-alerts.writer';
@@ -16,7 +24,10 @@ import { FundAccountHandler } from '../jobs/handlers/fund-account.handler';
 import { CreateWineryAccountHandler } from '../jobs/handlers/winery-identity.handlers';
 import { ChainSigner } from '../jobs/signer/chain-signer.service';
 import type { IntentEnv, IntentHandler } from '../jobs/signer/intent-handler';
+import type { ChainIntentsService } from '../tx/chain-intents.service';
+import { instanceKey } from '../ttl/ttl-keys';
 import {
+  ArchivedEntriesFailure,
   ChainTxFailure,
   IntentOnHold,
   IntentRejected,
@@ -46,6 +57,7 @@ const settings = (overrides: Partial<ChainSettings> = {}): ChainSettings => ({
   consumerSeedCheckAddress: null,
   publicApiBaseUrl: 'https://api.e2e.test',
   deployMaxFeeStroops: CHAIN_DEFAULTS.deployMaxFeeStroops,
+  codeTtlMaxFeeStroops: CHAIN_DEFAULTS.codeTtlMaxFeeStroops,
   txRetryDelaysMs: CHAIN_DEFAULTS.txRetryDelaysMs,
   friendbotUrl: null,
   environment: 'testnet',
@@ -500,6 +512,9 @@ describe('Firmante: solo intenciones registradas (contrato O3 §2.2)', () => {
       getTransaction: jest.fn(),
       fund: jest.fn().mockResolvedValue({ txHash: null }),
     };
+    const intents = {
+      register: jest.fn().mockResolvedValue({ created: true }),
+    };
     const signer = new ChainSigner(
       prisma as unknown as PrismaService,
       lifecycle as unknown as ChainTxLifecycle,
@@ -507,8 +522,19 @@ describe('Firmante: solo intenciones registradas (contrato O3 §2.2)', () => {
       custody as unknown as KeyCustody,
       gateway as unknown as ChainGateway,
       settings(options.settings),
+      intents as unknown as ChainIntentsService,
     );
-    return { signer, db, prisma, lifecycle, jobs, custody, gateway, handler };
+    return {
+      signer,
+      db,
+      prisma,
+      lifecycle,
+      jobs,
+      custody,
+      gateway,
+      handler,
+      intents,
+    };
   }
   const rejected = (lifecycle: { fail: jest.Mock }, reason: RegExp) => {
     expect(lifecycle.fail).toHaveBeenCalledTimes(1);
@@ -766,6 +792,226 @@ describe('Firmante: solo intenciones registradas (contrato O3 §2.2)', () => {
     );
     expect(await down.signer.process('id')).toBe('WAITING');
     expect(down.gateway.send).not.toHaveBeenCalled();
+  });
+
+  // ── Entradas archivadas (§2.3 y §8.3; S-25: con un RPC simulado) ─────────
+
+  it('CHN_ARCHIVED_ENTRY encadena RESTORE_ENTRIES con las claves y reintenta', async () => {
+    const keys = ['AAAAB+ufdbKhcRfKsMRNMY/9Lw92QsSI9WsxFnmYeVziIInY'];
+    const { signer, lifecycle, intents, jobs, custody, gateway } = build(
+      tx({ wineryId: WINERY, correlationId: 'corr-1' }),
+      {
+        handler: {
+          prepare: jest
+            .fn()
+            .mockRejectedValue(new ArchivedEntriesFailure(keys)),
+        },
+      },
+    );
+    lifecycle.fail.mockResolvedValue('RETRYING');
+    expect(await signer.process('id')).toBe('RETRYING');
+    const [, failure] = lifecycle.fail.mock.calls[0] as [
+      string,
+      ChainTxFailure,
+    ];
+    expect(failure).toMatchObject({
+      code: 'CHN_ARCHIVED_ENTRY',
+      retryable: true,
+    });
+    // Las claves no viajan al historial ni a lastError
+    expect(JSON.stringify(failure.meta)).not.toContain(keys[0]);
+    expect(failure.detail).not.toContain(keys[0]);
+    expect(intents.register).toHaveBeenCalledTimes(1);
+    expect(intents.register.mock.calls[0][1]).toEqual({
+      kind: 'RESTORE_ENTRIES',
+      intentKey: 'restore:44444444-4444-4444-8444-444444444444:1',
+      subject: { type: 'CONTRACT', id: CONTRACT },
+      wineryId: WINERY,
+      params: {
+        forTransactionId: '44444444-4444-4444-8444-444444444444',
+        ledgerKeys: keys,
+      },
+      correlationId: 'corr-1',
+    });
+    // La original se reintenta con su espera; nada se firmó ni se envió
+    expect(jobs.process).toHaveBeenCalledWith('id', expect.any(Number));
+    expect(custody.sign).not.toHaveBeenCalled();
+    expect(gateway.send).not.toHaveBeenCalled();
+  });
+
+  it('sin reintentos por delante, o si quien falla es la propia restauración, no encadena otra', async () => {
+    const archived = () => ({
+      prepare: jest
+        .fn()
+        .mockRejectedValue(new ArchivedEntriesFailure(['clave'])),
+    });
+    const exhausted = build(tx(), { handler: archived() });
+    exhausted.lifecycle.fail.mockResolvedValue('FAILED');
+    expect(await exhausted.signer.process('id')).toBe('FAILED');
+    expect(exhausted.intents.register).not.toHaveBeenCalled();
+
+    const restore = build(tx({ kind: 'RESTORE_ENTRIES' }), {
+      handler: archived(),
+    });
+    restore.lifecycle.fail.mockResolvedValue('RETRYING');
+    expect(await restore.signer.process('id')).toBe('RETRYING');
+    expect(restore.intents.register).not.toHaveBeenCalled();
+  });
+
+  it('una simulación que pide restaurar se convierte en CHN_ARCHIVED_ENTRY con sus claves', async () => {
+    const operations = Keypair.random().publicKey();
+    const contract = 'CDQX4AKGU76O7GH7F6SXPWGQ7YAVQTYPUYCSER67PWHJA3M7GIF6LACH';
+    const archivedKey = instanceKey(contract);
+    const { signer, lifecycle, intents, custody, gateway } = build(tx(), {
+      handler: {
+        prepare: jest.fn().mockResolvedValue({
+          type: 'SOROBAN',
+          operation: new Contract(contract).call('total_minted'),
+          authSigners: [],
+        }),
+      },
+    });
+    custody.publicKey.mockResolvedValue(operations);
+    gateway.loadAccount.mockResolvedValue(new Account(operations, '7'));
+    // Lo que responde el RPC cuando la invocación toca una entrada archivada
+    gateway.simulate.mockResolvedValue({
+      _parsed: true,
+      id: '1',
+      latestLedger: 100,
+      events: [],
+      minResourceFee: '100',
+      transactionData: new SorobanDataBuilder(),
+      restorePreamble: {
+        minResourceFee: '50',
+        transactionData: new SorobanDataBuilder().setReadWrite([archivedKey]),
+      },
+    });
+    lifecycle.fail.mockResolvedValue('RETRYING');
+    expect(await signer.process('id')).toBe('RETRYING');
+    const [, failure] = lifecycle.fail.mock.calls[0] as [
+      string,
+      ArchivedEntriesFailure,
+    ];
+    expect(failure).toBeInstanceOf(ArchivedEntriesFailure);
+    expect(failure.ledgerKeys).toEqual([archivedKey.toXDR('base64')]);
+    expect(intents.register.mock.calls[0][1]).toMatchObject({
+      kind: 'RESTORE_ENTRIES',
+      params: { ledgerKeys: [archivedKey.toXDR('base64')] },
+    });
+    expect(custody.sign).not.toHaveBeenCalled();
+    expect(gateway.send).not.toHaveBeenCalled();
+  });
+
+  it('mantenimiento: extendFootprintTtl y restoreFootprint llevan las claves en su huella y solo firma operaciones', async () => {
+    const keypair = Keypair.random();
+    const contract = 'CDQX4AKGU76O7GH7F6SXPWGQ7YAVQTYPUYCSER67PWHJA3M7GIF6LACH';
+    const key = instanceKey(contract);
+    for (const prepared of [
+      {
+        type: 'FOOTPRINT',
+        action: 'EXTEND',
+        keys: [key],
+        extendTo: 2_073_600,
+        maxFeeStroops: '1000000000',
+      },
+      { type: 'FOOTPRINT', action: 'RESTORE', keys: [key] },
+    ] as const) {
+      const { signer, custody, gateway, lifecycle } = build(tx(), {
+        handler: { prepare: jest.fn().mockResolvedValue(prepared) },
+      });
+      custody.publicKey.mockResolvedValue(keypair.publicKey());
+      custody.sign.mockImplementation((_ref: string, payload: Uint8Array) =>
+        Promise.resolve(new Uint8Array(keypair.sign(Buffer.from(payload)))),
+      );
+      gateway.loadAccount.mockResolvedValue(
+        new Account(keypair.publicKey(), '7'),
+      );
+      gateway.simulate.mockResolvedValue({
+        _parsed: true,
+        id: '1',
+        latestLedger: 100,
+        events: [],
+        // La renta del código puede ser alta: cabe en su tope propio
+        minResourceFee: prepared.action === 'EXTEND' ? '650000000' : '1000',
+        transactionData:
+          prepared.action === 'EXTEND'
+            ? new SorobanDataBuilder()
+                .setResourceFee('650000000')
+                .setReadOnly([key])
+            : new SorobanDataBuilder()
+                .setResourceFee('1000')
+                .setReadWrite([key]),
+      });
+      gateway.send.mockResolvedValue({ accepted: true });
+      lifecycle.lock
+        .mockResolvedValueOnce(tx())
+        .mockResolvedValue({ ...tx(), status: 'BUILDING' });
+      expect(await signer.process('id')).toBe('SUBMITTED');
+      const sent = gateway.send.mock.calls[0][0] as Transaction;
+      expect(sent.operations).toHaveLength(1);
+      expect(sent.operations[0].type).toBe(
+        prepared.action === 'EXTEND'
+          ? 'extendFootprintTtl'
+          : 'restoreFootprint',
+      );
+      const data = new SorobanDataBuilder(
+        (
+          sent.toEnvelope().value as unknown as {
+            tx: { ext: { value: xdr.SorobanTransactionData } };
+          }
+        ).tx.ext.value,
+      );
+      const footprint =
+        prepared.action === 'EXTEND' ? data.getReadOnly() : data.getReadWrite();
+      expect(footprint.map((k) => k.toXDR('base64'))).toEqual([
+        key.toXDR('base64'),
+      ]);
+      // Un solo firmante: la cuenta de operaciones
+      expect(custody.sign).toHaveBeenCalledTimes(1);
+      expect(custody.sign.mock.calls[0][0]).toBe('platform-operations');
+      expect(sent.signatures).toHaveLength(1);
+    }
+  });
+
+  it('la extensión del código no pasa con el tope general, sí con el suyo', async () => {
+    const keypair = Keypair.random();
+    const key = instanceKey(
+      'CDQX4AKGU76O7GH7F6SXPWGQ7YAVQTYPUYCSER67PWHJA3M7GIF6LACH',
+    );
+    const { signer, custody, gateway, lifecycle } = build(tx(), {
+      handler: {
+        prepare: jest.fn().mockResolvedValue({
+          type: 'FOOTPRINT',
+          action: 'EXTEND',
+          keys: [key],
+          extendTo: 2_073_600,
+          // Sin tope propio: vale el general (10 XLM)
+        }),
+      },
+    });
+    custody.publicKey.mockResolvedValue(keypair.publicKey());
+    gateway.loadAccount.mockResolvedValue(
+      new Account(keypair.publicKey(), '7'),
+    );
+    gateway.simulate.mockResolvedValue({
+      _parsed: true,
+      id: '1',
+      latestLedger: 100,
+      events: [],
+      minResourceFee: '650000000',
+      transactionData: new SorobanDataBuilder()
+        .setResourceFee('650000000')
+        .setReadOnly([key]),
+    });
+    lifecycle.fail.mockResolvedValue('RETRYING');
+    expect(await signer.process('id')).toBe('RETRYING');
+    const [, failure] = lifecycle.fail.mock.calls[0] as [
+      string,
+      ChainTxFailure,
+    ];
+    expect(failure.code).toBe('CHN_INSUFFICIENT_FEE');
+    expect(custody.sign).not.toHaveBeenCalled();
+    expect(gateway.send).not.toHaveBeenCalled();
   });
 });
 

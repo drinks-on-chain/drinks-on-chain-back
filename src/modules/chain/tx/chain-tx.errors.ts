@@ -16,6 +16,7 @@ export type ChainTxErrorCode =
   | 'CHN_INSUFFICIENT_BALANCE'
   | 'CHN_INTENT_REJECTED'
   | 'CHN_MINT_DISABLED'
+  | 'CHN_WINERY_NOT_ACTIVE'
   | 'CHN_NETWORK_RESET';
 
 /** Transitorios: el worker reintenta solo con las esperas de S-4. */
@@ -53,6 +54,8 @@ const MESSAGES: Record<ChainTxErrorCode, string> = {
   CHN_INTENT_REJECTED:
     'La intención no cuadra con los datos del sistema; no se firmó',
   CHN_MINT_DISABLED: 'La emisión está deshabilitada en este entorno',
+  CHN_WINERY_NOT_ACTIVE:
+    'La bodega no está activa: la emisión espera a que se reactive',
   CHN_NETWORK_RESET: 'La red se reinició; hay que regenerar la identidad',
 };
 
@@ -73,6 +76,21 @@ export class ChainTxFailure extends Error {
     super(message ?? MESSAGES[code]);
     this.name = 'ChainTxFailure';
     this.retryable = isTransientChainTxError(code);
+  }
+}
+
+/**
+ * La simulación pide restaurar entradas archivadas (§2.3, §8.3): el firmante
+ * encadena `RESTORE_ENTRIES` con estas claves (`LedgerKey` en XDR base64) y
+ * reintenta. Las claves no van al historial ni a `lastError`.
+ */
+export class ArchivedEntriesFailure extends ChainTxFailure {
+  constructor(readonly ledgerKeys: readonly string[]) {
+    super(
+      'CHN_ARCHIVED_ENTRY',
+      `la simulación pide restaurar ${ledgerKeys.length} entrada(s)`,
+    );
+    this.name = 'ArchivedEntriesFailure';
   }
 }
 

@@ -182,9 +182,16 @@ describe('Correos de la tokenización (§11)', () => {
     botellas: '1–100',
     contrato: 'CDQX4AKGU76O7GH7F6SXPWGQ7YAVQTYPUYCSER67PWHJA3M7GIF6LACH',
     explorador: 'https://stellar.expert/explorer/testnet/contract/CDQX',
+    emitidos: '100',
+    faltante: '20',
+    sinVender: '20',
+    vendidos: '0',
+    codigo: 'TOTAL_MINTED_MISMATCH',
+    red: 'TESTNET',
+    detectada: '2026-10-09T12:00:00.000Z',
   };
 
-  it('las siete plantillas están registradas y se rinden con sus variables', () => {
+  it('las diez plantillas están registradas y se rinden con sus variables', () => {
     expect(TOKENIZATION_TEMPLATES.map((t) => t.name)).toEqual([
       'tokenizacion-recibida',
       'tokenizacion-nueva-operaciones',
@@ -193,6 +200,9 @@ describe('Correos de la tokenización (§11)', () => {
       'tokenizacion-rechazada',
       'coleccion-estado',
       'nft-emitidos',
+      'faltante-detectado',
+      'faltante-operaciones',
+      'alerta-cadena',
     ]);
     const renderer = new MailRenderer();
     for (const template of TOKENIZATION_TEMPLATES) {

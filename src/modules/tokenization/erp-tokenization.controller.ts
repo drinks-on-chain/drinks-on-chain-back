@@ -29,11 +29,9 @@ import {
 } from '@modules/auth/decorators/authorization.decorators';
 import {
   ApiErrorCodes,
-  ApiNotImplementedO3,
   ApiRuleErrors,
   WINERY_TOKENIZATION_READERS,
   WINERY_TOKEN_READERS,
-  notImplementedO3,
 } from '@modules/chain/contract/o3-contract';
 import {
   CollectionDto,
@@ -57,6 +55,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
+import { LotClosureService } from './closure/lot-closure.service';
 import { CollectionsService } from './collections.service';
 import { TokenizationRequestsService } from './tokenization-requests.service';
 
@@ -100,6 +99,7 @@ export class ErpTokenizationController {
   constructor(
     private readonly requests: TokenizationRequestsService,
     private readonly collections: CollectionsService,
+    private readonly closures: LotClosureService,
   ) {}
 
   @Get('lots/:id/tokenization')
@@ -328,11 +328,10 @@ export class ErpTokenizationController {
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'TOK_CLOSURE_NOT_APPLICABLE (lote sin embotellar ni descartar; `meta.stage`)',
   ])
-  @ApiNotImplementedO3('3.6')
   closure(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WineryLotClosureDto> {
-    throw notImplementedO3('3.6');
+    return this.closures.wineryView(wineryId, id);
   }
 }

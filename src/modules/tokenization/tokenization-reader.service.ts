@@ -45,7 +45,12 @@ import type {
   CollectionPriceDto,
   PriceSuggestionDto,
 } from './dto/commercial.dto';
-import { ZERO_TOKEN_COUNTS, type TokenCountsDto } from './dto/token-counts.dto';
+import { closureOfCollection } from './closure/closure-view';
+import {
+  TOKEN_COUNT_KEYS,
+  ZERO_TOKEN_COUNTS,
+  type TokenCountsDto,
+} from './dto/token-counts.dto';
 import type {
   PlatformTokenizationRequestDto,
   TokenizationRequestDto,
@@ -82,17 +87,6 @@ import type {
   TokenOwnerKind,
   TokenStatus,
 } from './tokenization.constants';
-
-const TOKEN_COUNT_KEYS: Record<string, keyof TokenCountsDto> = {
-  MINTED: 'available',
-  RESERVED: 'reserved',
-  SOLD: 'sold',
-  REDEEMABLE: 'redeemable',
-  PASS_ACTIVE: 'passActive',
-  REDEEMED: 'redeemed',
-  BURNED: 'burned',
-  EXPIRED: 'expired',
-};
 
 const iso = (value: Date | null | undefined): string | null =>
   value ? value.toISOString() : null;
@@ -609,8 +603,8 @@ export class TokenizationReader {
         reason: entry.reason,
       })),
       anchor,
-      // El cierre con faltante lo calcula el paso 3.6
-      closure: null,
+      // Cierre del lote (§8.4): `null` hasta que se embotella o se descarta
+      closure: await closureOfCollection(client, row.id, this.explorer()),
       metrics,
     };
   }

@@ -13,6 +13,7 @@ import type { WineryChainIdentityDto } from '@modules/chain/dto/chain.dto';
 import { WineryIdentityService } from '@modules/chain/identity/winery-identity.service';
 import { ChainIntentsService } from '@modules/chain/tx/chain-intents.service';
 import type {
+  BurnIntentRequest,
   ChainPortClient,
   MintIntentRequest,
   TokenizationChainPort,
@@ -122,6 +123,31 @@ export class ChainTokenizationAdapter implements TokenizationChainPort {
         },
       });
     }
+  }
+
+  async registerBurnIntent(
+    tx: Prisma.TransactionClient,
+    request: BurnIntentRequest,
+  ): Promise<string> {
+    const { transaction } = await this.intents.register(tx, {
+      kind: 'BURN_UNSOLD',
+      intentKey: intentKeys.burnUnsold(request.closureId, request.tokenId),
+      subject: { type: 'TOKEN', id: request.tokenRowId },
+      wineryId: request.wineryId,
+      params: {
+        closureId: request.closureId,
+        collectionId: request.collectionId,
+        contractId: request.contractId,
+        tokenRowId: request.tokenRowId,
+        tokenId: request.tokenId,
+      },
+      requestedBy: {
+        userId: request.requestedBy.userId,
+        fullName: request.requestedBy.fullName,
+        source: 'API',
+      },
+    });
+    return transaction.id;
   }
 
   /**
