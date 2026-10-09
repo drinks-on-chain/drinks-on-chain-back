@@ -26,7 +26,7 @@ describe('Environment Validation Schema (Joi)', () => {
     expect(error).toBeUndefined();
     expect(value.PORT).toBe(4000);
     expect(value.NODE_ENV).toBe('development');
-    expect(value.STELLAR_NETWORK).toBe('testnet');
+    expect(value.STELLAR_NETWORK).toBe('TESTNET');
   });
 
   it('should fail if DATABASE_URL is missing or invalid', () => {
@@ -46,26 +46,42 @@ describe('Environment Validation Schema (Joi)', () => {
     );
   });
 
-  it('should validate STELLAR_RELAYER_SECRET_KEY only when it is present', () => {
-    const invalid = { ...validEnv, STELLAR_RELAYER_SECRET_KEY: 'INVALID_KEY' };
+  it('valida las variables de la cadena solo si se definen (Ola 3; ver chain-config.spec)', () => {
+    const invalid = { ...validEnv, CHAIN_SECRET_OPERATIONS: 'INVALID_KEY' };
     const { error } = envValidationSchema.validate(invalid);
     expect(error).toBeDefined();
     expect(error?.message).toContain(
-      'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed',
+      'CHAIN_SECRET_OPERATIONS no tiene el formato esperado',
     );
+    expect(error?.message).not.toContain('INVALID_KEY');
 
     const { error: noKeyError } = envValidationSchema.validate(validEnv);
     expect(noKeyError).toBeUndefined();
   });
 
+  it('el custodio ENV no arranca contra la red pública', () => {
+    const { error } = envValidationSchema.validate({
+      ...validEnv,
+      STELLAR_NETWORK: 'PUBLIC',
+      CHAIN_CUSTODY_DRIVER: 'ENV',
+    });
+    expect(error?.message).toContain(
+      'CHAIN_CUSTODY_DRIVER=ENV no se admite con STELLAR_NETWORK=PUBLIC',
+    );
+  });
+
   it('should not require integrations that do not exist yet (OP-03)', () => {
     // Sin Dynamic, Supabase, pasarela bancaria, contratos CONTRACT_* ni
-    // claves de Stellar: el backend arranca igual.
+    // ninguna variable de la cadena: el backend arranca igual, con la cadena
+    // deshabilitada y la emisión apagada (ADR-011).
     const { error, value } = envValidationSchema.validate(validEnv);
     expect(error).toBeUndefined();
-    expect(value.STELLAR_HORIZON_URL).toBe(
-      'https://horizon-testnet.stellar.org',
-    );
+    expect(value.CHAIN_MINT_ENABLED).toBe(false);
+    expect(value.CHAIN_CUSTODY_DRIVER).toBeUndefined();
+    expect(value.STELLAR_RPC_URL).toBeUndefined();
+    // Las de antes de la Ola 3 ya no existen en el esquema
+    expect(value).not.toHaveProperty('STELLAR_HORIZON_URL');
+    expect(value).not.toHaveProperty('STELLAR_INDEXER_POLL_INTERVAL_MS');
   });
 
   it('should ignore legacy variables left in an old .env', () => {
@@ -74,6 +90,13 @@ describe('Environment Validation Schema (Joi)', () => {
       DYNAMIC_API_KEY: 'legacy',
       SUPABASE_URL: 'https://legacy.supabase.co',
       CONTRACT_PRODUCT_NFT: 'legacy',
+      // Variables de la cadena de antes de la Ola 3, aunque no sean válidas
+      STELLAR_HORIZON_URL: 'https://horizon-testnet.stellar.org',
+      STELLAR_SOROBAN_RPC_URL: 'https://soroban-testnet.stellar.org',
+      STELLAR_RELAYER_SECRET_KEY: 'legacy',
+      STELLAR_INDEXER_POLL_INTERVAL_MS: '5000',
+      // docker compose pasaba la red en minúsculas
+      STELLAR_NETWORK: 'testnet',
     };
     const { error } = envValidationSchema.validate(legacy, {
       allowUnknown: true,
@@ -91,7 +114,6 @@ describe('Environment Validation Schema (Joi)', () => {
     expect(error).toBeUndefined();
     expect(value.PORT).toBe(4000);
     expect(value.NODE_ENV).toBe('development');
-    expect(value.STELLAR_INDEXER_POLL_INTERVAL_MS).toBe(5000);
     expect(value.STORAGE_DRIVER).toBe('local');
   });
 
