@@ -17,6 +17,10 @@ import {
 import type { LotProductType, LotStage } from './domain/lot-stage';
 import { distillationHeart, num, tankLiters } from './domain/sources';
 import { actorOf, TraceActor } from './trace-actors';
+import {
+  NO_LOT_TOKENIZATION,
+  type LotTokenizationState,
+} from '@modules/tokenization/tokenization.constants';
 
 /** Lo que se carga de un lote para responder `Lot` / `LotSummary`. */
 export const LOT_VIEW_INCLUDE = {
@@ -141,8 +145,17 @@ export interface LotSummaryView {
   labStatus: 'NOT_RECORDED' | 'CONFORMING' | 'NON_CONFORMING' | 'INCOMPLETE';
   dossierStatus: 'OPEN' | 'CLOSED';
   complianceIssuesOpen: number;
+  /** Marca de tokenización (contrato O3 §5.3): no es una etapa del lote. */
+  tokenization: LotTokenizationMark;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LotTokenizationMark {
+  state: LotTokenizationState;
+  quota: number;
+  minted: number;
+  collectionId: string | null;
 }
 
 export interface LotView extends LotSummaryView {
@@ -315,6 +328,9 @@ export function toLotSummary(lot: LotWithView, today: string): LotSummaryView {
     dossierStatus: lot.dossier?.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
     complianceIssuesOpen: lot.complianceIssues.filter((i) => !i.resolvedAt)
       .length,
+    // Apertura de la Ola 3: ningún lote tiene solicitud ni colección todavía
+    // (sus rutas llegan con los pasos 3.3 y 3.4, que calculan esta marca)
+    tokenization: { ...NO_LOT_TOKENIZATION },
     createdAt: lot.createdAt.toISOString(),
     updatedAt: lot.updatedAt.toISOString(),
   };

@@ -104,6 +104,26 @@ export class PendingPhytoDto {
   status!: (typeof PHYTO_STATUSES)[number];
 }
 
+export class TraceDashboardTokenizationDto {
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description:
+      'Solicitudes abiertas (enviadas, en revisión o con cambios pedidos)',
+  })
+  openRequests!: number;
+
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'Solicitudes que esperan cambios de la bodega',
+  })
+  changesRequested!: number;
+
+  @ApiProperty({ type: 'integer', minimum: 0 })
+  collectionsPublished!: number;
+}
+
 export class TraceDashboardDto {
   @ApiProperty({ type: () => LotsByStageDto })
   lotsByStage!: LotsByStageDto;
@@ -132,6 +152,12 @@ export class TraceDashboardDto {
 
   @ApiProperty({ type: 'integer', minimum: 0 })
   unassignedHarvestBatches!: number;
+
+  @ApiProperty({
+    type: () => TraceDashboardTokenizationDto,
+    description: 'Tokenización de la bodega (contrato O3 §11)',
+  })
+  tokenization!: TraceDashboardTokenizationDto;
 }
 
 // ── Reporte de producción (§11.4) ──────────────────────────────────────────

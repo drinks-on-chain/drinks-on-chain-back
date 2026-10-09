@@ -9,6 +9,7 @@ import { LOT_RULE_KEYS, LotRules, parseLotRules } from '../domain/lot-rules';
 import type { LotProductType } from '../domain/lot-stage';
 import { distillationHeart, num } from '../domain/sources';
 import type { LotEventType } from '../lot-events';
+import type { PublicDossierAnchorDto } from '@modules/chain/dto/chain-common.dto';
 import { isLateEntry } from '../domain/late-entry';
 
 /**
@@ -255,7 +256,8 @@ export interface PublicLotPassport {
     hash: string | null;
     closedAt: string | null;
     canonicalUrl: string | null;
-    anchor: null;
+    /** `PublicDossierAnchor` (contrato O3 §7.3); `null` sin anclaje (paso 3.5). */
+    anchor: PublicDossierAnchorDto | null;
   };
   publicAttachments: { id: string; kind: string; title: string; url: string }[];
   generatedAt: string;
@@ -346,6 +348,15 @@ export function publicEventSummary(
       return 'Expediente del lote cerrado';
     case 'LOT_DISCARDED':
       return 'Lote retirado por la bodega';
+    // Ola 3 (contrato O3 §11). Sin cifras (S-22): cuántas botellas, en la colección
+    case 'NFT_MINTED':
+      return 'Botellas del lote puestas en preventa';
+    case 'COLLECTION_PUBLISHED':
+      return 'Preventa del lote publicada';
+    case 'DOSSIER_ANCHORED':
+      return 'Huella del expediente anclada en la red';
+    case 'TOKENS_REDEEMABLE':
+      return 'Botellas de la preventa listas para canjear';
     default:
       return 'Registro del lote';
   }

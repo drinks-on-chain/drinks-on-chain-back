@@ -1,5 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { AuditEventDto } from '@modules/audit/dto/audit-event.dto';
+import {
+  CHAIN_NETWORKS,
+  RECONCILIATION_STATUSES,
+  type ChainNetwork,
+} from '@modules/chain/chain.constants';
 
 export class DashboardApplicationsDto {
   @ApiProperty({ minimum: 0 }) unverified!: number;
@@ -56,6 +61,83 @@ export class DashboardWaitlistDto {
   last24h!: number;
 }
 
+const int = (description?: string) =>
+  ApiProperty({ type: 'integer', minimum: 0, description });
+
+/** Tokenización (contrato O3 §11). */
+export class DashboardTokenizationDto {
+  @int('Solicitudes enviadas, sin tomar')
+  submitted!: number;
+
+  @int('Solicitudes en revisión')
+  inReview!: number;
+
+  @int('Solicitudes que esperan cambios de la bodega')
+  changesRequested!: number;
+
+  @int('Horas que lleva abierta la solicitud abierta más antigua (0 si no hay)')
+  oldestOpenHours!: number;
+
+  @int('Colecciones con la emisión inicial sin confirmar')
+  collectionsMinting!: number;
+
+  @int('Colecciones con la última emisión fallida')
+  mintFailures!: number;
+
+  @int()
+  collectionsPublished!: number;
+
+  @int('Cierres de lote con faltante sin decidir')
+  shortfallsOpen!: number;
+}
+
+export class DashboardChainOpenAlertsDto {
+  @int() critical!: number;
+  @int() warning!: number;
+}
+
+export class DashboardLastReconciliationDto {
+  @ApiProperty({ format: 'date-time' })
+  at!: string;
+
+  @ApiProperty({
+    enum: RECONCILIATION_STATUSES,
+    enumName: 'ReconciliationStatus',
+  })
+  status!: (typeof RECONCILIATION_STATUSES)[number];
+}
+
+/** Cadena (contrato O3 §11). */
+export class DashboardChainDto {
+  @ApiProperty({ enum: CHAIN_NETWORKS, enumName: 'ChainNetwork' })
+  network!: ChainNetwork;
+
+  @ApiProperty({
+    example: '9873.4512300',
+    description:
+      'Saldo de la cuenta de operaciones en XLM (`"0.0000000"` mientras no se haya leído de la red)',
+  })
+  operationsBalanceXlm!: string;
+
+  @ApiProperty({ example: '12.0000000' })
+  anchorBalanceXlm!: string;
+
+  @int('Transacciones `FAILED` sin abandonar')
+  failedTransactions!: number;
+
+  @int('Transacciones `SUBMITTED` o `RETRYING` desde hace más de 15 min')
+  stuckTransactions!: number;
+
+  @ApiProperty({ type: () => DashboardChainOpenAlertsDto })
+  openAlerts!: DashboardChainOpenAlertsDto;
+
+  @ApiProperty({ type: () => DashboardLastReconciliationDto, nullable: true })
+  lastReconciliation!: DashboardLastReconciliationDto | null;
+
+  @int('Retraso del indexador de eventos, en segundos (0 sin cursor)')
+  indexerLagSeconds!: number;
+}
+
 export class DashboardAlertDto {
   @ApiProperty({
     example: 'applications-unassigned',
@@ -100,6 +182,18 @@ export class DashboardDto {
     description: 'Lista de espera (contrato O1b §2)',
   })
   waitlist!: DashboardWaitlistDto;
+
+  @ApiProperty({
+    type: DashboardTokenizationDto,
+    description: 'Tokenización (contrato O3 §11)',
+  })
+  tokenization!: DashboardTokenizationDto;
+
+  @ApiProperty({
+    type: DashboardChainDto,
+    description: 'Cadena (contrato O3 §11)',
+  })
+  chain!: DashboardChainDto;
 
   @ApiProperty({ type: DashboardAlertDto, isArray: true })
   alerts!: DashboardAlertDto[];

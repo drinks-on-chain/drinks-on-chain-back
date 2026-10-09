@@ -5,6 +5,7 @@ import { AuditAction } from '@shared/audit/audit.actions';
 import { OutboxService } from '@shared/outbox/outbox.service';
 import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
 import { ErrorCode } from '@shared/exceptions/error-codes';
+import type { DossierAnchorDto } from '@modules/chain/dto/chain-common.dto';
 import {
   DOSSIER_HASH_ALGORITHM,
   DOSSIER_SCHEMA,
@@ -41,7 +42,8 @@ export interface LotDossierView {
     merkleRoot: string;
     algorithm: typeof BOTTLE_MERKLE_ALGORITHM;
   } | null;
-  anchor: null;
+  /** `DossierAnchor` (contrato O3 §7.1); `null` sin anclaje (paso 3.5). */
+  anchor: DossierAnchorDto | null;
 }
 
 export interface DossierPreviewView {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   EmailStatusEnum,
   InvitationStatusEnum,
@@ -10,6 +10,15 @@ import {
 import { PrismaService } from '@shared/prisma/prisma.service';
 import type { AuditEventView } from '@shared/audit/audit.types';
 import { AuditQueryService } from '@modules/audit/audit-query.service';
+import {
+  CHAIN_SETTINGS,
+  type ChainSettings,
+} from '@modules/chain/chain.config';
+import type {
+  ChainNetwork,
+  RECONCILIATION_STATUSES,
+} from '@modules/chain/chain.constants';
+import { OPEN_TOKENIZATION_REQUEST_STATUSES } from '@modules/tokenization/tokenization.constants';
 
 export type AlertLevel = 'INFO' | 'WARNING' | 'CRITICAL';
 
@@ -36,6 +45,31 @@ export interface DashboardView {
   team: { blockedMembers: number };
   /** Lista de espera (contrato O1b §2): totales por tipo y altas de las últimas 24 h. */
   waitlist: { consumers: number; wineries: number; last24h: number };
+  /** Tokenización (contrato O3 §11): bandeja, emisiones y faltantes. */
+  tokenization: {
+    submitted: number;
+    inReview: number;
+    changesRequested: number;
+    oldestOpenHours: number;
+    collectionsMinting: number;
+    mintFailures: number;
+    collectionsPublished: number;
+    shortfallsOpen: number;
+  };
+  /** Cadena (contrato O3 §11): saldos, transacciones, alertas e indexador. */
+  chain: {
+    network: ChainNetwork;
+    operationsBalanceXlm: string;
+    anchorBalanceXlm: string;
+    failedTransactions: number;
+    stuckTransactions: number;
+    openAlerts: { critical: number; warning: number };
+    lastReconciliation: {
+      at: string;
+      status: (typeof RECONCILIATION_STATUSES)[number];
+    } | null;
+    indexerLagSeconds: number;
+  };
   alerts: DashboardAlert[];
   recentAudit: AuditEventView[];
 }
@@ -46,6 +80,10 @@ export const UNASSIGNED_APPLICATION_ALERT_HOURS = 48;
 export const FAILED_EMAIL_ALERT_DAYS = 7;
 
 const HOUR_MS = 3_600_000;
+/** Una transacción enviada y sin confirmar más tiempo que esto está atascada (§8.2, `TX_STUCK`). */
+export const STUCK_TRANSACTION_MINUTES = 15;
+/** Saldo de una cuenta que aún no se ha leído de la red. */
+const UNKNOWN_BALANCE_XLM = '0.0000000';
 
 interface ApplicationStats {
   counts: DashboardView['applications'];
@@ -68,6 +106,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditQuery: AuditQueryService,
+    @Inject(CHAIN_SETTINGS) private readonly chainSettings: ChainSettings,
   ) {}
 
   async get(now: Date = new Date()): Promise<DashboardView> {
@@ -79,6 +118,8 @@ export class DashboardService {
       emails,
       recent,
       waitlist,
+      tokenization,
+      chain,
     ] = await Promise.all([
       this.applicationStats(now),
       this.invitationStats(now),
@@ -89,6 +130,8 @@ export class DashboardService {
       this.failedEmails(now),
       this.auditQuery.recent(5),
       this.waitlistStats(now),
+      this.tokenizationStats(now),
+      this.chainStats(now),
     ]);
 
     return {
@@ -97,8 +140,116 @@ export class DashboardService {
       invitations,
       team: { blockedMembers },
       waitlist,
+      tokenization,
+      chain,
       alerts: buildAlerts(now, { applications, invitations, emails }),
       recentAudit: recent,
+    };
+  }
+
+  /**
+   * Bloque `tokenization` (contrato O3 §11): cuentas reales sobre las tablas
+   * de la Ola 3. Todo cero mientras no haya solicitudes ni colecciones.
+   */
+  private async tokenizationStats(
+    now: Date,
+  ): Promise<DashboardView['tokenization']> {
+    const open = { in: [...OPEN_TOKENIZATION_REQUEST_STATUSES] };
+    const [byStatus, oldest, minting, failures, published, shortfalls] =
+      await Promise.all([
+        this.prisma.tokenizationRequest.groupBy({
+          by: ['status'],
+          where: { status: open },
+          _count: { _all: true },
+        }),
+        this.prisma.tokenizationRequest.findFirst({
+          where: { status: open },
+          orderBy: { submittedAt: 'asc' },
+          select: { submittedAt: true },
+        }),
+        this.prisma.collection.count({ where: { status: 'MINTING' } }),
+        this.prisma.collection.count({ where: { mintStatus: 'FAILED' } }),
+        this.prisma.collection.count({ where: { status: 'PUBLISHED' } }),
+        this.prisma.lotClosure.count({ where: { status: 'SHORTFALL_OPEN' } }),
+      ]);
+    const count = (status: string) =>
+      byStatus.find((g) => g.status === status)?._count._all ?? 0;
+    return {
+      submitted: count('SUBMITTED'),
+      inReview: count('IN_REVIEW'),
+      changesRequested: count('CHANGES_REQUESTED'),
+      oldestOpenHours: oldest
+        ? Math.max(
+            0,
+            Math.floor(
+              (now.getTime() - oldest.submittedAt.getTime()) / HOUR_MS,
+            ),
+          )
+        : 0,
+      collectionsMinting: minting,
+      mintFailures: failures,
+      collectionsPublished: published,
+      shortfallsOpen: shortfalls,
+    };
+  }
+
+  /**
+   * Bloque `chain` (contrato O3 §11): transacciones, alertas y conciliación
+   * salen de la base. Los saldos y el retraso del indexador los escriben las
+   * tareas `chain.balance.check` y `chain.indexer.poll` (pasos 3.1 y 3.6);
+   * hasta entonces, cero.
+   */
+  private async chainStats(now: Date): Promise<DashboardView['chain']> {
+    const stuckBefore = new Date(
+      now.getTime() - STUCK_TRANSACTION_MINUTES * 60_000,
+    );
+    const { network } = this.chainSettings;
+    const [failed, stuck, alerts, lastRun, cursor] = await Promise.all([
+      this.prisma.chainTransaction.count({
+        where: { status: 'FAILED', abandonedAt: null },
+      }),
+      this.prisma.chainTransaction.count({
+        where: {
+          status: { in: ['SUBMITTED', 'RETRYING'] },
+          updatedAt: { lt: stuckBefore },
+        },
+      }),
+      this.prisma.chainAlert.groupBy({
+        by: ['level'],
+        where: { resolvedAt: null },
+        _count: { _all: true },
+      }),
+      this.prisma.reconciliationRun.findFirst({
+        where: { finishedAt: { not: null } },
+        orderBy: { finishedAt: 'desc' },
+        select: { finishedAt: true, status: true },
+      }),
+      this.prisma.chainCursor.findUnique({
+        where: { network_name: { network, name: 'events' } },
+        select: { updatedAt: true },
+      }),
+    ]);
+    const level = (name: string) =>
+      alerts.find((g) => g.level === name)?._count._all ?? 0;
+    return {
+      network,
+      operationsBalanceXlm: UNKNOWN_BALANCE_XLM,
+      anchorBalanceXlm: UNKNOWN_BALANCE_XLM,
+      failedTransactions: failed,
+      stuckTransactions: stuck,
+      openAlerts: { critical: level('CRITICAL'), warning: level('WARNING') },
+      lastReconciliation: lastRun?.finishedAt
+        ? {
+            at: lastRun.finishedAt.toISOString(),
+            status: lastRun.status as (typeof RECONCILIATION_STATUSES)[number],
+          }
+        : null,
+      indexerLagSeconds: cursor
+        ? Math.max(
+            0,
+            Math.floor((now.getTime() - cursor.updatedAt.getTime()) / 1000),
+          )
+        : 0,
     };
   }
 

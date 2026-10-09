@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { LotStageEnum, PhytoStatusEnum, Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
+import { OPEN_TOKENIZATION_REQUEST_STATUSES } from '@modules/tokenization/tokenization.constants';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import { LOT_STAGES } from '../dto/lot.dto';
@@ -63,6 +64,12 @@ export interface TraceDashboardView {
   readyToClose: LotSummaryView[];
   complianceIssuesOpen: number;
   unassignedHarvestBatches: number;
+  /** Tokenización de la bodega (contrato O3 §11, aditivo). */
+  tokenization: {
+    openRequests: number;
+    changesRequested: number;
+    collectionsPublished: number;
+  };
 }
 
 export interface ProductionReportRow extends ProductionFigures {
@@ -189,82 +196,116 @@ function laPazDayStart(ymd: string): Date {
 export class TraceInsightsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * Bloque `tokenization` del panel (contrato O3 §11): cuentas reales sobre
+   * las tablas de la Ola 3 (cero mientras la bodega no tenga solicitudes).
+   */
+  private async tokenizationCounts(scope: {
+    wineryId?: string;
+  }): Promise<TraceDashboardView['tokenization']> {
+    const [openRequests, changesRequested, collectionsPublished] =
+      await Promise.all([
+        this.prisma.tokenizationRequest.count({
+          where: {
+            ...scope,
+            status: { in: [...OPEN_TOKENIZATION_REQUEST_STATUSES] },
+          },
+        }),
+        this.prisma.tokenizationRequest.count({
+          where: { ...scope, status: 'CHANGES_REQUESTED' },
+        }),
+        this.prisma.collection.count({
+          where: { ...scope, status: 'PUBLISHED' },
+        }),
+      ]);
+    return { openRequests, changesRequested, collectionsPublished };
+  }
+
   async dashboard(wineryId: string | undefined): Promise<TraceDashboardView> {
     const scope = wineryId ? { wineryId } : {};
     const { today, now } = await dbClock(this.prisma);
 
-    const [byStage, lockLots, bottledLots, tanks, pending, issues, unassigned] =
-      await Promise.all([
-        this.prisma.lot.groupBy({
-          by: ['stage'],
-          where: scope,
-          _count: { _all: true },
-        }),
-        this.prisma.lot.findMany({
-          where: {
-            ...scope,
-            stage: {
-              in: [
-                LotStageEnum.AGING,
-                LotStageEnum.DISTILLING,
-                LotStageEnum.RESTING,
-              ],
-            },
+    const [
+      byStage,
+      lockLots,
+      bottledLots,
+      tanks,
+      pending,
+      issues,
+      unassigned,
+      tokenization,
+    ] = await Promise.all([
+      this.prisma.lot.groupBy({
+        by: ['stage'],
+        where: scope,
+        _count: { _all: true },
+      }),
+      this.prisma.lot.findMany({
+        where: {
+          ...scope,
+          stage: {
+            in: [
+              LotStageEnum.AGING,
+              LotStageEnum.DISTILLING,
+              LotStageEnum.RESTING,
+            ],
           },
-          include: LOT_VIEW_INCLUDE,
-          orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-        }),
-        this.prisma.lot.findMany({
-          where: { ...scope, stage: LotStageEnum.BOTTLED },
-          include: LOT_VIEW_INCLUDE,
-          orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
-        }),
-        this.prisma.fermentationTank.findMany({
-          where: {
-            ...scope,
-            status: 'FERMENTING',
-            lot: { stage: { in: OPEN_STAGES } },
+        },
+        include: LOT_VIEW_INCLUDE,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      }),
+      this.prisma.lot.findMany({
+        where: { ...scope, stage: LotStageEnum.BOTTLED },
+        include: LOT_VIEW_INCLUDE,
+        orderBy: [{ updatedAt: 'desc' }, { id: 'asc' }],
+      }),
+      this.prisma.fermentationTank.findMany({
+        where: {
+          ...scope,
+          status: 'FERMENTING',
+          lot: { stage: { in: OPEN_STAGES } },
+        },
+        select: {
+          id: true,
+          tankCode: true,
+          lotId: true,
+          startDate: true,
+          // Una lectura anulada no cuenta para las alertas (§9)
+          logs: {
+            where: { voidedAt: null },
+            orderBy: { recordedAt: 'desc' },
+            take: 1,
+            select: { temperatureCelsius: true, recordedAt: true },
           },
-          select: {
-            id: true,
-            tankCode: true,
-            lotId: true,
-            startDate: true,
-            // Una lectura anulada no cuenta para las alertas (§9)
-            logs: {
-              where: { voidedAt: null },
-              orderBy: { recordedAt: 'desc' },
-              take: 1,
-              select: { temperatureCelsius: true, recordedAt: true },
-            },
+        },
+        orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.harvestBatch.findMany({
+        where: {
+          ...scope,
+          phytosanitaryStatus: {
+            in: [
+              PhytoStatusEnum.PENDING_INSPECTION,
+              PhytoStatusEnum.QUARANTINE,
+            ],
           },
-          orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
-        }),
-        this.prisma.harvestBatch.findMany({
-          where: {
-            ...scope,
-            phytosanitaryStatus: {
-              in: [
-                PhytoStatusEnum.PENDING_INSPECTION,
-                PhytoStatusEnum.QUARANTINE,
-              ],
-            },
-            OR: [{ lotId: null }, { lot: { stage: { in: OPEN_STAGES } } }],
-          },
-          select: {
-            id: true,
-            harvestBatchCode: true,
-            lotId: true,
-            intakeDate: true,
-            phytosanitaryStatus: true,
-          },
-          orderBy: [{ intakeDate: 'asc' }, { id: 'asc' }],
-        }),
-        this.prisma.lotComplianceIssue.count({
-          where: { resolvedAt: null, lot: scope },
-        }),
-        this.prisma.harvestBatch.count({ where: { ...scope, lotId: null } }),
-      ]);
+          OR: [{ lotId: null }, { lot: { stage: { in: OPEN_STAGES } } }],
+        },
+        select: {
+          id: true,
+          harvestBatchCode: true,
+          lotId: true,
+          intakeDate: true,
+          phytosanitaryStatus: true,
+        },
+        orderBy: [{ intakeDate: 'asc' }, { id: 'asc' }],
+      }),
+      this.prisma.lotComplianceIssue.count({
+        where: { resolvedAt: null, lot: scope },
+      }),
+      this.prisma.harvestBatch.count({ where: { ...scope, lotId: null } }),
+      this.tokenizationCounts(scope),
+    ]);
 
     const lotsByStage = Object.fromEntries(
       LOT_STAGES.map((stage) => [stage, 0]),
@@ -329,6 +370,7 @@ export class TraceInsightsService {
     }));
 
     return {
+      tokenization,
       lotsByStage,
       locksDueSoon,
       fermentationAlerts,
