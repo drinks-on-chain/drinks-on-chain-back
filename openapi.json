@@ -1108,16 +1108,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -1175,16 +1165,6 @@
               }
             },
             "description": "TOK_COLLECTION_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -1411,16 +1391,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -5423,16 +5393,6 @@
               }
             },
             "description": "TRC_LOT_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -5530,16 +5490,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, TOK_LOT_PRODUCT_UNDEFINED, TOK_LOT_ESTIMATE_MISSING, TOK_QUOTA_INVALID, TOK_QUOTA_EXCEEDS_ESTIMATE (`expected`, `actual`, `meta.maxQuantity`), TOK_QUOTA_EXCEEDS_BOTTLES (`expected`, `actual`, `meta.maxQuantity`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -8397,16 +8347,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -8464,16 +8404,6 @@
               }
             },
             "description": "TOK_COLLECTION_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -8558,17 +8488,7 @@
                 }
               }
             },
-            "description": "VALIDATION_ERROR, (falta `reason`), TOK_PRICE_INVALID"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
+            "description": "VALIDATION_ERROR, (falta `reason`), TOK_PRICE_INVALID, TOK_COMMERCIAL_DATA_INCOMPLETE (imágenes sin portada)"
           }
         },
         "security": [
@@ -8657,16 +8577,6 @@
               }
             },
             "description": "VALIDATION_ERROR, (falta `reason`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -9017,16 +8927,6 @@
               }
             },
             "description": "TOK_COLLECTION_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.6 de la Etapa 3 (Conciliación y cierre)"
           }
         },
         "security": [
@@ -9124,16 +9024,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, (falta `reason`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -9232,16 +9122,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, TOK_COMMERCIAL_DATA_INCOMPLETE (un detalle por campo)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -9339,16 +9219,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, TOK_COMMERCIAL_DATA_INCOMPLETE (un detalle por campo)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -9498,16 +9368,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -9629,16 +9489,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "security": [
@@ -11126,16 +10976,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11193,16 +11033,6 @@
               }
             },
             "description": "TOK_REQUEST_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11288,16 +11118,6 @@
               }
             },
             "description": "VALIDATION_ERROR, TOK_PRICE_INVALID"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11395,16 +11215,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, TOK_COMMERCIAL_DATA_INCOMPLETE (un detalle por campo: `name`, `description`, imagen de portada), TOK_PRICE_INVALID, TOK_QUOTA_EXCEEDS_ESTIMATE, TOK_QUOTA_EXCEEDS_BOTTLES, TOK_LOT_ESTIMATE_MISSING, TOK_LOT_PRODUCT_UNDEFINED"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11482,16 +11292,6 @@
               }
             },
             "description": "VALIDATION_ERROR"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11579,16 +11379,6 @@
               }
             },
             "description": "VALIDATION_ERROR, (falta `reason`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11677,16 +11467,6 @@
               }
             },
             "description": "VALIDATION_ERROR"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -11754,16 +11534,6 @@
               }
             },
             "description": "TOK_REQUEST_INVALID_TRANSITION (`meta.from`, `meta.to`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -15221,16 +14991,6 @@
               }
             },
             "description": "FILE_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "summary": "Imagen pública de una colección",
@@ -15601,16 +15361,6 @@
               }
             },
             "description": "TOO_MANY_REQUESTS"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.4 de la Etapa 3 (Emisión y preventa)"
           }
         },
         "summary": "Metadatos de un NFT (`token_uri`)",
@@ -16568,16 +16318,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -16635,16 +16375,6 @@
               }
             },
             "description": "TOK_REQUEST_NOT_FOUND"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -16730,16 +16460,6 @@
               }
             },
             "description": "VALIDATION_ERROR, TOK_LOT_PRODUCT_UNDEFINED, TOK_LOT_ESTIMATE_MISSING, TOK_QUOTA_INVALID, TOK_QUOTA_EXCEEDS_ESTIMATE (`expected`, `actual`, `meta.maxQuantity`), TOK_QUOTA_EXCEEDS_BOTTLES (`expected`, `actual`, `meta.maxQuantity`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -16837,16 +16557,6 @@
               }
             },
             "description": "VALIDATION_ERROR, IDEMPOTENCY_KEY_REQUIRED, TOK_LOT_PRODUCT_UNDEFINED, TOK_LOT_ESTIMATE_MISSING, TOK_QUOTA_INVALID, TOK_QUOTA_EXCEEDS_ESTIMATE (`expected`, `actual`, `meta.maxQuantity`), TOK_QUOTA_EXCEEDS_BOTTLES (`expected`, `actual`, `meta.maxQuantity`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
@@ -16934,16 +16644,6 @@
               }
             },
             "description": "VALIDATION_ERROR, (falta `reason`)"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.3 de la Etapa 3 (Solicitud de tokenización)"
           }
         },
         "security": [
