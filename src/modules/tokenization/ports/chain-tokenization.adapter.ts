@@ -4,7 +4,11 @@ import {
   CHAIN_SETTINGS,
   type ChainSettings,
 } from '@modules/chain/chain.config';
-import type { ChainIdentityStatus } from '@modules/chain/chain.constants';
+import {
+  intentKeys,
+  type ChainIdentityStatus,
+} from '@modules/chain/chain.constants';
+import { contractBaseUri } from '@modules/chain/identity/identity-params';
 import type { WineryChainIdentityDto } from '@modules/chain/dto/chain.dto';
 import { WineryIdentityService } from '@modules/chain/identity/winery-identity.service';
 import { ChainIntentsService } from '@modules/chain/tx/chain-intents.service';
@@ -93,6 +97,7 @@ export class ChainTokenizationAdapter implements TokenizationChainPort {
     tx: Prisma.TransactionClient,
     request: MintIntentRequest,
   ): Promise<void> {
+    await this.alignTokenUriBase(tx, request);
     const chunks = [...request.chunks].sort((a, b) => a.index - b.index);
     for (const chunk of chunks) {
       const params: MintBatchIntentParams = {
@@ -117,5 +122,44 @@ export class ChainTokenizationAdapter implements TokenizationChainPort {
         },
       });
     }
+  }
+
+  /**
+   * `SET_TOKEN_URI_BASE` si hace falta (§3.1): la URI base del contrato ya no
+   * es la que toca a la bodega (cambió su `slug` o el origen público de la
+   * API). Idempotente: una intención por contrato y URI.
+   */
+  private async alignTokenUriBase(
+    tx: Prisma.TransactionClient,
+    request: MintIntentRequest,
+  ): Promise<void> {
+    if (!this.chain.enabled || !this.chain.publicApiBaseUrl) return;
+    const contract = await tx.nftContract.findUnique({
+      where: { id: request.contractId },
+      select: { baseUri: true, winery: { select: { slug: true } } },
+    });
+    if (!contract?.winery.slug) return;
+    let expected: string;
+    try {
+      expected = contractBaseUri(
+        this.chain.publicApiBaseUrl,
+        contract.winery.slug,
+      );
+    } catch {
+      return; // no cabe en 200 bytes: se queda la que tiene
+    }
+    if (expected === contract.baseUri) return;
+    await this.intents.register(tx, {
+      kind: 'SET_TOKEN_URI_BASE',
+      intentKey: intentKeys.tokenUriBase(request.contractId, expected),
+      subject: { type: 'CONTRACT', id: request.contractId },
+      wineryId: request.wineryId,
+      params: { contractId: request.contractId },
+      requestedBy: {
+        userId: request.requestedBy.userId,
+        fullName: request.requestedBy.fullName,
+        source: request.requestedBy.source ?? 'API',
+      },
+    });
   }
 }

@@ -6,8 +6,8 @@ import type { MailTemplate } from './index';
  * Correos de la tokenización (contrato O3 §11; `docs-back/07` §6 y §11): al
  * dueño de la bodega, solicitud recibida, cambios pedidos, aprobada (con la
  * emisión en curso) y rechazada, y los cambios de estado de su colección; a
- * operaciones, solicitud nueva o reenviada. Los de NFT emitidos y faltante
- * llegan con sus pasos (3.4 y 3.6).
+ * operaciones, solicitud nueva o reenviada. Con la emisión confirmada, NFT emitidos
+ * (con enlace al contrato). El de faltante llega con el paso 3.6.
  */
 
 const NOTE = `style="margin:0;color:${BRAND.muted};"`;
@@ -145,6 +145,43 @@ export const COLLECTION_STATUS_TEMPLATE: MailTemplate = {
   ].join('\n'),
 };
 
+/** La emisión se confirmó en la red: al dueño, con el contrato (§11). */
+export const NFT_MINTED_TEMPLATE: MailTemplate = {
+  name: 'nft-emitidos',
+  description:
+    'Aviso al dueño de que los NFT de su lote ya están emitidos en la red, con enlace al contrato',
+  variables: [
+    'nombre',
+    'coleccion',
+    'lote',
+    'cantidad',
+    'botellas',
+    'contrato',
+    'explorador',
+    'estado',
+    'enlace',
+  ],
+  subject: `{{cantidad}} NFT emitidos: {{coleccion}}`,
+  text: [
+    'Hola, {{nombre}}:',
+    '',
+    'Ya están emitidos en la red Stellar {{cantidad}} NFT del lote {{lote}} (botellas {{botellas}}), a nombre de tu bodega.',
+    '{{estado}}',
+    'Contrato: {{contrato}}',
+    '{{explorador}}',
+    '',
+    'Puedes verlos en el ERP:',
+    '{{enlace}}',
+  ].join('\n'),
+  html: [
+    `<p ${P}>Hola, {{nombre}}:</p>`,
+    `<p ${P}>Ya están emitidos en la red Stellar <strong>{{cantidad}} NFT</strong> del lote <strong>{{lote}}</strong> (botellas {{botellas}}), a nombre de tu bodega.</p>`,
+    `<p ${P}>{{estado}}</p>`,
+    `<p ${NOTE}>Contrato: <a href="{{explorador}}" style="color:${BRAND.accentDeep};word-break:break-all;">{{contrato}}</a></p>`,
+    linkBlock('Ver la colección en el ERP'),
+  ].join('\n'),
+};
+
 export const TOKENIZATION_TEMPLATES: readonly MailTemplate[] = [
   TOKENIZATION_RECEIVED_TEMPLATE,
   TOKENIZATION_NEW_OPERATIONS_TEMPLATE,
@@ -152,4 +189,5 @@ export const TOKENIZATION_TEMPLATES: readonly MailTemplate[] = [
   TOKENIZATION_APPROVED_TEMPLATE,
   TOKENIZATION_REJECTED_TEMPLATE,
   COLLECTION_STATUS_TEMPLATE,
+  NFT_MINTED_TEMPLATE,
 ];

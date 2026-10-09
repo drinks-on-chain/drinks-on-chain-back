@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+
 /**
  * Enumeraciones de la cadena (contrato O3 §0, §2 y §8). En la base se guardan
  * como texto; estos son sus únicos valores válidos.
@@ -182,6 +184,11 @@ export const intentKeys = {
     `pause:${contractId}:${auditEventId}`,
   unpause: (contractId: string, auditEventId: string) =>
     `unpause:${contractId}:${auditEventId}`,
+  /** Anclaje del expediente de un lote (`lot_dossiers` tiene el id del lote). */
+  anchor: (lotId: string) => `anchor:${lotId}`,
+  /** Cambio de la URI base de un contrato: una intención por URI. */
+  tokenUriBase: (contractId: string, baseUri: string) =>
+    `uri:${contractId}:${createHash('sha256').update(baseUri).digest('hex').slice(0, 32)}`,
   /** Un intento de Friendbot por cuenta y día (UTC). */
   fund: (role: 'OPERATIONS' | 'ANCHOR', day: string) => `fund:${role}:${day}`,
 } as const;

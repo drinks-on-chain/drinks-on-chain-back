@@ -5,14 +5,18 @@ import type { OutboxJobData } from '@shared/outbox/outbox.types';
 import { QUEUE_CHAIN, QUEUE_DEFAULT } from '@shared/queue/queue.constants';
 import {
   COLLECTION_CLOSED,
+  COLLECTION_MINTED,
   COLLECTION_PAUSED,
   COLLECTION_PUBLISHED,
+  COLLECTION_REDEEMABLE,
   COLLECTION_RESUMED,
   TOKENIZATION_REQUEST_APPROVED,
   TOKENIZATION_REQUEST_CHANGES_REQUESTED,
   TOKENIZATION_REQUEST_REJECTED,
   TOKENIZATION_REQUEST_SUBMITTED,
   type CollectionEventPayload,
+  type CollectionMintedPayload,
+  type CollectionRedeemablePayload,
   type TokenizationRequestApprovedPayload,
   type TokenizationRequestEventPayload,
 } from '../tokenization.events';
@@ -178,6 +182,24 @@ export class CollectionClosedHandler extends LogOnlyHandler<CollectionEventPaylo
   }
 }
 
+/** `collection.minted`: la emisión terminó (el catálogo lo consume en la Ola 4). */
+@Injectable()
+@HandlesJob(QUEUE_DEFAULT, COLLECTION_MINTED)
+export class CollectionMintedHandler extends LogOnlyHandler<CollectionMintedPayload> {
+  protected describe(payload: CollectionMintedPayload): string {
+    return `Colección ${payload.collectionId}: emisión ${payload.mintSequence} confirmada (${payload.quantity} NFT; ${payload.minted} en total) → ${payload.status}`;
+  }
+}
+
+/** `collection.redeemable`: la Ola 4 avisa aquí a los compradores (§7.2). */
+@Injectable()
+@HandlesJob(QUEUE_DEFAULT, COLLECTION_REDEEMABLE)
+export class CollectionRedeemableHandler extends LogOnlyHandler<CollectionRedeemablePayload> {
+  protected describe(payload: CollectionRedeemablePayload): string {
+    return `Colección ${payload.collectionId} canjeable desde ${payload.redeemableSince} (${payload.tokens} NFT vendidos pasan a REDEEMABLE)`;
+  }
+}
+
 export const TOKENIZATION_EVENT_HANDLERS = [
   TokenizationRequestApprovedHandler,
   TokenizationRequestSubmittedHandler,
@@ -187,4 +209,6 @@ export const TOKENIZATION_EVENT_HANDLERS = [
   CollectionPausedHandler,
   CollectionResumedHandler,
   CollectionClosedHandler,
+  CollectionMintedHandler,
+  CollectionRedeemableHandler,
 ];

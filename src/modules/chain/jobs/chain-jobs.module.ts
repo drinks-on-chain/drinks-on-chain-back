@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AuditService } from '@shared/audit/audit.service';
 import { PrismaModule } from '@shared/prisma/prisma.module';
+import { MailModule } from '@modules/mail/mail.module';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { ChainCoreModule } from '../chain-core.module';
 import { CHAIN_SETTINGS } from '../chain.config';
@@ -19,6 +20,8 @@ import {
   UnpauseContractHandler,
 } from './handlers/contract-pause.handlers';
 import { FundAccountHandler } from './handlers/fund-account.handler';
+import { MintBatchHandler } from './handlers/mint-batch.handler';
+import { SetTokenUriBaseHandler } from './handlers/token-uri-base.handler';
 import {
   CreateWineryAccountHandler,
   DeployWineryContractHandler,
@@ -29,10 +32,11 @@ import { INTENT_HANDLERS, type IntentHandler } from './signer/intent-handler';
 import { WineryIdentityProvisioner } from './winery-identity.provisioner';
 
 /**
- * Intenciones que el firmante acepta en este paso (§2.2). Las de la emisión
- * (`MINT_BATCH`, `SET_TOKEN_URI_BASE`), el anclaje (`ANCHOR_DOSSIER`) y el
- * mantenimiento llegan con los pasos 3.4–3.6: se añaden aquí con su
- * manejador. Una intención sin manejador se rechaza (`CHN_INTENT_REJECTED`).
+ * Intenciones que el firmante acepta (§2.2): identidad, pausa, emisión
+ * (`MINT_BATCH`, `SET_TOKEN_URI_BASE`) y anclaje (`ANCHOR_DOSSIER`). Las de
+ * mantenimiento y el cierre con faltante llegan con el paso 3.6: se añaden
+ * aquí con su manejador. Una intención sin manejador se rechaza
+ * (`CHN_INTENT_REJECTED`).
  */
 const INTENT_HANDLER_CLASSES = [
   CreateWineryAccountHandler,
@@ -40,6 +44,8 @@ const INTENT_HANDLER_CLASSES = [
   PauseContractHandler,
   UnpauseContractHandler,
   FundAccountHandler,
+  MintBatchHandler,
+  SetTokenUriBaseHandler,
 ];
 
 /**
@@ -48,7 +54,7 @@ const INTENT_HANDLER_CLASSES = [
  * programadas. La API no lo carga: nunca tiene claves ni habla con la red.
  */
 @Module({
-  imports: [PrismaModule, ChainCoreModule],
+  imports: [PrismaModule, ChainCoreModule, MailModule],
   providers: [
     {
       provide: KEY_CUSTODY,

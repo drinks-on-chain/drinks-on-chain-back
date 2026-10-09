@@ -179,9 +179,12 @@ describe('Correos de la tokenización (§11)', () => {
     estado: 'publicada',
     efecto: 'Ya está a la venta.',
     enlace: 'https://erp.example.test',
+    botellas: '1–100',
+    contrato: 'CDQX4AKGU76O7GH7F6SXPWGQ7YAVQTYPUYCSER67PWHJA3M7GIF6LACH',
+    explorador: 'https://stellar.expert/explorer/testnet/contract/CDQX',
   };
 
-  it('las seis plantillas están registradas y se rinden con sus variables', () => {
+  it('las siete plantillas están registradas y se rinden con sus variables', () => {
     expect(TOKENIZATION_TEMPLATES.map((t) => t.name)).toEqual([
       'tokenizacion-recibida',
       'tokenizacion-nueva-operaciones',
@@ -189,6 +192,7 @@ describe('Correos de la tokenización (§11)', () => {
       'tokenizacion-aprobada',
       'tokenizacion-rechazada',
       'coleccion-estado',
+      'nft-emitidos',
     ]);
     const renderer = new MailRenderer();
     for (const template of TOKENIZATION_TEMPLATES) {
@@ -234,6 +238,8 @@ describe('Procesadores de los eventos de la tokenización', () => {
       { queue: 'default', name: 'collection.paused' },
       { queue: 'default', name: 'collection.resumed' },
       { queue: 'default', name: 'collection.closed' },
+      { queue: 'default', name: 'collection.minted' },
+      { queue: 'default', name: 'collection.redeemable' },
     ]);
   });
 

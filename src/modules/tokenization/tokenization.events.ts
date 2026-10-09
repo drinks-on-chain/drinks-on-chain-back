@@ -81,3 +81,31 @@ export type CollectionEventPayload = {
   /** Lo hizo el sistema (bodega suspendida o revocada). */
   system: boolean;
 };
+
+/** Una emisión terminó de confirmarse en la red (todos sus trozos, §6.1). */
+export const COLLECTION_MINTED = 'collection.minted';
+
+export type CollectionMintedPayload = {
+  collectionId: string;
+  wineryId: string;
+  lotId: string;
+  mintId: string;
+  /** 1 = emisión inicial; 2… = ampliaciones. */
+  mintSequence: number;
+  /** NFT de esta emisión y total emitido de la colección. */
+  quantity: number;
+  minted: number;
+  status: string;
+};
+
+/** El expediente del lote quedó anclado: sus NFT vendidos ya se canjean (§7.2). */
+export const COLLECTION_REDEEMABLE = 'collection.redeemable';
+
+export type CollectionRedeemablePayload = {
+  collectionId: string;
+  wineryId: string;
+  lotId: string;
+  redeemableSince: string;
+  /** NFT que pasaron de `SOLD` a `REDEEMABLE`. */
+  tokens: number;
+};

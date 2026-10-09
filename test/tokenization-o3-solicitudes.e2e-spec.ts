@@ -1075,9 +1075,7 @@ describe('Ola 3 · solicitudes de tokenización y colecciones sin red (e2e)', ()
         firstBottleNumber: 1,
         lastBottleNumber: 120,
       });
-      expect(await outbox('chain.tx.requested', intents[0].id)).toHaveLength(
-        1,
-      );
+      expect(await outbox('chain.tx.requested', intents[0].id)).toHaveLength(1);
       expect(await audits('TOKENIZATION_APPROVED', REQUEST)).toHaveLength(1);
       expect(await audits('NFT_MINT_REQUESTED', MINT)).toHaveLength(1);
       expect(
