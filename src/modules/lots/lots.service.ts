@@ -40,6 +40,7 @@ import {
 } from './domain/do-evaluation';
 import type { LotProductType } from './domain/lot-stage';
 import { lotNotFound, ruleError, violation } from './domain/trace-errors';
+import { estimateBelowMinted } from '@modules/tokenization/domain/quota';
 
 /** Lote del servidor (contrato O2 §2): creación, consulta, edición y descarte. */
 @Injectable()
@@ -184,6 +185,25 @@ export class LotsService {
           'reason',
           'Indica el motivo del cambio de la estimación de botellas (queda en su historial)',
         );
+      }
+      if (
+        estimateChanges &&
+        dto.estimatedBottles !== undefined &&
+        dto.estimatedBottles !== null
+      ) {
+        // La estimación no baja de lo emitido como NFT (contrato O3 §5.2.6)
+        const collection = await tx.collection.findUnique({
+          where: { lotId: id },
+          select: { minted: true },
+        });
+        const below = collection
+          ? estimateBelowMinted(dto.estimatedBottles, collection.minted)
+          : null;
+        if (below) {
+          throw ruleError(ErrorCode.TOK_ESTIMATE_BELOW_MINTED, below.message, [
+            below,
+          ]);
+        }
       }
       const clock = await dbClock(tx);
       const membership = await actorMembership(tx, userId, wineryId);

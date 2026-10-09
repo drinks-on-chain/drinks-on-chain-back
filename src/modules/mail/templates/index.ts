@@ -1,6 +1,7 @@
 import { BRAND } from './layout';
 import { ACCOUNT_TEMPLATES } from './account';
 import { ORGANIZATION_TEMPLATES } from './organizations';
+import { TOKENIZATION_TEMPLATES } from './tokenization';
 
 /**
  * Plantilla de correo: asunto, texto plano y cuerpo HTML en Handlebars, con
@@ -42,6 +43,7 @@ export const MAIL_TEMPLATES: readonly MailTemplate[] = [
   TEST_TEMPLATE,
   ...ACCOUNT_TEMPLATES,
   ...ORGANIZATION_TEMPLATES,
+  ...TOKENIZATION_TEMPLATES,
 ];
 
 const BY_NAME = new Map(MAIL_TEMPLATES.map((t) => [t.name, t]));

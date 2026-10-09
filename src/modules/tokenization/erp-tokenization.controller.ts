@@ -53,6 +53,12 @@ import {
   TokenizationRequestsQueryDto,
   UpdateTokenizationRequestDto,
 } from './dto/tokenization-requests.dto';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
+import { CollectionsService } from './collections.service';
+import { TokenizationRequestsService } from './tokenization-requests.service';
 
 const FORBIDDEN = () =>
   ApiErrorCodes(HttpStatus.FORBIDDEN, [
@@ -91,6 +97,11 @@ const QUOTA_RULES = [
 @PlatformReadOnly()
 @Controller()
 export class ErpTokenizationController {
+  constructor(
+    private readonly requests: TokenizationRequestsService,
+    private readonly collections: CollectionsService,
+  ) {}
+
   @Get('lots/:id/tokenization')
   @Roles(...WINERY_TOKENIZATION_READERS)
   @ApiOperation({
@@ -103,12 +114,11 @@ export class ErpTokenizationController {
   @ApiOkResponse({ type: LotTokenizationStatusDto })
   @FORBIDDEN()
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['TRC_LOT_NOT_FOUND'])
-  @ApiNotImplementedO3('3.3')
   lotTokenization(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<LotTokenizationStatusDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.lotStatus(wineryId, id);
   }
 
   @Post('lots/:id/tokenization-requests')
@@ -134,13 +144,13 @@ export class ErpTokenizationController {
     'IDEMPOTENCY_IN_PROGRESS',
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', ...QUOTA_RULES])
-  @ApiNotImplementedO3('3.3')
   create(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CreateTokenizationRequestDto,
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateTokenizationRequestDto,
   ): Promise<TokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.create(wineryId, user.id, id, dto);
   }
 
   @Get('tokenization-requests')
@@ -151,12 +161,11 @@ export class ErpTokenizationController {
   })
   @ApiPaginatedResponse(TokenizationRequestSummaryDto)
   @FORBIDDEN()
-  @ApiNotImplementedO3('3.3')
   list(
-    @TenantId() _wineryId: string | undefined,
-    @Query() _query: TokenizationRequestsQueryDto,
+    @TenantId() wineryId: string | undefined,
+    @Query() query: TokenizationRequestsQueryDto,
   ): Promise<Paginated<TokenizationRequestSummaryDto>> {
-    throw notImplementedO3('3.3');
+    return this.requests.list(wineryId, query);
   }
 
   @Get('tokenization-requests/:id')
@@ -169,12 +178,11 @@ export class ErpTokenizationController {
   @ApiOkResponse({ type: TokenizationRequestDto })
   @FORBIDDEN()
   @REQUEST_NOT_FOUND()
-  @ApiNotImplementedO3('3.3')
   get(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<TokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.get(wineryId, id);
   }
 
   @Patch('tokenization-requests/:id')
@@ -192,13 +200,13 @@ export class ErpTokenizationController {
     'TOK_LOT_NOT_TOKENIZABLE',
   ])
   @ApiRuleErrors(QUOTA_RULES)
-  @ApiNotImplementedO3('3.3')
   update(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: UpdateTokenizationRequestDto,
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateTokenizationRequestDto,
   ): Promise<TokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.update(wineryId, user.id, id, dto);
   }
 
   @Post('tokenization-requests/:id/resubmit')
@@ -220,13 +228,13 @@ export class ErpTokenizationController {
     'IDEMPOTENCY_IN_PROGRESS',
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', ...QUOTA_RULES])
-  @ApiNotImplementedO3('3.3')
   resubmit(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ResubmitTokenizationRequestDto,
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResubmitTokenizationRequestDto,
   ): Promise<TokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.resubmit(wineryId, user.id, id, dto);
   }
 
   @Post('tokenization-requests/:id/withdraw')
@@ -244,13 +252,13 @@ export class ErpTokenizationController {
     'TOK_REQUEST_INVALID_TRANSITION (`meta.from`, `meta.to`)',
   ])
   @ApiRuleErrors(['(falta `reason`)'])
-  @ApiNotImplementedO3('3.3')
   withdraw(
-    @TenantId() _wineryId: string,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: TokenizationReasonDto,
+    @TenantId() wineryId: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TokenizationReasonDto,
   ): Promise<TokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.withdraw(wineryId, user.id, id, dto);
   }
 
   // ── Colecciones de la bodega ─────────────────────────────────────────────
@@ -263,12 +271,11 @@ export class ErpTokenizationController {
   })
   @ApiPaginatedResponse(CollectionSummaryDto)
   @FORBIDDEN()
-  @ApiNotImplementedO3('3.4')
   listCollections(
-    @TenantId() _wineryId: string | undefined,
-    @Query() _query: CollectionsQueryDto,
+    @TenantId() wineryId: string | undefined,
+    @Query() query: CollectionsQueryDto,
   ): Promise<Paginated<CollectionSummaryDto>> {
-    throw notImplementedO3('3.4');
+    return this.collections.list(wineryId, query);
   }
 
   @Get('collections/:id')
@@ -282,12 +289,11 @@ export class ErpTokenizationController {
   @ApiOkResponse({ type: CollectionDto })
   @FORBIDDEN()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.4')
   getCollection(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.get(wineryId, id);
   }
 
   @Get('collections/:id/tokens')
@@ -301,13 +307,12 @@ export class ErpTokenizationController {
   @ApiPaginatedResponse(TokenDto)
   @FORBIDDEN()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.4')
   listTokens(
-    @TenantId() _wineryId: string | undefined,
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Query() _query: TokensQueryDto,
+    @TenantId() wineryId: string | undefined,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TokensQueryDto,
   ): Promise<Paginated<TokenDto>> {
-    throw notImplementedO3('3.4');
+    return this.collections.tokens(wineryId, id, query);
   }
 
   @Get('collections/:id/closure')

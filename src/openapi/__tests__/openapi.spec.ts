@@ -8,6 +8,7 @@ import type {
   SchemaObject,
 } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import { generateOpenApiDocument } from '../document';
+import { O3_STEP_3_3_ROUTES } from '@modules/tokenization/o3-implemented-routes';
 import { BEARER_AUTH, serializeOpenApiDocument } from '../openapi';
 
 type Operation = OperationObject & { method: string; path: string };
@@ -606,7 +607,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
 
     // Con lógica desde los pasos 3.1 (firmante y transacciones) y 3.2
     // (identidad de la bodega): ya no declaran 501
-    const O3_IMPLEMENTED = [
+    const O3_CHAIN_IMPLEMENTED = [
       'GET /.well-known/stellar.toml',
       'GET /v1/organizations/current/chain-account',
       'GET /v1/platform/chain/accounts',
@@ -620,14 +621,20 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/platform/wineries/{id}/chain/provision',
       'POST /v1/platform/wineries/{id}/chain/unpause',
     ];
-    const O3_PENDING = O3_ROUTES.filter(
-      (route) => !O3_IMPLEMENTED.includes(route),
-    );
+    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las del paso 3.3. */
+    const O3_IMPLEMENTED = new Set<string>([
+      ...O3_CHAIN_IMPLEMENTED,
+      ...O3_STEP_3_3_ROUTES,
+    ]);
+    const O3_PENDING = O3_ROUTES.filter((route) => !O3_IMPLEMENTED.has(route));
 
-    it('publica las 54 rutas del contrato; las que aún no tienen lógica, con su 501 NOT_IMPLEMENTED', () => {
+    it('publica las 54 rutas del contrato; las pendientes de su paso, con su 501 NOT_IMPLEMENTED', () => {
       expect(O3_ROUTES).toHaveLength(54);
-      expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.length);
-      for (const route of O3_ROUTES) expect(find(route)).toBeDefined();
+      expect(O3_ROUTES.filter((route) => !find(route))).toEqual([]);
+      expect(O3_IMPLEMENTED.size).toBe(
+        O3_CHAIN_IMPLEMENTED.length + O3_STEP_3_3_ROUTES.length,
+      );
+      expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.size);
       const declared = ops
         .filter((op) => op.responses['501'])
         .map(key)

@@ -54,6 +54,16 @@ import {
   QUEUE_EMAIL,
   workerHeartbeatKey,
 } from '../src/shared/queue/queue.constants';
+import {
+  COLLECTION_CLOSED,
+  COLLECTION_PAUSED,
+  COLLECTION_PUBLISHED,
+  COLLECTION_RESUMED,
+  TOKENIZATION_REQUEST_APPROVED,
+  TOKENIZATION_REQUEST_CHANGES_REQUESTED,
+  TOKENIZATION_REQUEST_REJECTED,
+  TOKENIZATION_REQUEST_SUBMITTED,
+} from '../src/modules/tokenization/tokenization.events';
 
 const run = `o0be3w-${Date.now()}`;
 
@@ -194,6 +204,15 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       `${QUEUE_CHAIN}/${CHAIN_TX_FAILED}`,
       `${QUEUE_CHAIN}/${CHAIN_ALERT_RAISED}`,
       `${QUEUE_CHAIN}/${WINERY_CHAIN_IDENTITY_READY}`,
+      // Ola 3 · paso 3.3: solicitudes de tokenización y colecciones
+      `${QUEUE_CHAIN}/${TOKENIZATION_REQUEST_APPROVED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_SUBMITTED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_CHANGES_REQUESTED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_REJECTED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_PUBLISHED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_PAUSED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_RESUMED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_CLOSED}`,
     ];
     expect(registered).toEqual(expect.arrayContaining(emitted));
     // Colas y tareas de la cadena: `chain` (firmante), `chain-poll`

@@ -15,6 +15,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
 import { SimulatedWalletsAuditRunner } from '../src/modules/chain/simulated-wallets-audit.runner';
+import { O3_STEP_3_3_ROUTES } from '../src/modules/tokenization/o3-implemented-routes';
 import {
   addWineryMember,
   staffToken,
@@ -551,6 +552,11 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
   ];
   const name = (route: Route) =>
     `${route.method.toUpperCase()} ${route.path().split('?')[0]}`;
+  /** Rutas que ya tienen lógica (dejaron de responder 501): paso 3.3. */
+  const IMPLEMENTED = new Set<string>(O3_STEP_3_3_ROUTES);
+  const template = (route: Route) =>
+    `${route.method.toUpperCase()} ${openapi.resolvePath(route.method, route.path())}`;
+  const implemented = (route: Route) => IMPLEMENTED.has(template(route));
 
   beforeAll(async () => {
     // 1. El estado anterior a la Ola 3: todas las migraciones menos la nueva
@@ -1059,9 +1065,9 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
     });
 
     it('las de los pasos 3.1 y 3.2 ya tienen lógica: responden lo suyo, no 501', async () => {
-      const implemented = ROUTES.filter((r) => r.implemented);
-      expect(implemented).toHaveLength(12);
-      for (const route of implemented) {
+      const chainDone = ROUTES.filter((r) => r.implemented);
+      expect(chainDone).toHaveLength(12);
+      for (const route of chainDone) {
         for (const who of route.allowed) {
           const res = await call(route, who, {
             body: route.body,
@@ -1081,6 +1087,24 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
           if (!route.raw) {
             openapi.expectResponse(route.method, route.path(), res);
           }
+        }
+      }
+    });
+
+    it('las del paso 3.3 (solicitudes y colecciones sin red) ya no responden 501', async () => {
+      const done = ROUTES.filter(implemented);
+      expect(done).toHaveLength(O3_STEP_3_3_ROUTES.length);
+      for (const route of done) {
+        const res = await call(route, route.allowed[0], {
+          body: route.body,
+          idempotencyKey: route.idempotent ? randomUUID() : null,
+        });
+        expect({
+          route: name(route),
+          implemented: res.status !== 501,
+        }).toEqual({ route: name(route), implemented: true });
+        if (!route.raw && !(route.public && res.status === 200)) {
+          openapi.expectResponse(route.method, route.path(), res);
         }
       }
     });
@@ -1143,8 +1167,10 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       expect(await count('chain_accounts')).toBe(0);
     });
 
-    it('el resto, con sesión y rol válidos, responde 501 NOT_IMPLEMENTED con su paso', async () => {
-      for (const route of ROUTES.filter((r) => !r.implemented)) {
+    it('con sesión y rol válidos, las pendientes responden 501 NOT_IMPLEMENTED con su paso', async () => {
+      for (const route of ROUTES.filter(
+        (r) => !r.implemented && !implemented(r),
+      )) {
         for (const who of route.allowed) {
           const res = await call(route, who, {
             body: route.body,
@@ -1204,7 +1230,8 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
         },
         'support',
       );
-      expect(read.status).toBe(501);
+      expect(read.status).toBe(200);
+      expect(read.body.data).toMatchObject({ items: [], total: 0 });
       const write = await call(
         {
           method: 'post',
