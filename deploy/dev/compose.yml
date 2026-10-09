@@ -74,6 +74,8 @@ services:
       CHAIN_WINERY_STARTING_BALANCE_XLM: ${CHAIN_WINERY_STARTING_BALANCE_XLM:-}
       CHAIN_TTL_EXTEND_BELOW_DAYS: ${CHAIN_TTL_EXTEND_BELOW_DAYS:-}
       CHAIN_CONSUMER_SEED_CHECK_ADDRESS: ${CHAIN_CONSUMER_SEED_CHECK_ADDRESS:-}
+      CHAIN_DEPLOY_MAX_FEE_STROOPS: ${CHAIN_DEPLOY_MAX_FEE_STROOPS:-}
+      CHAIN_ENVIRONMENT: ${CHAIN_ENVIRONMENT:-}
       # Desarrollo publica /docs y /docs-json (el frontend lee el contrato de ahí);
       # en producción queda apagado si no se define (SE-08)
       SWAGGER_ENABLED: ${SWAGGER_ENABLED:-true}
@@ -234,6 +236,11 @@ services:
       CHAIN_WINERY_STARTING_BALANCE_XLM: ${CHAIN_WINERY_STARTING_BALANCE_XLM:-}
       CHAIN_TTL_EXTEND_BELOW_DAYS: ${CHAIN_TTL_EXTEND_BELOW_DAYS:-}
       CHAIN_CONSUMER_SEED_CHECK_ADDRESS: ${CHAIN_CONSUMER_SEED_CHECK_ADDRESS:-}
+      CHAIN_DEPLOY_MAX_FEE_STROOPS: ${CHAIN_DEPLOY_MAX_FEE_STROOPS:-}
+      CHAIN_ENVIRONMENT: ${CHAIN_ENVIRONMENT:-}
+      # Solo el worker habla con la red
+      STELLAR_FRIENDBOT_URL: ${STELLAR_FRIENDBOT_URL:-}
+      CHAIN_TX_RETRY_DELAYS_MS: ${CHAIN_TX_RETRY_DELAYS_MS:-}
       # URI base de los contratos NFT ({API_PUBLIC_URL}/v1/public/nft/{slug}/)
       API_PUBLIC_URL: ${API_PUBLIC_URL:-}
       # Custodio ENV (solo testnet): las claves viven únicamente en este proceso
