@@ -1,7 +1,7 @@
 import type { ChainTransaction, Prisma } from '@prisma/client';
 import type { OutboxService } from '@shared/outbox/outbox.service';
 import type { PrismaService } from '@shared/prisma/prisma.service';
-import type { ChainAlertsWriter } from '../alerts/chain-alerts.writer';
+import { ChainAlertsWriter } from '../alerts/chain-alerts.writer';
 import { CHAIN_DEFAULTS, type ChainSettings } from '../chain.config';
 import type { KeyCustody } from '../custody/key-custody';
 import type { WineryIdentityService } from '../identity/winery-identity.service';
@@ -908,5 +908,55 @@ describe('Fallo de un intento: reintento o FAILED (contrato O3 §2.3)', () => {
       await lifecycle.fail('id', new ChainTxFailure('CHN_RPC_UNAVAILABLE')),
     ).toBe('IGNORED');
     expect(db.chainTransaction.update).not.toHaveBeenCalled();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+describe('Alertas de la cadena: una sola abierta por código y sujeto', () => {
+  const input = {
+    code: 'LOW_BALANCE',
+    level: 'CRITICAL' as const,
+    subjectType: 'PLATFORM_ACCOUNT',
+    subjectId: 'OPERATIONS',
+    message: 'La cuenta de OPERATIONS no existe en la red',
+  };
+  function build(open: { id: string } | null) {
+    const calls: string[] = [];
+    const db = {
+      $executeRaw: jest.fn(() => {
+        calls.push('lock');
+        return Promise.resolve(1);
+      }),
+      chainAlert: {
+        findFirst: jest.fn(() => {
+          calls.push('find');
+          return Promise.resolve(open);
+        }),
+        create: jest.fn(({ data }: { data: object }) => {
+          calls.push('create');
+          return Promise.resolve({ id: 'alert-1', wineryId: null, ...data });
+        }),
+      },
+    };
+    const outbox = { add: jest.fn().mockResolvedValue({}) };
+    const writer = new ChainAlertsWriter(outbox as unknown as OutboxService);
+    return { writer, db, outbox, calls };
+  }
+
+  it('toma un candado por alerta antes de mirar si ya existe (dos procesos a la vez)', async () => {
+    const { writer, db, outbox, calls } = build(null);
+    expect(await writer.raise(asDb(db), input)).toBe(true);
+    expect(calls).toEqual(['lock', 'find', 'create']);
+    expect(outbox.add.mock.calls[0][1]).toMatchObject({
+      type: 'chain.alert.raised',
+      payload: { alertId: 'alert-1', code: 'LOW_BALANCE', level: 'CRITICAL' },
+    });
+  });
+
+  it('con una abierta igual no crea otra ni publica nada', async () => {
+    const { writer, db, outbox, calls } = build({ id: 'ya-abierta' });
+    expect(await writer.raise(asDb(db), input)).toBe(false);
+    expect(calls).toEqual(['lock', 'find']);
+    expect(outbox.add).not.toHaveBeenCalled();
   });
 });

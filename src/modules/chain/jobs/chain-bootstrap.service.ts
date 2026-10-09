@@ -8,6 +8,10 @@ import { CHAIN_SETTINGS, type ChainSettings } from '../chain.config';
 import { ChainJobsQueue } from './chain-jobs.queue';
 import { PlatformAccountsSync } from './platform-accounts.sync';
 
+/** Intentos del arranque si la red o la base fallan justo entonces. */
+const START_ATTEMPTS = 3;
+const START_RETRY_MS = 2_000;
+
 /**
  * Arranque de la cadena en el worker: registra las cuentas de la plataforma,
  * lee sus saldos, pide Friendbot si hace falta (solo `TESTNET` y `LOCAL`) y
@@ -41,20 +45,26 @@ export class ChainBootstrap implements OnApplicationBootstrap {
   }
 
   private async start(): Promise<void> {
-    try {
-      const synced = await this.accounts.syncAddresses();
-      this.logger.log({
-        message: 'Cuentas de la plataforma registradas',
-        accounts: synced,
-      });
-      const funded = await this.accounts.fundIfNeeded();
-      if (funded.length > 0) {
-        this.logger.log(`Friendbot pedido para: ${funded.join(', ')}`);
+    for (let attempt = 1; attempt <= START_ATTEMPTS; attempt += 1) {
+      try {
+        const synced = await this.accounts.syncAddresses();
+        this.logger.log({
+          message: 'Cuentas de la plataforma registradas',
+          accounts: synced,
+        });
+        const funded = await this.accounts.fundIfNeeded();
+        if (funded.length > 0) {
+          this.logger.log(`Friendbot pedido para: ${funded.join(', ')}`);
+        }
+        break;
+      } catch (error) {
+        this.logger.warn(
+          `Arranque de la cadena incompleto (intento ${attempt}/${START_ATTEMPTS}; las tareas programadas lo repiten): ${error instanceof Error ? error.message.slice(0, 300) : String(error)}`,
+        );
+        if (attempt < START_ATTEMPTS) {
+          await new Promise((resolve) => setTimeout(resolve, START_RETRY_MS));
+        }
       }
-    } catch (error) {
-      this.logger.warn(
-        `Arranque de la cadena incompleto (lo repiten las tareas programadas): ${error instanceof Error ? error.message : String(error)}`,
-      );
     }
     await this.jobs.backfill();
   }

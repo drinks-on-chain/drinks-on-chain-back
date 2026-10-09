@@ -77,15 +77,18 @@ export class ChainTxConfirmHandler implements JobHandler<ChainTxJobData> {
 
 /**
  * `chain.tx.confirmed`: los pasos 3.4–3.6 enganchan aquí sus efectos
- * (emisión, anclaje). Hoy solo deja constancia.
+ * (emisión, anclaje). Hoy, una cuenta de la plataforma recién fondeada
+ * relanza el relleno de identidades que la esperaba.
  */
 @Injectable()
 @HandlesJob(QUEUE_CHAIN, CHAIN_TX_CONFIRMED)
 export class ChainTxConfirmedHandler implements JobHandler<
   OutboxJobData<ChainTxEventPayload>
 > {
-  handle(): Promise<void> {
-    return Promise.resolve();
+  constructor(private readonly jobs: ChainJobsQueue) {}
+
+  async handle(data: OutboxJobData<ChainTxEventPayload>): Promise<void> {
+    if (data.payload.kind === 'FUND_ACCOUNT') await this.jobs.backfill();
   }
 }
 

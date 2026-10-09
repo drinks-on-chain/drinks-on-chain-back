@@ -2,13 +2,15 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Prisma, WineryStatusEnum } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CHAIN_SETTINGS, type ChainSettings } from '../chain.config';
-import { intentKeys } from '../chain.constants';
+import { CUSTODY_REF_OPERATIONS, intentKeys } from '../chain.constants';
+import { KEY_CUSTODY, type KeyCustody } from '../custody/key-custody';
 import {
   SYSTEM_REQUESTER,
   WineryIdentityService,
   type ProvisionResult,
 } from '../identity/winery-identity.service';
 import { ChainIntentsService } from '../tx/chain-intents.service';
+import { CHAIN_GATEWAY, type ChainGateway } from './gateway/chain-gateway';
 
 /**
  * Identidad de las bodegas en el worker (contrato O3 §3.1, §3.3 y §3.5):
@@ -24,6 +26,8 @@ export class WineryIdentityProvisioner {
     private readonly prisma: PrismaService,
     private readonly identity: WineryIdentityService,
     private readonly intents: ChainIntentsService,
+    @Inject(KEY_CUSTODY) private readonly custody: KeyCustody,
+    @Inject(CHAIN_GATEWAY) private readonly gateway: ChainGateway,
     @Inject(CHAIN_SETTINGS) private readonly settings: ChainSettings,
   ) {}
 
@@ -56,6 +60,14 @@ export class WineryIdentityProvisioner {
   async backfillNext(): Promise<string | null> {
     if (!this.settings.enabled) return null;
     const { network } = this.settings;
+    // Sin la cuenta de operaciones en la red, cada identidad fallaría: el
+    // relleno espera (lo relanza la confirmación de su `FUND_ACCOUNT`)
+    if (!(await this.operationsAccountExists())) {
+      this.logger.warn(
+        'Relleno de identidades aplazado: la cuenta de operaciones aún no existe en la red',
+      );
+      return null;
+    }
     return this.prisma.$transaction(async (db) => {
       await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`chain-backfill:${network}`}))`;
       const inProgress = await db.chainAccount.count({
@@ -102,6 +114,15 @@ export class WineryIdentityProvisioner {
       });
       return created;
     });
+  }
+
+  private async operationsAccountExists(): Promise<boolean> {
+    try {
+      const address = await this.custody.publicKey(CUSTODY_REF_OPERATIONS);
+      return (await this.gateway.accountBalance(address)) !== null;
+    } catch {
+      return false;
+    }
   }
 
   private async lockActive(

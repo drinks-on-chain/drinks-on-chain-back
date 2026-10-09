@@ -22,8 +22,9 @@ export interface ChainAlertInput {
 
 /**
  * Escritura de alertas de la cadena (contrato O3 §8.2). Una sola abierta por
- * código y sujeto; cada alerta nueva publica `chain.alert.raised` en la misma
- * transacción. La bandeja y su resolución llegan con el paso 3.6.
+ * código y sujeto (índice único parcial `chain_alerts_open_code_subject_key`);
+ * cada alerta nueva publica `chain.alert.raised` en la misma transacción. La
+ * bandeja y su resolución llegan con el paso 3.6.
  */
 @Injectable()
 export class ChainAlertsWriter {
@@ -34,6 +35,10 @@ export class ChainAlertsWriter {
     db: Prisma.TransactionClient,
     input: ChainAlertInput,
   ): Promise<boolean> {
+    // Dos procesos pueden detectar lo mismo a la vez (el arranque y una tarea
+    // programada): el segundo espera y encuentra la alerta del primero, sin
+    // chocar con el índice único de las abiertas
+    await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`chain-alert:${input.code}:${input.subjectType}:${input.subjectId}`}))`;
     const open = await db.chainAlert.findFirst({
       where: {
         code: input.code,

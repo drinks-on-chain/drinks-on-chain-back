@@ -98,7 +98,24 @@ export class PlatformAccountsSync {
           ? this.settings.operationsMinBalanceXlm
           : this.settings.anchorMinBalanceXlm;
       const status = balanceStatus(balance, xlmToStroops(minXlm));
-      const subject = { subjectType: 'PLATFORM_ACCOUNT', subjectId: role };
+      await this.reportBalance(role, status, balance, minXlm);
+      results.push({ role, address, status });
+    }
+    return results;
+  }
+
+  /**
+   * Alerta `LOW_BALANCE` de la cuenta: se abre si falta o está baja y se
+   * cierra sola al recuperarse. Un fallo aquí no impide leer ni fondear.
+   */
+  private async reportBalance(
+    role: PlatformAccountRole,
+    status: PlatformAccountBalanceStatus,
+    balance: bigint | null,
+    minXlm: string,
+  ): Promise<void> {
+    const subject = { subjectType: 'PLATFORM_ACCOUNT', subjectId: role };
+    try {
       await this.prisma.$transaction(async (db) => {
         if (status === 'OK') {
           await this.alerts.resolveAuto(
@@ -120,9 +137,11 @@ export class PlatformAccountsSync {
           actual: { balanceXlm: stroopsToXlm(balance ?? 0n), status },
         });
       });
-      results.push({ role, address, status });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo actualizar la alerta de saldo de ${role}: ${error instanceof Error ? error.message.slice(0, 200) : 'error'}`,
+      );
     }
-    return results;
   }
 
   /**
