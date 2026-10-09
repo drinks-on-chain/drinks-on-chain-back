@@ -134,6 +134,8 @@ export class FaultyGateway implements ChainGateway {
   getTransaction = (hash: string): Promise<TxLookup> =>
     this.pass(() => this.real.getTransaction(hash));
   fund = (address: string) => this.pass(() => this.real.fund(address));
+  contractEvents: ChainGateway['contractEvents'] = (...args) =>
+    this.pass(() => this.real.contractEvents(...args));
 
   async loadAccount(address: string): Promise<Account | null> {
     this.guard();

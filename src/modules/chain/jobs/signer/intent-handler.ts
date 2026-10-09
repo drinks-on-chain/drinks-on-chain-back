@@ -33,13 +33,19 @@ export interface SignerSpec {
 }
 
 export type PreparedIntent =
-  /** La red ya tiene el efecto (idempotencia): se confirma sin enviar nada. */
-  | { type: 'ALREADY_DONE'; note: string }
+  /**
+   * La red ya tiene el efecto (idempotencia): se confirma sin enviar nada.
+   * Con `txHash` (un intento anterior de esta misma intención que sí entró),
+   * el firmante lee esa transacción y la confirma con sus datos.
+   */
+  | { type: 'ALREADY_DONE'; note: string; txHash?: string }
   /** Transacción clásica; `extraSigners` firman el sobre junto al origen. */
   | {
       type: 'CLASSIC';
       operations: xdr.Operation[];
       extraSigners: SignerSpec[];
+      /** `MEMO_HASH`: 32 bytes en hex (anclaje del expediente, §7.1). */
+      memoHashHex?: string;
     }
   /**
    * Una operación de Soroban; `authSigners` son las únicas direcciones cuya
@@ -85,10 +91,15 @@ export interface IntentHandler<TPlan = unknown, TVerification = unknown> {
     env: IntentEnv,
   ): Promise<PreparedIntent>;
 
-  /** Lectura de vuelta en la red antes de dar la transacción por confirmada. */
+  /**
+   * Lectura de vuelta en la red antes de dar la transacción por confirmada.
+   * `lookup` es la transacción tal como quedó en la red (`null` si la
+   * intención se dio por hecha sin enviar nada).
+   */
   verify?(
     transaction: ChainTransaction,
     env: IntentEnv,
+    lookup: ConfirmedLookup | null,
   ): Promise<TVerification>;
 
   onConfirmed?(

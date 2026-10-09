@@ -35,6 +35,13 @@ export interface AttemptNote {
 export type FailOutcome = 'RETRYING' | 'FAILED' | 'IGNORED';
 
 /**
+ * Los efectos de un manejador van en la misma transacción que el cambio de
+ * estado: una emisión confirma hasta 32 000 NFT y un anclaje mueve los de
+ * toda una colección, más que los 5 s por defecto de Prisma.
+ */
+const EFFECTS_TX_OPTIONS = { timeout: 60_000, maxWait: 15_000 } as const;
+
+/**
  * Cambios de estado de una transacción en el worker (contrato O3 §2.3): cada
  * uno bloquea la fila, comprueba la transición, deja su entrada en el
  * historial (`chain_tx_attempts`, solo inserción) y publica sus eventos en la
@@ -185,7 +192,7 @@ export class ChainTxLifecycle {
         detail: failure.detail,
       });
       return 'FAILED';
-    });
+    }, EFFECTS_TX_OPTIONS);
   }
 
   /**
@@ -245,6 +252,6 @@ export class ChainTxLifecycle {
         },
       });
       return true;
-    });
+    }, EFFECTS_TX_OPTIONS);
   }
 }

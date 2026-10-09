@@ -95,6 +95,18 @@ export class IntentOnHold extends Error {
   }
 }
 
+/**
+ * La intención es válida pero aún no le toca (p. ej. el trozo anterior de una
+ * emisión sigue sin confirmarse): se deja como está, sin gastar un intento, y
+ * el barrido la vuelve a despertar.
+ */
+export class IntentNotReady extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'IntentNotReady';
+  }
+}
+
 /** Códigos de resultado de transacción (`TransactionResultCode`) → §2.3. */
 const TX_RESULT_CODES: Record<string, ChainTxErrorCode> = {
   txBadSeq: 'CHN_BAD_SEQUENCE',

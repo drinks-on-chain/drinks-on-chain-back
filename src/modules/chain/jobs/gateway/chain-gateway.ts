@@ -29,6 +29,16 @@ export interface ChainGateway {
   ): Promise<unknown>;
   send(tx: Transaction): Promise<SendOutcome>;
   getTransaction(txHash: string): Promise<TxLookup>;
+  /**
+   * Eventos de un contrato desde `fromLedger` cuyo primer *topic* es `name`
+   * (`getEvents`). El RPC solo guarda ≈ 7 días: un `fromLedger` anterior a su
+   * ventana se ajusta al más antiguo que conserva.
+   */
+  contractEvents(
+    contractAddress: string,
+    name: string,
+    fromLedger: number,
+  ): Promise<ChainContractEvent[]>;
   /** Friendbot (solo `TESTNET` y `LOCAL`). */
   fund(address: string): Promise<{ txHash: string | null }>;
 }
@@ -44,6 +54,21 @@ export type SendOutcome =
    */
   | { accepted: false; rejected: boolean; failure: ChainTxFailure };
 
+/** Evento de contrato decodificado (bigint como texto, bytes en hex). */
+export interface ChainContractEvent {
+  /** Primer *topic*: `lot_minted`, `consecutive_mint`… */
+  name: string;
+  /** Contrato que lo emitió (`C…`); `null` si no se pudo leer. */
+  contractAddress: string | null;
+  /** Resto de *topics*, en orden. */
+  topics: unknown[];
+  /** Datos: siempre un mapa de símbolo a valor (`docs/funciones.md`). */
+  data: Record<string, unknown>;
+  /** Solo en los leídos con `contractEvents` (`getEvents`). */
+  txHash?: string;
+  ledger?: number;
+}
+
 export type TxLookup =
   | { status: 'NOT_FOUND' }
   | {
@@ -56,6 +81,12 @@ export type TxLookup =
       returnValue: unknown;
       /** Nombre (primer *topic*) de cada evento de contrato emitido. */
       contractEvents: string[];
+      /** Los mismos eventos, decodificados. */
+      events: ChainContractEvent[];
+      /** Cuenta de origen del sobre (`G…`), leída de la transacción. */
+      sourceAccount: string | null;
+      /** Memo de tipo `MEMO_HASH` en hex; `null` si no lleva o es de otro tipo. */
+      memoHashHex: string | null;
     }
   | {
       status: 'FAILED';

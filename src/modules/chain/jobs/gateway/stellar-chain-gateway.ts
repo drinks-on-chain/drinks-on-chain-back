@@ -4,6 +4,7 @@ import {
   BASE_FEE,
   Contract,
   Keypair,
+  StrKey,
   Transaction,
   TransactionBuilder,
   rpc,
@@ -17,7 +18,12 @@ import {
   failureFromDiagnostics,
   failureFromTxResultCode,
 } from '../../tx/chain-tx.errors';
-import type { ChainGateway, SendOutcome, TxLookup } from './chain-gateway';
+import type {
+  ChainContractEvent,
+  ChainGateway,
+  SendOutcome,
+  TxLookup,
+} from './chain-gateway';
 
 /** Reenvíos de la **misma** transacción ante `-32603` o `TRY_AGAIN_LATER`. */
 const SEND_ATTEMPTS = 5;
@@ -64,6 +70,27 @@ export function toJsonSafe(value: unknown): unknown {
     );
   }
   return value === undefined ? null : value;
+}
+
+/** Evento de contrato en JSON: nombre, resto de *topics* y mapa de datos. */
+export function decodeEvent(
+  topics: xdr.ScVal[],
+  data: xdr.ScVal,
+  contractAddress: string | null,
+): ChainContractEvent {
+  const [name, ...rest] = topics.map((topic) =>
+    toJsonSafe(scValToNative(topic)),
+  );
+  const value = toJsonSafe(scValToNative(data));
+  return {
+    name: String(name),
+    contractAddress,
+    topics: rest,
+    data:
+      typeof value === 'object' && value !== null && !Array.isArray(value)
+        ? (value as Record<string, unknown>)
+        : {},
+  };
 }
 
 function xdrText(value: unknown): string {
@@ -262,6 +289,7 @@ export class StellarChainGateway implements ChainGateway {
         failure,
       };
     }
+    const events = this.events(response.events);
     return {
       status: 'SUCCESS',
       ledger: response.ledger,
@@ -272,8 +300,82 @@ export class StellarChainGateway implements ChainGateway {
         response.returnValue === undefined
           ? null
           : toJsonSafe(scValToNative(response.returnValue)),
-      contractEvents: this.eventNames(response.events),
+      contractEvents: events.map((event) => event.name),
+      events,
+      ...this.envelopeFacts(response.envelopeXdr),
     };
+  }
+
+  /**
+   * Origen y memo de la transacción tal como quedó en la red (§7.1): lo que
+   * se comprueba al confirmar un anclaje.
+   */
+  private envelopeFacts(envelope: xdr.TransactionEnvelope): {
+    sourceAccount: string | null;
+    memoHashHex: string | null;
+  } {
+    try {
+      const parsed = TransactionBuilder.fromXDR(
+        envelope,
+        this.settings.networkPassphrase,
+      );
+      const tx =
+        'innerTransaction' in parsed ? parsed.innerTransaction : parsed;
+      const memo = tx.memo;
+      return {
+        sourceAccount: tx.source,
+        memoHashHex:
+          memo.type === 'hash' && memo.value
+            ? Buffer.from(memo.value as Uint8Array).toString('hex')
+            : null,
+      };
+    } catch {
+      return { sourceAccount: null, memoHashHex: null };
+    }
+  }
+
+  async contractEvents(
+    contractAddress: string,
+    name: string,
+    fromLedger: number,
+  ): Promise<ChainContractEvent[]> {
+    const topic = xdr.ScVal.scvSymbol(name).toXDR('base64');
+    const filters = [
+      {
+        type: 'contract' as const,
+        contractIds: [contractAddress],
+        topics: [[topic, '**']],
+      },
+    ];
+    const read = (startLedger: number) =>
+      this.server.getEvents({ startLedger, filters, limit: 200 });
+    let response: rpc.Api.GetEventsResponse;
+    try {
+      response = await this.call(() => read(Math.max(1, fromLedger)));
+    } catch (error) {
+      // Fuera de la ventana del RPC: se lee desde el más antiguo que guarda
+      const oldest = await this.oldestLedger();
+      if (oldest === null || oldest <= fromLedger) throw error;
+      response = await this.call(() => read(oldest));
+    }
+    return response.events.map((event) => ({
+      ...decodeEvent(event.topic, event.value, contractAddress),
+      txHash: event.txHash,
+      ledger: event.ledger,
+    }));
+  }
+
+  private async oldestLedger(): Promise<number | null> {
+    try {
+      const health = (await this.call(() => this.server.getHealth())) as {
+        oldestLedger?: number;
+      };
+      return typeof health.oldestLedger === 'number'
+        ? health.oldestLedger
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   private rentFee(meta: xdr.TransactionMeta): bigint | null {
@@ -290,19 +392,39 @@ export class StellarChainGateway implements ChainGateway {
     }
   }
 
-  private eventNames(events: rpc.Api.TransactionEvents | undefined): string[] {
-    const names: string[] = [];
+  private events(
+    events: rpc.Api.TransactionEvents | undefined,
+  ): ChainContractEvent[] {
+    const decoded: ChainContractEvent[] = [];
     for (const operationEvents of events?.contractEventsXdr ?? []) {
       for (const event of operationEvents) {
         try {
-          const body = event.body.value as unknown as { topics: xdr.ScVal[] };
-          names.push(String(scValToNative(body.topics[0])));
+          const body = event.body.value as unknown as {
+            topics: xdr.ScVal[];
+            data: xdr.ScVal;
+          };
+          const contractId = (event as unknown as { contractId?: unknown })
+            .contractId;
+          decoded.push(
+            decodeEvent(
+              body.topics,
+              body.data,
+              contractId
+                ? StrKey.encodeContract(Buffer.from(contractId as Uint8Array))
+                : null,
+            ),
+          );
         } catch {
-          names.push('?');
+          decoded.push({
+            name: '?',
+            contractAddress: null,
+            topics: [],
+            data: {},
+          });
         }
       }
     }
-    return names;
+    return decoded;
   }
 
   async fund(address: string): Promise<{ txHash: string | null }> {
@@ -375,5 +497,6 @@ export class DisabledChainGateway implements ChainGateway {
   readContract = () => this.fail<unknown>();
   send = () => this.fail<SendOutcome>();
   getTransaction = () => this.fail<TxLookup>();
+  contractEvents = () => this.fail<ChainContractEvent[]>();
   fund = () => this.fail<{ txHash: string | null }>();
 }

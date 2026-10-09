@@ -4,6 +4,7 @@ import {
   Account,
   Address,
   BASE_FEE,
+  Memo,
   Operation,
   Transaction,
   TransactionBuilder,
@@ -31,6 +32,7 @@ import {
 } from '../../custody/key-custody';
 import {
   ChainTxFailure,
+  IntentNotReady,
   IntentOnHold,
   IntentRejected,
   failureFromDiagnostics,
@@ -163,6 +165,8 @@ export class ChainSigner {
       claim = await this.claim(transactionId);
     } catch (error) {
       if (error instanceof Skip) return error.outcome;
+      // Aún no le toca: sigue en espera sin gastar un intento
+      if (error instanceof IntentNotReady) return 'BUSY';
       if (error instanceof IntentOnHold) {
         await this.hold(transactionId, error);
         return 'HELD';
@@ -419,7 +423,30 @@ export class ChainSigner {
 
     const prepared = await handler.prepare(plan, row, env);
     if (prepared.type === 'ALREADY_DONE') {
-      return this.finish(row, handler, null, ['BUILDING'], prepared.note);
+      // Un intento anterior de esta intención sí entró: se confirma con él
+      const lookup = prepared.txHash
+        ? await this.gateway.getTransaction(prepared.txHash)
+        : null;
+      if (prepared.txHash && lookup?.status !== 'SUCCESS') {
+        throw new ChainTxFailure(
+          'CHN_RPC_UNAVAILABLE',
+          'el intento anterior aún no se puede leer en la red',
+        );
+      }
+      const done =
+        prepared.txHash && row.txHash !== prepared.txHash
+          ? await this.prisma.chainTransaction.update({
+              where: { id: row.id },
+              data: { txHash: prepared.txHash },
+            })
+          : row;
+      return this.finish(
+        done,
+        handler,
+        lookup?.status === 'SUCCESS' ? lookup : null,
+        ['BUILDING'],
+        prepared.note,
+      );
     }
     if (prepared.type === 'FRIENDBOT') {
       const { txHash } = await this.gateway.fund(prepared.address);
@@ -510,6 +537,9 @@ export class ChainSigner {
     if (prepared.type === 'CLASSIC') {
       const draft = builder(String(CLASSIC_FEE_PER_OPERATION));
       prepared.operations.forEach((operation) => draft.addOperation(operation));
+      if (prepared.memoHashHex) {
+        draft.addMemo(Memo.hash(prepared.memoHashHex));
+      }
       tx = draft.build();
       signers = [source, ...prepared.extraSigners];
     } else {
@@ -675,7 +705,7 @@ export class ChainSigner {
     const env = await this.env();
     // Lectura de vuelta en la red, fuera de la transacción de base de datos
     const verification = handler.verify
-      ? await this.unknown(() => handler.verify!(row, env))
+      ? await this.unknown(() => handler.verify!(row, env, lookup))
       : undefined;
     const confirmed = await this.lifecycle.confirm(
       row.id,
