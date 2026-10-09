@@ -2,6 +2,23 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Ola 3 · paso 3.3: solicitud de tokenización y colecciones (sin red)
+
+Contrato `o3-tokenizacion` §5, §6.2, §6.4, §6.5 y §8.5. **Nada sale a la red**: la emisión queda registrada y pendiente del paso 3.4.
+
+### Añadido
+
+- 30 de las 54 rutas de la ola dejan de responder `501` (lista en `src/modules/tokenization/o3-implemented-routes.ts`): estado de tokenización del lote, solicitudes del ERP (crear, listar, detalle, editar, reenviar, retirar), bandeja del back office (lista, detalle con `review`, tomar, notas, completar, pedir cambios, aprobar, rechazar), colecciones (lecturas, editar, `publish`, `pause`, `resume`, `close`, NFT, transacciones, métricas) y lo público (`GET /v1/public/nft/{winerySlug}/{tokenId}` y `GET /v1/public/collections/images/{imageId}`).
+- Aprobar crea en una sola transacción la colección `MINTING` (o amplía la cuota), el `Mint` `PENDING` y el evento del outbox `tokenization.request_approved` (cola `chain`) con un trozo por cada 32 000 NFT. Dos aprobaciones en paralelo: una sola colección y una sola emisión.
+- `LotSummary.tokenization` real (`REQUESTED`, `CHANGES_REQUESTED`, `MINTING`, `MINT_FAILED`, `READY`, `PUBLISHED`, `PAUSED`, `CLOSED`).
+- Correos (cola `email`): `tokenizacion-recibida`, `tokenizacion-nueva-operaciones`, `tokenizacion-cambios`, `tokenizacion-aprobada`, `tokenizacion-rechazada` y `coleccion-estado`.
+- Eventos del outbox: `tokenization.request_submitted`, `…_changes_requested`, `…_approved`, `…_rejected`, `collection.published`, `collection.paused`, `collection.resumed` y `collection.closed`, cada uno con su procesador en el worker (por ahora solo dejan constancia).
+
+### Cambios de comportamiento
+
+- `PATCH /v1/lots/{id}`: bajar `estimatedBottles` por debajo de lo ya emitido como NFT responde 422 `TOK_ESTIMATE_BELOW_MINTED`.
+- Suspender o revocar una bodega pasa sus colecciones publicadas a `PAUSED`; revocarla rechaza además sus solicitudes abiertas (contrato §3.5; la pausa del contrato en la red es del paso 3.2).
+
 ## 0.3.0-rc.0 · 2026-10-08 · Ola 3: tokenización y cadena (apertura)
 
 Primera versión de la Ola 3 (contrato `o3-tokenizacion`, §12.1): publica el contrato y prepara la base; **todavía no envía nada a la red**. Detalle en el [README](README.md#-cadena-y-tokenización-ola-3--apertura) y en el [roadmap](docs/ROADMAP.md#etapa-3--tokenización-y-cadena-ola-3).
