@@ -41,9 +41,19 @@ export function HandlesJob(queue: QueueName, name: string): ClassDecorator {
   });
 }
 
+interface ScheduledTaskCommon {
+  name: string;
+  description?: string;
+  /**
+   * Tarea muy frecuente (cada pocos segundos): su "completado" se registra
+   * en `debug` para no llenar el log.
+   */
+  quiet?: boolean;
+}
+
 export type ScheduledTaskMetadata =
-  | { name: string; every: number; pattern?: undefined; description?: string }
-  | { name: string; pattern: string; every?: undefined; description?: string };
+  | (ScheduledTaskCommon & { every: number; pattern?: undefined })
+  | (ScheduledTaskCommon & { pattern: string; every?: undefined });
 
 /**
  * Tarea programada (BullMQ job scheduler en la cola `scheduled`): `every` en

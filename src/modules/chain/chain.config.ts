@@ -46,6 +46,15 @@ export const CHAIN_DEFAULTS = {
   wineryStartingBalanceXlm: '2',
   /** S-20. */
   ttlExtendBelowDays: 30,
+  /**
+   * 50 XLM: el primer despliegue tras subir el código paga su renta hasta 120
+   * días (≈ 28 XLM de presupuesto en la red local; se devuelve lo no gastado).
+   */
+  deployMaxFeeStroops: '500000000',
+  /** Esperas entre intentos (S-4): 10 s, 30 s, 1 min, 2 min, 5 min → 6 intentos. */
+  txRetryDelaysMs: [10_000, 30_000, 60_000, 120_000, 300_000],
+  /** `timeBounds.maxTime = ahora + 120 s` (§2.3). */
+  txTimeoutSeconds: 120,
 } as const;
 
 /** Acepta también los nombres de antes de la Ola 3 (`testnet`, `mainnet`, `standalone`). */
@@ -176,6 +185,26 @@ export const chainEnvValidationSchema = {
     XLM_AMOUNT,
     'importe en XLM con hasta 7 decimales',
   ),
+  CHAIN_DEPLOY_MAX_FEE_STROOPS: optionalPattern(
+    'CHAIN_DEPLOY_MAX_FEE_STROOPS',
+    STROOPS,
+    'entero positivo en stroops',
+  ),
+  // Esperas entre intentos, en ms y separadas por comas (pruebas); por
+  // defecto 10 s, 30 s, 1 min, 2 min y 5 min (S-4)
+  CHAIN_TX_RETRY_DELAYS_MS: optionalPattern(
+    'CHAIN_TX_RETRY_DELAYS_MS',
+    /^\d{1,7}(,\d{1,7}){0,9}$/,
+    'milisegundos separados por comas (p. ej. 10000,30000)',
+  ),
+  // Solo TESTNET y LOCAL; por defecto, el que anuncia el RPC (`getNetwork`)
+  STELLAR_FRIENDBOT_URL: optionalUrl(),
+  // Etiqueta del entorno en la sal de los contratos (S-2); por defecto, la red
+  CHAIN_ENVIRONMENT: optionalPattern(
+    'CHAIN_ENVIRONMENT',
+    /^[a-z0-9][a-z0-9-]{0,30}$/,
+    'minúsculas, cifras y guiones (p. ej. dev, staging)',
+  ),
   CHAIN_TTL_EXTEND_BELOW_DAYS: Joi.number()
     .empty('')
     .integer()
@@ -251,6 +280,14 @@ export interface ChainSettings {
   consumerSeedCheckAddress: string | null;
   /** Origen público de la API (`API_PUBLIC_URL`, de la Ola 2): URI base de los contratos e imágenes. */
   publicApiBaseUrl: string | null;
+  /** Tope de comisión del despliegue de un contrato (puede extender el código). */
+  deployMaxFeeStroops: string;
+  /** Esperas entre intentos de una transacción (S-4). */
+  txRetryDelaysMs: readonly number[];
+  /** Friendbot (solo `TESTNET` y `LOCAL`); `null` = el que anuncia el RPC. */
+  friendbotUrl: string | null;
+  /** Etiqueta del entorno en la sal de los contratos (S-2). */
+  environment: string;
 }
 
 export const CHAIN_SETTINGS = Symbol('CHAIN_SETTINGS');
@@ -304,5 +341,16 @@ export function chainSettingsFromConfig(config: ConfigService): ChainSettings {
     consumerSeedCheckAddress: text(config, 'CHAIN_CONSUMER_SEED_CHECK_ADDRESS'),
     publicApiBaseUrl:
       text(config, 'API_PUBLIC_URL')?.replace(/\/+$/, '') ?? null,
+    deployMaxFeeStroops:
+      text(config, 'CHAIN_DEPLOY_MAX_FEE_STROOPS') ??
+      CHAIN_DEFAULTS.deployMaxFeeStroops,
+    txRetryDelaysMs:
+      text(config, 'CHAIN_TX_RETRY_DELAYS_MS')
+        ?.split(',')
+        .map(Number)
+        .filter((ms) => Number.isInteger(ms) && ms >= 0) ??
+      CHAIN_DEFAULTS.txRetryDelaysMs,
+    friendbotUrl: text(config, 'STELLAR_FRIENDBOT_URL'),
+    environment: text(config, 'CHAIN_ENVIRONMENT') ?? network.toLowerCase(),
   };
 }

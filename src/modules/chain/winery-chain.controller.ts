@@ -17,7 +17,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { RequiresReason } from '@shared/audit/requires-reason';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { TenantId } from '@shared/decorators/tenant-id.decorator';
+import { AppException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import {
   Audience,
@@ -28,23 +34,25 @@ import {
 import { platformRolesWith } from '@modules/platform-users/permissions';
 import {
   ApiErrorCodes,
-  ApiNotImplementedO3,
   ApiRoleForbidden,
   ApiRuleErrors,
   WINERY_MEMBERS,
-  notImplementedO3,
 } from './contract/o3-contract';
 import {
   ChainActionDto,
   WineryChainAccountViewDto,
   WineryChainIdentityDto,
 } from './dto/chain.dto';
+import { WineryChainActionsService } from './identity/winery-chain-actions.service';
 
 const READERS = platformRolesWith('chain', 'FULL', 'READ');
 /** Reaprovisionar la identidad: administración y operaciones. */
 const OPERATORS = platformRolesWith('chain', 'FULL');
 /** Pausar o reanudar el contrato en la red: administración. */
 const ADMINS = platformRolesWith('chain.admin', 'FULL');
+
+/** La cadena no está configurada en este entorno (sin custodio o sin RPC). */
+const CHAIN_DISABLED = 'CHN_DISABLED (cadena sin configurar)';
 
 const WINERY_NOT_FOUND = () =>
   ApiErrorCodes(HttpStatus.NOT_FOUND, ['ORG_NOT_FOUND']);
@@ -61,22 +69,23 @@ const WINERY_NOT_FOUND = () =>
 @OrgType('PLATFORM')
 @Controller('platform/wineries')
 export class PlatformWineryChainController {
+  constructor(private readonly actions: WineryChainActionsService) {}
+
   @Get(':id/chain-account')
   @Roles(...READERS)
   @ApiOperation({
     summary: 'Cuenta de una bodega en la red',
     description:
       'Contrato O3 §3.4: identidad (cuenta y contrato), NFT por lote, anclajes, últimas transacciones y lo ' +
-      'pagado por la plataforma por esa bodega.',
+      'pagado por la plataforma por esa bodega. Las colecciones (`totals`, `byLot`) llegan con los pasos 3.4–3.6.',
   })
   @ApiOkResponse({ type: WineryChainAccountViewDto })
   @ApiRoleForbidden()
   @WINERY_NOT_FOUND()
-  @ApiNotImplementedO3('3.6')
   chainAccount(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<WineryChainAccountViewDto> {
-    throw notImplementedO3('3.6');
+    return this.actions.accountView(id);
   }
 
   @Post(':id/chain/provision')
@@ -95,14 +104,15 @@ export class PlatformWineryChainController {
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'CHN_IDENTITY_ALREADY_ACTIVE',
     'TOK_WINERY_NOT_ACTIVE (`meta.status`)',
+    CHAIN_DISABLED,
   ])
   @ApiRuleErrors(['(falta `reason`)'])
-  @ApiNotImplementedO3('3.2')
   provision(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ChainActionDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChainActionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<WineryChainIdentityDto> {
-    throw notImplementedO3('3.2');
+    return this.actions.provision(id, dto.reason, user);
   }
 
   @Post(':id/chain/pause')
@@ -122,16 +132,17 @@ export class PlatformWineryChainController {
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'CHN_CONTRACT_ALREADY_PAUSED',
     'TOK_WINERY_CHAIN_NOT_READY (sin contrato; `meta.status`)',
+    CHAIN_DISABLED,
     'IDEMPOTENCY_KEY_REUSED',
     'IDEMPOTENCY_IN_PROGRESS',
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', '(falta `reason`)'])
-  @ApiNotImplementedO3('3.2')
   pause(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ChainActionDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChainActionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<WineryChainIdentityDto> {
-    throw notImplementedO3('3.2');
+    return this.actions.pause(id, dto.reason, user);
   }
 
   @Post(':id/chain/unpause')
@@ -150,16 +161,17 @@ export class PlatformWineryChainController {
   @WINERY_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'CHN_CONTRACT_NOT_PAUSED',
+    CHAIN_DISABLED,
     'IDEMPOTENCY_KEY_REUSED',
     'IDEMPOTENCY_IN_PROGRESS',
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', '(falta `reason`)'])
-  @ApiNotImplementedO3('3.2')
   unpause(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ChainActionDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChainActionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<WineryChainIdentityDto> {
-    throw notImplementedO3('3.2');
+    return this.actions.unpause(id, dto.reason, user);
   }
 }
 
@@ -172,6 +184,8 @@ export class PlatformWineryChainController {
 @OrgType('WINERY')
 @Controller('organizations/current')
 export class CurrentOrganizationChainController {
+  constructor(private readonly actions: WineryChainActionsService) {}
+
   @Get('chain-account')
   @Roles(...WINERY_MEMBERS)
   @RequireActiveOrg({ allow: ['SUSPENDED'] })
@@ -190,10 +204,19 @@ export class CurrentOrganizationChainController {
   })
   @ApiOkResponse({ type: WineryChainAccountViewDto })
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.6')
+  @ApiErrorCodes(HttpStatus.NOT_FOUND, ['ORG_NOT_FOUND'])
+  @ApiRuleErrors(['(personal de plataforma sin `wineryId`)'])
   chainAccount(
-    @TenantId() _wineryId: string | undefined,
+    @TenantId() wineryId: string | undefined,
   ): Promise<WineryChainAccountViewDto> {
-    throw notImplementedO3('3.6');
+    if (!wineryId) {
+      throw new AppException(
+        HttpStatus.UNPROCESSABLE_ENTITY,
+        ErrorCode.VALIDATION_ERROR,
+        'Indica la bodega que se consulta',
+        [{ field: 'wineryId', message: 'wineryId es obligatorio' }],
+      );
+    }
+    return this.actions.accountView(wineryId);
   }
 }

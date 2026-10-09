@@ -37,7 +37,9 @@ import { ensureLotPrefix, freeSlug } from '@modules/wineries/winery-codes';
 import {
   WINERY_ACTIVATED,
   WINERY_AGGREGATE,
+  WINERY_STATUS_CHANGED,
   WineryActivatedPayload,
+  WineryStatusChangedPayload,
 } from '@modules/wineries/wineries.events';
 import {
   CreatePlatformWineryDto,
@@ -496,13 +498,22 @@ export class WineryManagementService implements OnModuleInit {
           },
         });
       }
-      await this.audit.record(tx, {
+      const entry = await this.audit.record(tx, {
         action: rule.audit,
         resource: { type: 'winery', id },
         organizationId: id,
         before: { status: from },
         after: { status: rule.to },
         reason,
+      });
+      // Contrato O3 §3.5: la cadena reacciona al cambio (revocar pausa el
+      // contrato en la red) citando esta entrada de bitácora
+      await this.outbox.add<WineryStatusChangedPayload>(tx, {
+        type: WINERY_STATUS_CHANGED,
+        aggregateType: WINERY_AGGREGATE,
+        aggregateId: id,
+        queue: QUEUE_CHAIN,
+        payload: { wineryId: id, from, to: rule.to, auditEventId: entry.id },
       });
       return this.detail(id, tx);
     }, AUDIT_TX_OPTIONS);

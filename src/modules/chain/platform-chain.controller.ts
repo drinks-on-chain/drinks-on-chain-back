@@ -18,6 +18,10 @@ import {
 } from '@nestjs/swagger';
 import { ApiPaginatedResponse } from '@shared/decorators/api-paginated-response.decorator';
 import { RequiresReason } from '@shared/audit/requires-reason';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
 import { Idempotent } from '@shared/idempotency/idempotent.decorator';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import {
@@ -48,6 +52,8 @@ import {
   ResolveChainAlertDto,
   StartReconciliationDto,
 } from './dto/chain.dto';
+import { PlatformAccountsService } from './accounts/platform-accounts.service';
+import { ChainTransactionsService } from './tx/chain-transactions.service';
 
 /** Ver: administración, operaciones y soporte. */
 const READERS = platformRolesWith('chain', 'FULL', 'READ');
@@ -67,6 +73,11 @@ const ADMINS = platformRolesWith('chain.admin', 'FULL');
 @OrgType('PLATFORM')
 @Controller('platform/chain')
 export class PlatformChainController {
+  constructor(
+    private readonly transactions: ChainTransactionsService,
+    private readonly platformAccounts: PlatformAccountsService,
+  ) {}
+
   // ── Transacciones (§2.4) ─────────────────────────────────────────────────
 
   @Get('transactions')
@@ -79,11 +90,11 @@ export class PlatformChainController {
   })
   @ApiPaginatedResponse(ChainTransactionDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.1')
+  @ApiRuleErrors()
   listTransactions(
-    @Query() _query: ChainTransactionsQueryDto,
+    @Query() query: ChainTransactionsQueryDto,
   ): Promise<Paginated<ChainTransactionDto>> {
-    throw notImplementedO3('3.1');
+    return this.transactions.list(query);
   }
 
   @Get('transactions/:id')
@@ -95,11 +106,10 @@ export class PlatformChainController {
   @ApiOkResponse({ type: ChainTransactionDto })
   @ApiRoleForbidden()
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['CHN_TX_NOT_FOUND'])
-  @ApiNotImplementedO3('3.1')
   getTransaction(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ChainTransactionDto> {
-    throw notImplementedO3('3.1');
+    return this.transactions.detail(id);
   }
 
   @Post('transactions/:id/retry')
@@ -117,17 +127,17 @@ export class PlatformChainController {
   @ApiRoleForbidden()
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['CHN_TX_NOT_FOUND'])
   @ApiErrorCodes(HttpStatus.CONFLICT, [
-    'CHN_TX_NOT_RETRYABLE (estado distinto de `FAILED`; `meta.status`)',
+    'CHN_TX_NOT_RETRYABLE (estado distinto de `FAILED` o abandonada; `meta.status`)',
     'IDEMPOTENCY_KEY_REUSED',
     'IDEMPOTENCY_IN_PROGRESS',
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', '(falta `reason`)'])
-  @ApiNotImplementedO3('3.1')
   retryTransaction(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ChainActionDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChainActionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ChainTransactionDto> {
-    throw notImplementedO3('3.1');
+    return this.transactions.retry(id, dto.reason, user);
   }
 
   @Post('transactions/:id/abandon')
@@ -144,15 +154,15 @@ export class PlatformChainController {
   @ApiRoleForbidden()
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['CHN_TX_NOT_FOUND'])
   @ApiErrorCodes(HttpStatus.CONFLICT, [
-    'CHN_TX_NOT_ABANDONABLE (`MINT_BATCH`, `ANCHOR_DOSSIER`, `CREATE_WINERY_ACCOUNT`, `DEPLOY_WINERY_CONTRACT`; `meta.kind`)',
+    'CHN_TX_NOT_ABANDONABLE (`MINT_BATCH`, `ANCHOR_DOSSIER`, `CREATE_WINERY_ACCOUNT`, `DEPLOY_WINERY_CONTRACT`, o estado distinto de `FAILED`; `meta.kind`, `meta.status`)',
   ])
   @ApiRuleErrors(['(falta `reason`)'])
-  @ApiNotImplementedO3('3.1')
   abandonTransaction(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ChainActionDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ChainActionDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ChainTransactionDto> {
-    throw notImplementedO3('3.1');
+    return this.transactions.abandon(id, dto.reason, user);
   }
 
   @Get('accounts')
@@ -165,9 +175,8 @@ export class PlatformChainController {
   })
   @ApiOkResponse({ type: PlatformChainAccountsDto })
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.1')
   accounts(): Promise<PlatformChainAccountsDto> {
-    throw notImplementedO3('3.1');
+    return this.platformAccounts.view();
   }
 
   // ── Indexador (§8.1) ─────────────────────────────────────────────────────

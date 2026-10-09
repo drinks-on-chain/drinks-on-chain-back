@@ -24,6 +24,12 @@ export interface EnvCustodySecrets {
  */
 export type DerivationIndexLookup = (ref: string) => Promise<number | null>;
 
+/**
+ * Asigna a la fila de `ref` el siguiente índice libre de su red (único y
+ * nunca reutilizado) y lo devuelve; `null` si esa cuenta no está registrada.
+ */
+export type DerivationIndexAllocator = (ref: string) => Promise<number | null>;
+
 const WINERY_REF = /^winery-[0-9a-f-]{36}$/;
 
 /**
@@ -33,8 +39,8 @@ const WINERY_REF = /^winery-[0-9a-f-]{36}$/;
  * porque un driver de variables de entorno no puede guardar una clave nueva
  * por bodega (S-1). Ninguna clave se guarda en la base ni se escribe en un log.
  *
- * Esqueleto de la apertura: resuelve claves y firma. El envío a la red llega
- * con el firmante del worker (paso 3.1).
+ * Solo resuelve claves y firma el *payload* que le pasa el firmante del
+ * worker (`jobs/signer/chain-signer.service.ts`); no construye ni envía nada.
  */
 export class EnvKeyCustody implements KeyCustody {
   readonly driver = 'ENV' as const;
@@ -42,6 +48,8 @@ export class EnvKeyCustody implements KeyCustody {
   constructor(
     private readonly secrets: EnvCustodySecrets,
     private readonly derivationIndexOf: DerivationIndexLookup,
+    private readonly allocateIndex: DerivationIndexAllocator = () =>
+      Promise.resolve(null),
   ) {}
 
   async publicKey(ref: string): Promise<string> {
@@ -55,9 +63,13 @@ export class EnvKeyCustody implements KeyCustody {
 
   /**
    * Las claves de este driver existen por configuración (o por derivación):
-   * "crearla" es comprobar que se puede resolver.
+   * "crear" la de una bodega es asegurar que su cuenta tiene índice de
+   * derivación (lo asigna si falta) y devolver su dirección.
    */
-  ensureKey(ref: string): Promise<string> {
+  async ensureKey(ref: string): Promise<string> {
+    if (WINERY_REF.test(ref) && (await this.derivationIndexOf(ref)) === null) {
+      await this.allocateIndex(ref);
+    }
     return this.publicKey(ref);
   }
 

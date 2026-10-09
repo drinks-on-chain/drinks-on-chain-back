@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
-import { ChainSettingsModule } from './chain-settings.module';
+import { PrismaModule } from '@shared/prisma/prisma.module';
+import { PlatformAccountsService } from './accounts/platform-accounts.service';
+import { ChainCoreModule } from './chain-core.module';
+import { PublicChainRegistryService } from './identity/public-chain-registry.service';
+import { WineryChainActionsService } from './identity/winery-chain-actions.service';
 import { PlatformChainController } from './platform-chain.controller';
 import {
   PublicChainController,
   StellarTomlController,
 } from './public-chain.controller';
 import { SimulatedWalletsAuditRunner } from './simulated-wallets-audit.runner';
+import { ChainTransactionsService } from './tx/chain-transactions.service';
 import {
   CurrentOrganizationChainController,
   PlatformWineryChainController,
@@ -18,7 +23,7 @@ import {
  * (`jobs/chain-jobs.module.ts`).
  */
 @Module({
-  imports: [ChainSettingsModule],
+  imports: [PrismaModule, ChainCoreModule],
   controllers: [
     PlatformChainController,
     PlatformWineryChainController,
@@ -26,7 +31,13 @@ import {
     PublicChainController,
     StellarTomlController,
   ],
-  providers: [SimulatedWalletsAuditRunner],
-  exports: [ChainSettingsModule],
+  providers: [
+    SimulatedWalletsAuditRunner,
+    ChainTransactionsService,
+    PlatformAccountsService,
+    WineryChainActionsService,
+    PublicChainRegistryService,
+  ],
+  exports: [ChainCoreModule],
 })
 export class ChainModule {}

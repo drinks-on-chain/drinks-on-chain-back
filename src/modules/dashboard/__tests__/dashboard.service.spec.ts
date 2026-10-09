@@ -1,5 +1,6 @@
 import type { PrismaService } from '@shared/prisma/prisma.service';
 import type { AuditQueryService } from '@modules/audit/audit-query.service';
+import type { ChainBalanceCache } from '@modules/chain/accounts/chain-balance-cache';
 import type { ChainSettings } from '@modules/chain/chain.config';
 import { DashboardService, buildAlerts } from '../dashboard.service';
 
@@ -17,6 +18,10 @@ interface SetupData {
   chainAlerts?: { level: string; _count: { _all: number } }[];
   lastRun?: { finishedAt: Date; status: string } | null;
   cursor?: { updatedAt: Date } | null;
+  balances?: Record<
+    string,
+    { address: string; balanceStroops: string | null; checkedAt: string }
+  >;
 }
 
 function setup(data: SetupData = {}) {
@@ -108,6 +113,13 @@ function setup(data: SetupData = {}) {
     prisma as unknown as PrismaService,
     auditQuery as unknown as AuditQueryService,
     { network: 'TESTNET' } as ChainSettings,
+    {
+      read: jest
+        .fn()
+        .mockImplementation((role: string) =>
+          Promise.resolve(data.balances?.[role] ?? null),
+        ),
+    } as unknown as ChainBalanceCache,
   );
   return { prisma, auditQuery, service };
 }
@@ -293,5 +305,30 @@ describe('Tablero del back office', () => {
       '3 invitaciones caducan en menos de 24 h.',
     ]);
     expect(alerts.every((a) => a.createdAt === NOW.toISOString())).toBe(true);
+  });
+});
+
+describe('Tablero · saldos de la cadena (chain.balance.check)', () => {
+  it('muestra la última lectura del worker; una cuenta que no existe en la red, cero', async () => {
+    const checkedAt = NOW.toISOString();
+    const { service } = setup({
+      balances: {
+        OPERATIONS: {
+          address: `G${'A'.repeat(55)}`,
+          balanceStroops: '98734512300',
+          checkedAt,
+        },
+        ANCHOR: {
+          address: `G${'B'.repeat(55)}`,
+          balanceStroops: null,
+          checkedAt,
+        },
+      },
+    });
+    const view = await service.get(NOW);
+    expect(view.chain).toMatchObject({
+      operationsBalanceXlm: '9873.4512300',
+      anchorBalanceXlm: '0.0000000',
+    });
   });
 });

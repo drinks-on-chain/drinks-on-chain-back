@@ -6,7 +6,16 @@ import {
   wineryCustodyRef,
 } from '../chain.constants';
 import type { ChainSettings } from '../chain.config';
-import { createKeyCustody } from '../custody/custody.factory';
+import {
+  CHAIN_SECRET_NAMES,
+  chainPublicAddresses,
+  generateChainEnvLines,
+  parseEnvLines,
+} from '../custody/chain-keys';
+import {
+  assertConsumerSeed,
+  createKeyCustody,
+} from '../custody/custody.factory';
 import { EnvKeyCustody } from '../custody/env-key-custody';
 import { CustodyError, DisabledKeyCustody } from '../custody/key-custody';
 import { LocalKeyCustody } from '../custody/local-key-custody';
@@ -268,5 +277,136 @@ describe('Custodio deshabilitado y elección del driver', () => {
       },
       select: { derivationIndex: true },
     });
+  });
+
+  it('ensureKey de una bodega le asigna índice si su cuenta aún no lo tiene (S-1)', async () => {
+    const indexes = new Map<string, number>();
+    const ref = wineryCustodyRef(WINERY_ID);
+    const allocate = jest.fn((key: string) => {
+      indexes.set(key, 2);
+      return Promise.resolve(2);
+    });
+    const custody = new EnvKeyCustody(
+      { winerySeed: SEP5_MNEMONIC },
+      (key) => Promise.resolve(indexes.get(key) ?? null),
+      allocate,
+    );
+    // publicKey no asigna nada: sin índice, no hay clave
+    expect((await custodyError(custody.publicKey(ref))).code).toBe(
+      'CUSTODY_INDEX_NOT_ALLOCATED',
+    );
+    expect(allocate).not.toHaveBeenCalled();
+    expect(await custody.ensureKey(ref)).toBe(SEP5_ADDRESSES[2]);
+    expect(allocate).toHaveBeenCalledWith(ref);
+    // La segunda vez ya existe: no se reasigna (el índice nunca cambia)
+    expect(await custody.ensureKey(ref)).toBe(SEP5_ADDRESSES[2]);
+    expect(allocate).toHaveBeenCalledTimes(1);
+    // Una bodega sin cuenta registrada no recibe clave
+    const unknown = new EnvKeyCustody({ winerySeed: SEP5_MNEMONIC }, () =>
+      Promise.resolve(null),
+    );
+    expect((await custodyError(unknown.ensureKey(ref))).code).toBe(
+      'CUSTODY_INDEX_NOT_ALLOCATED',
+    );
+  });
+});
+
+describe('Semilla de consumidores al arrancar (contrato O3 §4, S-9)', () => {
+  it('el índice 0 debe dar CHAIN_CONSUMER_SEED_CHECK_ADDRESS, o el worker no arranca', () => {
+    expect(() =>
+      assertConsumerSeed(SEP5_MNEMONIC, SEP5_ADDRESSES[0]),
+    ).not.toThrow();
+    expect(() =>
+      assertConsumerSeed(SEP5_BIP39_SEED_HEX, SEP5_ADDRESSES[0]),
+    ).not.toThrow();
+    let message = '';
+    try {
+      assertConsumerSeed(SEP5_MNEMONIC, SEP5_ADDRESSES[1]);
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toMatch(/no corresponde/);
+    // El error no repite la semilla ni la dirección derivada
+    expect(message).not.toContain('illness');
+    expect(message).not.toContain(SEP5_ADDRESSES[0]);
+  });
+
+  it('sin semilla o sin dirección de comprobación no hay nada que comprobar', () => {
+    expect(() =>
+      assertConsumerSeed(undefined, SEP5_ADDRESSES[0]),
+    ).not.toThrow();
+    expect(() => assertConsumerSeed('', SEP5_ADDRESSES[0])).not.toThrow();
+    expect(() => assertConsumerSeed(SEP5_MNEMONIC, null)).not.toThrow();
+  });
+
+  it('el custodio ENV la comprueba al crearse', () => {
+    const values: Record<string, string> = {
+      CHAIN_CONSUMER_MASTER_SEED: SEP5_MNEMONIC,
+    };
+    const reader = { get: (key: string) => values[key] };
+    const env = (consumerSeedCheckAddress: string | null) =>
+      ({
+        custodyDriver: 'ENV',
+        network: 'TESTNET',
+        consumerSeedCheckAddress,
+      }) as ChainSettings;
+    expect(() =>
+      createKeyCustody(env(SEP5_ADDRESSES[2]), reader as never, {} as never),
+    ).toThrow(/no corresponde/);
+    expect(
+      createKeyCustody(env(SEP5_ADDRESSES[0]), reader as never, {} as never)
+        .driver,
+    ).toBe('ENV');
+  });
+});
+
+describe('Generación de claves del custodio ENV (deploy/dev/generar-claves-cadena.sh)', () => {
+  it('genera cada secreto con el formato que valida la configuración', () => {
+    const lines = generateChainEnvLines([...CHAIN_SECRET_NAMES]);
+    const env = parseEnvLines(lines.join('\n'));
+    expect([...env.keys()]).toEqual([...CHAIN_SECRET_NAMES]);
+    expect(env.get('CHAIN_SECRET_OPERATIONS')).toMatch(/^S[A-Z2-7]{55}$/);
+    expect(env.get('CHAIN_SECRET_ANCHOR')).toMatch(/^S[A-Z2-7]{55}$/);
+    expect(env.get('CHAIN_DEV_WINERY_SEED')).toMatch(/^[0-9a-f]{64}$/);
+    expect(env.get('CHAIN_CONSUMER_MASTER_SEED')).toMatch(/^[0-9a-f]{64}$/);
+    // Cada ejecución, claves nuevas y distintas entre sí
+    expect(new Set(env.values()).size).toBe(4);
+    expect(generateChainEnvLines(['CHAIN_SECRET_ANCHOR'])[0]).not.toBe(
+      lines[1],
+    );
+    expect(() => generateChainEnvLines(['JWT_SECRET'])).toThrow(
+      /No es un secreto de la cadena/,
+    );
+  });
+
+  it('de un .env solo salen direcciones públicas, nunca un secreto', () => {
+    const operations = Keypair.random();
+    const text = [
+      '# comentario',
+      `CHAIN_SECRET_OPERATIONS=${operations.secret()}`,
+      'CHAIN_SECRET_ANCHOR=change-me',
+      `CHAIN_DEV_WINERY_SEED="${SEP5_MNEMONIC}"`,
+      `CHAIN_CONSUMER_MASTER_SEED=${SEP5_BIP39_SEED_HEX}`,
+      'OTRA_VARIABLE=valor',
+    ].join('\r\n');
+    const addresses = chainPublicAddresses(parseEnvLines(text));
+    expect(addresses).toEqual({
+      operations: operations.publicKey(),
+      anchor: null,
+      firstWinery: { path: "m/44'/148'/0'", address: SEP5_ADDRESSES[0] },
+      consumerSeedCheck: { path: "m/44'/148'/0'", address: SEP5_ADDRESSES[0] },
+    });
+    const output = JSON.stringify(addresses);
+    expect(output).not.toContain(operations.secret());
+    expect(output).not.toContain('illness');
+    expect(output).not.toContain(SEP5_BIP39_SEED_HEX);
+  });
+
+  it('un secreto mal formado no da dirección ni error con su valor', () => {
+    const addresses = chainPublicAddresses(
+      parseEnvLines('CHAIN_SECRET_OPERATIONS=SNOESUNASEMILLA\n'),
+    );
+    expect(addresses.operations).toBeNull();
+    expect(addresses.firstWinery).toBeNull();
   });
 });

@@ -1,6 +1,8 @@
 import { Reflector } from '@nestjs/core';
 import { JOB_HANDLER_METADATA } from '@shared/queue/job-handler';
 import { OutboxJobData } from '@shared/outbox/outbox.types';
+import { ChainJobsModule } from '@modules/chain/jobs/chain-jobs.module';
+import type { WineryIdentityProvisioner } from '@modules/chain/jobs/winery-identity.provisioner';
 import { WineryActivatedHandler } from '../jobs/winery-activated.handler';
 import { WineriesJobsModule } from '../jobs/wineries-jobs.module';
 import { WineryActivatedPayload } from '../wineries.events';
@@ -20,8 +22,11 @@ function jobData<T>(type: string, payload: T): OutboxJobData<T> {
 describe('Procesadores del módulo de bodegas', () => {
   const reflector = new Reflector();
 
-  it('winery.activated queda registrado en la cola chain y no falla', async () => {
-    const handler = new WineryActivatedHandler();
+  it('winery.activated queda registrado en la cola chain y aprovisiona la identidad de la bodega', async () => {
+    const provision = jest.fn().mockResolvedValue('REQUESTED');
+    const handler = new WineryActivatedHandler({
+      provision,
+    } as unknown as WineryIdentityProvisioner);
     await expect(
       handler.handle(
         jobData<WineryActivatedPayload>('winery.activated', {
@@ -32,6 +37,7 @@ describe('Procesadores del módulo de bodegas', () => {
         }),
       ),
     ).resolves.toBeUndefined();
+    expect(provision).toHaveBeenCalledWith('w-1');
     expect(reflector.get(JOB_HANDLER_METADATA, WineryActivatedHandler)).toEqual(
       { queue: 'chain', name: 'winery.activated' },
     );
@@ -43,8 +49,9 @@ describe('Procesadores del módulo de bodegas', () => {
       WineriesJobsModule,
     ) as unknown[];
     expect(providers).toEqual([WineryActivatedHandler]);
-    expect(Reflect.getMetadata('imports', WineriesJobsModule) ?? []).toEqual(
-      [],
-    );
+    // Solo la cadena (identidad real de la bodega, contrato O3 §3.1)
+    expect(Reflect.getMetadata('imports', WineriesJobsModule) ?? []).toEqual([
+      ChainJobsModule,
+    ]);
   });
 });

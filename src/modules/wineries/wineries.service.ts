@@ -133,6 +133,12 @@ export class WineriesService {
       }),
     );
 
+    const confirmedAccount =
+      winery.chainAccount &&
+      CONFIRMED_ACCOUNT_STATUSES.has(winery.chainAccount.status)
+        ? winery.chainAccount
+        : null;
+
     return {
       id: winery.id,
       legalName: winery.legalName,
@@ -149,15 +155,13 @@ export class WineriesService {
       // Compatibilidad hasta H3 (contrato O3 §3.3.5, SE-02): la cuenta
       // **real** de la bodega o `null`; nunca las direcciones simuladas de
       // antes (guardadas en `legacy_simulated_*`). Sin ProducerRegistry (C7)
-      // no hay identificador de productor; el hash de la creación de la
-      // cuenta llega con la identidad (paso 3.2)
-      stellarPublicKey:
-        winery.chainAccount &&
-        CONFIRMED_ACCOUNT_STATUSES.has(winery.chainAccount.status)
-          ? winery.chainAccount.address
-          : null,
+      // no hay identificador de productor; `onchainRegisterTxHash` es el
+      // hash de `CREATE_WINERY_ACCOUNT` (lo escribe el worker al confirmarla)
+      stellarPublicKey: confirmedAccount?.address ?? null,
       onchainProducerId: null,
-      onchainRegisterTxHash: null,
+      onchainRegisterTxHash: confirmedAccount
+        ? winery.onchainRegisterTxHash
+        : null,
       isExportCertified: winery.isExportCertified,
       certificationStatus: winery.certificationStatus,
       approvedAt: winery.approvedAt,

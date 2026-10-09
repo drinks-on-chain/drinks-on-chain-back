@@ -21,3 +21,18 @@ export type WineryActivatedPayload = {
   ownerUserId: string;
   activatedAt: string;
 };
+
+/**
+ * Cambio de estado de una bodega desde el back office (aditivo en O1;
+ * contrato O3 §3.5 y §11): suspensión, reactivación o revocación. La cadena
+ * pausa el contrato de una bodega revocada; `auditEventId` es la entrada de
+ * bitácora que respalda esa intención.
+ */
+export const WINERY_STATUS_CHANGED = 'winery.status_changed';
+
+export type WineryStatusChangedPayload = {
+  wineryId: string;
+  from: string;
+  to: string;
+  auditEventId: string;
+};

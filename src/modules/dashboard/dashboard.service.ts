@@ -14,6 +14,8 @@ import {
   CHAIN_SETTINGS,
   type ChainSettings,
 } from '@modules/chain/chain.config';
+import { ChainBalanceCache } from '@modules/chain/accounts/chain-balance-cache';
+import { stroopsToXlm } from '@modules/chain/tx/chain-tx.mapper';
 import type {
   ChainNetwork,
   RECONCILIATION_STATUSES,
@@ -107,6 +109,7 @@ export class DashboardService {
     private readonly prisma: PrismaService,
     private readonly auditQuery: AuditQueryService,
     @Inject(CHAIN_SETTINGS) private readonly chainSettings: ChainSettings,
+    private readonly chainBalances: ChainBalanceCache,
   ) {}
 
   async get(now: Date = new Date()): Promise<DashboardView> {
@@ -195,15 +198,25 @@ export class DashboardService {
 
   /**
    * Bloque `chain` (contrato O3 §11): transacciones, alertas y conciliación
-   * salen de la base. Los saldos y el retraso del indexador los escriben las
-   * tareas `chain.balance.check` y `chain.indexer.poll` (pasos 3.1 y 3.6);
-   * hasta entonces, cero.
+   * salen de la base. Los saldos son la última lectura de la tarea
+   * `chain.balance.check` del worker (cero si aún no hay ninguna); el retraso
+   * del indexador lo escribe `chain.indexer.poll` (paso 3.6).
    */
   private async chainStats(now: Date): Promise<DashboardView['chain']> {
     const stuckBefore = new Date(
       now.getTime() - STUCK_TRANSACTION_MINUTES * 60_000,
     );
     const { network } = this.chainSettings;
+    const balanceXlm = async (role: 'OPERATIONS' | 'ANCHOR') => {
+      const reading = await this.chainBalances.read(role);
+      return reading?.balanceStroops
+        ? stroopsToXlm(BigInt(reading.balanceStroops))
+        : UNKNOWN_BALANCE_XLM;
+    };
+    const [operationsBalanceXlm, anchorBalanceXlm] = await Promise.all([
+      balanceXlm('OPERATIONS'),
+      balanceXlm('ANCHOR'),
+    ]);
     const [failed, stuck, alerts, lastRun, cursor] = await Promise.all([
       this.prisma.chainTransaction.count({
         where: { status: 'FAILED', abandonedAt: null },
@@ -233,8 +246,8 @@ export class DashboardService {
       alerts.find((g) => g.level === name)?._count._all ?? 0;
     return {
       network,
-      operationsBalanceXlm: UNKNOWN_BALANCE_XLM,
-      anchorBalanceXlm: UNKNOWN_BALANCE_XLM,
+      operationsBalanceXlm,
+      anchorBalanceXlm,
       failedTransactions: failed,
       stuckTransactions: stuck,
       openAlerts: { critical: level('CRITICAL'), warning: level('WARNING') },

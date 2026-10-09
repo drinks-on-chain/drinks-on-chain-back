@@ -173,3 +173,40 @@ export const wineryCustodyRef = (wineryId: string) => `winery-${wineryId}`;
 
 /** Trozo máximo de `mint_batch` (DS-13). */
 export const MINT_BATCH_MAX_AMOUNT = 32_000;
+
+/** Claves de idempotencia de las intenciones (§2.2). */
+export const intentKeys = {
+  wineryAccount: (wineryId: string) => `identity:${wineryId}:account`,
+  wineryContract: (wineryId: string) => `identity:${wineryId}:contract`,
+  pause: (contractId: string, auditEventId: string) =>
+    `pause:${contractId}:${auditEventId}`,
+  unpause: (contractId: string, auditEventId: string) =>
+    `unpause:${contractId}:${auditEventId}`,
+  /** Un intento de Friendbot por cuenta y día (UTC). */
+  fund: (role: 'OPERATIONS' | 'ANCHOR', day: string) => `fund:${role}:${day}`,
+} as const;
+
+/** Intenciones que forman la identidad de una bodega (§3.1). */
+export const IDENTITY_TX_KINDS: readonly ChainTxKind[] = [
+  'CREATE_WINERY_ACCOUNT',
+  'DEPLOY_WINERY_CONTRACT',
+];
+
+/** Estado del contrato NFT de una bodega (`nft_contracts.status`). */
+export const NFT_CONTRACT_STATUSES = [
+  'PENDING',
+  'ACTIVE',
+  'FAILED',
+  'RETIRED',
+] as const;
+export type NftContractStatus = (typeof NFT_CONTRACT_STATUSES)[number];
+
+/** Límites del constructor del contrato (DS-13). */
+export const CONTRACT_NAME_MAX_BYTES = 40;
+export const CONTRACT_SYMBOL_MAX_BYTES = 10;
+export const CONTRACT_BASE_URI_MAX_BYTES = 200;
+
+/** Redes con Friendbot: nunca la pública. */
+export const FRIENDBOT_NETWORKS: readonly ChainNetwork[] = ['TESTNET', 'LOCAL'];
+
+export const STROOPS_PER_XLM = 10_000_000n;

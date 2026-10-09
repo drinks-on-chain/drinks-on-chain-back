@@ -339,6 +339,8 @@ export const ErrorCode = {
   CHN_ALERT_ALREADY_RESOLVED: 'CHN_ALERT_ALREADY_RESOLVED',
   /** 404 · `GET /v1/users/me/wallet` del personal, o de un consumidor sin dirección (ruta legada, SE-02). */
   CHN_WALLET_NOT_AVAILABLE: 'CHN_WALLET_NOT_AVAILABLE',
+  /** 409 · Acción sobre la red con la cadena sin configurar en este entorno. */
+  CHN_DISABLED: 'CHN_DISABLED',
 
   // ── Contrato publicado sin lógica todavía ─────────────────
   /** 501 · Ruta del contrato publicada en el OpenAPI cuya lógica llega en un paso posterior. */

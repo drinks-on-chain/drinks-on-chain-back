@@ -604,13 +604,36 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/tokenization-requests/{id}/resubmit',
     ];
 
-    it('publica las 54 rutas del contrato, todas con su 501 NOT_IMPLEMENTED', () => {
+    // Con lógica desde los pasos 3.1 (firmante y transacciones) y 3.2
+    // (identidad de la bodega): ya no declaran 501
+    const O3_IMPLEMENTED = [
+      'GET /.well-known/stellar.toml',
+      'GET /v1/organizations/current/chain-account',
+      'GET /v1/platform/chain/accounts',
+      'GET /v1/platform/chain/transactions',
+      'GET /v1/platform/chain/transactions/{id}',
+      'GET /v1/platform/wineries/{id}/chain-account',
+      'GET /v1/public/chain/registry',
+      'POST /v1/platform/chain/transactions/{id}/abandon',
+      'POST /v1/platform/chain/transactions/{id}/retry',
+      'POST /v1/platform/wineries/{id}/chain/pause',
+      'POST /v1/platform/wineries/{id}/chain/provision',
+      'POST /v1/platform/wineries/{id}/chain/unpause',
+    ];
+    const O3_PENDING = O3_ROUTES.filter(
+      (route) => !O3_IMPLEMENTED.includes(route),
+    );
+
+    it('publica las 54 rutas del contrato; las que aún no tienen lógica, con su 501 NOT_IMPLEMENTED', () => {
+      expect(O3_ROUTES).toHaveLength(54);
+      expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.length);
+      for (const route of O3_ROUTES) expect(find(route)).toBeDefined();
       const declared = ops
         .filter((op) => op.responses['501'])
         .map(key)
         .sort();
-      expect(declared).toEqual(O3_ROUTES);
-      for (const route of O3_ROUTES) {
+      expect(declared).toEqual(O3_PENDING);
+      for (const route of O3_PENDING) {
         const response = find(route).responses['501'] as {
           description: string;
           content?: Record<string, { schema?: unknown }>;
@@ -618,7 +641,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
         expect({ route, description: response.description }).toEqual({
           route,
           description: expect.stringMatching(
-            /^NOT_IMPLEMENTED: llega con el paso 3\.[1-6] de la Etapa 3/,
+            /^NOT_IMPLEMENTED: llega con el paso 3\.[3-6] de la Etapa 3/,
           ),
         });
         expect(response.content?.['application/json']?.schema).toEqual({

@@ -58,7 +58,38 @@ describe('Variables de la cadena (contrato O3 §2.1)', () => {
       ttlExtendBelowDays: 30,
       consumerSeedCheckAddress: null,
       publicApiBaseUrl: null,
+      deployMaxFeeStroops: '500000000',
+      txRetryDelaysMs: [10_000, 30_000, 60_000, 120_000, 300_000],
+      friendbotUrl: null,
+      environment: 'testnet',
     });
+  });
+
+  it('paso 3.1: tope del despliegue, esperas de reintento, Friendbot y etiqueta del entorno', () => {
+    const env = {
+      STELLAR_NETWORK: 'LOCAL',
+      CHAIN_DEPLOY_MAX_FEE_STROOPS: '900000000',
+      CHAIN_TX_RETRY_DELAYS_MS: '500,1000',
+      STELLAR_FRIENDBOT_URL: 'http://localhost:8000/friendbot',
+      CHAIN_ENVIRONMENT: 'dev',
+    };
+    expect(validate(env).error).toBeUndefined();
+    expect(settingsOf(env)).toMatchObject({
+      deployMaxFeeStroops: '900000000',
+      txRetryDelaysMs: [500, 1000],
+      friendbotUrl: 'http://localhost:8000/friendbot',
+      environment: 'dev',
+    });
+    // Sin etiqueta, la sal de los contratos lleva la red
+    expect(settingsOf({ STELLAR_NETWORK: 'LOCAL' }).environment).toBe('local');
+    for (const bad of [
+      { CHAIN_TX_RETRY_DELAYS_MS: '10s,30s' },
+      { CHAIN_DEPLOY_MAX_FEE_STROOPS: '-1' },
+      { CHAIN_ENVIRONMENT: 'Dev Server' },
+      { STELLAR_FRIENDBOT_URL: 'friendbot' },
+    ]) {
+      expect(validate(bad).error).toBeDefined();
+    }
   });
 
   it('vacías (como las pasa docker compose) equivalen a no definirlas', () => {
