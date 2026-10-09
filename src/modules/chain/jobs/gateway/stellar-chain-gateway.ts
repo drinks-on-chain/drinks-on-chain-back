@@ -93,6 +93,22 @@ export function decodeEvent(
   };
 }
 
+/** Contrato que emitió un evento (`C…`); `null` si no se puede leer. */
+function eventContract(event: unknown): string | null {
+  try {
+    const raw = (event as { contractId?: unknown }).contractId;
+    const bytes =
+      raw instanceof Uint8Array
+        ? raw
+        : (raw as { value?: unknown } | null | undefined)?.value;
+    return bytes instanceof Uint8Array && bytes.length === 32
+      ? StrKey.encodeContract(Buffer.from(bytes))
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function xdrText(value: unknown): string {
   try {
     const json = (value as { toJSON?: () => unknown }).toJSON?.();
@@ -403,16 +419,8 @@ export class StellarChainGateway implements ChainGateway {
             topics: xdr.ScVal[];
             data: xdr.ScVal;
           };
-          const contractId = (event as unknown as { contractId?: unknown })
-            .contractId;
           decoded.push(
-            decodeEvent(
-              body.topics,
-              body.data,
-              contractId
-                ? StrKey.encodeContract(Buffer.from(contractId as Uint8Array))
-                : null,
-            ),
+            decodeEvent(body.topics, body.data, eventContract(event)),
           );
         } catch {
           decoded.push({
