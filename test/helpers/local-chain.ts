@@ -105,6 +105,30 @@ export class FaultyGateway implements ChainGateway {
   loseNextSendResponse = false;
   /** La próxima cuenta se carga con una secuencia ya gastada. */
   staleSequenceOnce = false;
+  /**
+   * `getTransaction` responde `NOT_FOUND` (el hash "no aparece") hasta que
+   * alguien lee los eventos del contrato: fuerza el camino de idempotencia
+   * por `total_minted` y `lot_minted` (§2.3, nivel 3).
+   */
+  hideLookupsUntilEventsAreRead = false;
+  /**
+   * Se llama justo antes de reenviar cada transacción a la red; se retira
+   * cuando devuelve `true` (era la transacción que esperaba).
+   */
+  beforeSend:
+    ((tx: Parameters<ChainGateway['send']>[0]) => Promise<boolean>) | null =
+    null;
+  /**
+   * RPC simulado (S-25): responde a una simulación como si tocara entradas
+   * archivadas. Recibe la respuesta real y devuelve la que se entrega, o
+   * `null` si no era la simulación que esperaba.
+   */
+  archivedOnce:
+    | ((
+        tx: Parameters<ChainGateway['simulate']>[0],
+        real: Awaited<ReturnType<ChainGateway['simulate']>>,
+      ) => Awaited<ReturnType<ChainGateway['simulate']>> | null)
+    | null = null;
   sends = 0;
 
   constructor(private readonly real: ChainGateway) {}
@@ -127,15 +151,39 @@ export class FaultyGateway implements ChainGateway {
   contractExists = (address: string) =>
     this.pass(() => this.real.contractExists(address));
   codeExists = (hash: string) => this.pass(() => this.real.codeExists(hash));
-  simulate: ChainGateway['simulate'] = (tx) =>
-    this.pass(() => this.real.simulate(tx));
   readContract: ChainGateway['readContract'] = (...args) =>
     this.pass(() => this.real.readContract(...args));
-  getTransaction = (hash: string): Promise<TxLookup> =>
-    this.pass(() => this.real.getTransaction(hash));
   fund = (address: string) => this.pass(() => this.real.fund(address));
-  contractEvents: ChainGateway['contractEvents'] = (...args) =>
-    this.pass(() => this.real.contractEvents(...args));
+  eventsPage: ChainGateway['eventsPage'] = (query) =>
+    this.pass(() => this.real.eventsPage(query));
+  ledgerWindow = () => this.pass(() => this.real.ledgerWindow());
+  entriesTtl: ChainGateway['entriesTtl'] = (keys) =>
+    this.pass(() => this.real.entriesTtl(keys));
+
+  async simulate(
+    tx: Parameters<ChainGateway['simulate']>[0],
+  ): ReturnType<ChainGateway['simulate']> {
+    this.guard();
+    const real = await this.real.simulate(tx);
+    const fake = this.archivedOnce?.(tx, real) ?? null;
+    if (fake) this.archivedOnce = null;
+    return fake ?? real;
+  }
+
+  async getTransaction(hash: string): Promise<TxLookup> {
+    this.guard();
+    if (this.hideLookupsUntilEventsAreRead) return { status: 'NOT_FOUND' };
+    return this.real.getTransaction(hash);
+  }
+
+  async contractEvents(
+    ...args: Parameters<ChainGateway['contractEvents']>
+  ): ReturnType<ChainGateway['contractEvents']> {
+    this.guard();
+    // La red ya enseña el evento: desde aquí la transacción se puede leer
+    this.hideLookupsUntilEventsAreRead = false;
+    return this.real.contractEvents(...args);
+  }
 
   async loadAccount(address: string): Promise<Account | null> {
     this.guard();
@@ -153,6 +201,7 @@ export class FaultyGateway implements ChainGateway {
   async send(tx: Parameters<ChainGateway['send']>[0]): Promise<SendOutcome> {
     this.guard();
     this.sends += 1;
+    if (this.beforeSend && (await this.beforeSend(tx))) this.beforeSend = null;
     const outcome = await this.real.send(tx);
     if (this.loseNextSendResponse && outcome.accepted) {
       this.loseNextSendResponse = false;
