@@ -2,6 +2,44 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## 0.3.0-rc.0 · 2026-10-08 · Ola 3: tokenización y cadena (apertura)
+
+Primera versión de la Ola 3 (contrato `o3-tokenizacion`, §12.1): publica el contrato y prepara la base; **todavía no envía nada a la red**. Detalle en el [README](README.md#-cadena-y-tokenización-ola-3--apertura) y en el [roadmap](docs/ROADMAP.md#etapa-3--tokenización-y-cadena-ola-3).
+
+### Añadido
+
+- 54 rutas de la cadena y la tokenización (etiquetas `Chain`, `Tokenization`, `Public`) con su forma definitiva y respuesta `501 NOT_IMPLEMENTED` hasta su paso (3.1–3.6). El OpenAPI pasa de 158 a 212 operaciones. `Idempotency-Key` es **obligatoria** en diez de ellas (sin cabecera: 422 `IDEMPOTENCY_KEY_REQUIRED` con `details[0].field = "Idempotency-Key"`).
+- `GET /v1/public/collections/images/{imageId}`: las imágenes públicas de las colecciones las sirve la API (el almacenamiento es privado).
+- Campos nuevos en respuestas existentes (aditivos): `tokenization` en `LotSummary` y `Lot`; `tokenization` y `chain` en `GET /v1/platform/dashboard`; `tokenization` en `GET /v1/traceability/dashboard`; capacidades `tokenization`, `chain` y `chain.admin` en `GET /v1/platform/permissions`; seis tipos de evento en la línea de tiempo del lote (`TOKENIZATION_AUTHORIZED`, `NFT_MINTED`, `COLLECTION_PUBLISHED`, `DOSSIER_ANCHORED`, `TOKENS_REDEEMABLE`, `SHORTFALL_DETECTED`).
+- `LotDossier.anchor` y `PublicLotPassport.dossier.anchor` tienen forma (`DossierAnchor` / `PublicDossierAnchor`); siguen en `null` hasta el paso 3.5.
+- Custodia de claves (`KeyCustody`) con los drivers `LOCAL` y `ENV` (solo testnet y red local), en el worker.
+- Variables de la cadena, todas opcionales: ver el README. Sin ellas la cadena queda deshabilitada.
+
+### Cambios de comportamiento (SE-02)
+
+| Qué | Antes | Ahora |
+|---|---|---|
+| `GET /v1/users/me/wallet` | Dirección simulada (la creaba si faltaba) | 404 `CHN_WALLET_NOT_AVAILABLE` al personal; a un consumidor, su dirección custodial derivada cuando la tenga (Ola 4) |
+| `primaryWallet` de `GET /v1/users/me` | Billetera simulada | Siempre `null` |
+| `WineryResponseDto.stellarPublicKey` | Dirección simulada | La cuenta real de la bodega o `null` |
+| `WineryResponseDto.onchainProducerId`, `onchainRegisterTxHash` | Valores simulados | `null` |
+| Registro de un consumidor y aceptación de una invitación | Creaban una billetera simulada | No crean ninguna |
+| Eventos `winery.created` y `member.added` | Activaban una bóveda simulada en el worker | Retirados (nadie los emitía desde H1) |
+| `STELLAR_NETWORK` | `testnet`, `mainnet`, `futurenet`, `standalone` | `TESTNET`, `PUBLIC`, `LOCAL` (se siguen aceptando `testnet`, `mainnet` y `standalone`) |
+
+Variables que dejan de leerse: `STELLAR_HORIZON_URL`, `STELLAR_SOROBAN_RPC_URL`, `STELLAR_RELAYER_SECRET_KEY`, `STELLAR_INDEXER_POLL_INTERVAL_MS`, `STELLAR_INDEXER_START_LEDGER`.
+
+### Base de datos
+
+Migración *expand* `20261008120000_o3_cadena_expand` (aditiva; no borra ninguna fila ni columna):
+
+- 19 tablas de la cadena y la tokenización con sus invariantes (`CHECK minted ≤ quota`, únicos e índices parciales).
+- `wineries`: columnas `chain_account_id`, `legacy_simulated_address` y `legacy_simulated_data`. Los valores de `stellar_public_key`, `dynamic_vault_id`, `onchain_producer_id` y `onchain_register_tx_hash` se copian a las columnas `legacy_*` y se ponen a `NULL`.
+- `user_wallets`: columna `status`, `INVALID_SIMULATED` en todas las filas.
+- La API anota `CHAIN_SIMULATED_WALLETS_INVALIDATED` en la bitácora, una sola vez, al arrancar tras la migración.
+
+Antes de aplicarla en un entorno con datos: copia de la base (ver [`deploy/README.md`](deploy/README.md#4-migración-de-la-apertura-de-la-ola-3)).
+
 ## 0.2.0 · 2026-10-02 · Ola 2: ERP confiable (cierre H2)
 
 Trazabilidad con el lote del servidor, reglas que no se pueden eludir, códigos por botella, expediente con hash y pasaporte público (contrato `o2-erp-confiable`). Esta versión **contrae**: retira lo legado que la apertura mantuvo y endurece el esquema. Detalle en [`docs/arquitectura/trazabilidad.md`](docs/arquitectura/trazabilidad.md#cierre-h2-contracción-v020).

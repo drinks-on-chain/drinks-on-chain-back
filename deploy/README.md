@@ -149,3 +149,49 @@ La semilla también funciona con ese rol (`exec api node dist/seed.js`). Para de
 ### 3. Lotes de demostración ya sembrados (opcional)
 
 La semilla es de solo inserción: los lotes de demostración que ya existen en el servidor **no se reescriben** (conservan los datos de los fixtures 0.3.x, con sus incidencias de migración) y solo se crean los que faltan. Para tener los 21 lotes coherentes hay que retirar antes la trazabilidad de las tres bodegas de demostración con [`dev/sql/reiniciar-trazabilidad-demo.sql`](dev/sql/reiniciar-trazabilidad-demo.sql) (borra datos: copia antes, `-v confirmar=si`) y volver a sembrar. Se pierde lo registrado a mano en esas bodegas.
+
+## Apertura de la Ola 3 (`0.3.0-rc.0`): antes y después del despliegue
+
+### 4. Migración de la apertura de la Ola 3
+
+La migración `20261008120000_o3_cadena_expand` es aditiva (19 tablas y columnas nulas) y **no borra nada**, pero mueve datos (SE-02): copia los valores simulados de `wineries` (`stellar_public_key`, `dynamic_vault_id`, `onchain_producer_id`, `onchain_register_tx_hash`) a `legacy_simulated_address` y `legacy_simulated_data` y los pone a `NULL`, y marca `user_wallets` entera como `INVALID_SIMULATED`.
+
+1. **Copia de la base** (`pg_dump`), como en cada migración con datos.
+2. **Comprobación previa, solo lectura** (lo que la migración va a mover; anota el resultado):
+
+   ```sql
+   SELECT (SELECT count(*) FROM wineries) AS bodegas,
+          (SELECT count(*) FROM wineries
+            WHERE stellar_public_key IS NOT NULL OR dynamic_vault_id IS NOT NULL
+               OR onchain_producer_id IS NOT NULL OR onchain_register_tx_hash IS NOT NULL) AS bodegas_con_valores_simulados,
+          (SELECT count(*) FROM user_wallets) AS billeteras,
+          (SELECT count(*) FROM users) AS personas,
+          (SELECT count(*) FROM lots) AS lotes,
+          (SELECT count(*) FROM audit_events) AS bitacora,
+          (SELECT count(*) FROM information_schema.tables
+            WHERE table_schema = 'public'
+              AND table_name IN ('chain_accounts', 'collections', 'tokens', 'tokenization_requests')) AS tablas_o3_ya_existentes,
+          (SELECT count(*) FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND ((table_name = 'wineries' AND column_name IN ('chain_account_id', 'legacy_simulated_address', 'legacy_simulated_data'))
+                OR (table_name = 'user_wallets' AND column_name = 'status'))) AS columnas_o3_ya_existentes;
+   ```
+
+   `tablas_o3_ya_existentes` y `columnas_o3_ya_existentes` deben ser **0** (si no, la migración ya se aplicó o hay restos: no despliegues y avisa).
+3. **Después de desplegar** (solo lectura): `bodegas`, `billeteras`, `personas` y `lotes` no cambian; `bitacora` sube en 1 (la entrada `CHAIN_SIMULATED_WALLETS_INVALIDATED`, que la API escribe al arrancar, con el número de filas); y
+
+   ```sql
+   SELECT (SELECT count(*) FROM wineries WHERE legacy_simulated_data IS NOT NULL) AS bodegas_con_legado,
+          (SELECT count(*) FROM wineries WHERE stellar_public_key IS NOT NULL OR dynamic_vault_id IS NOT NULL
+               OR onchain_producer_id IS NOT NULL OR onchain_register_tx_hash IS NOT NULL) AS bodegas_con_valores_simulados,
+          (SELECT count(*) FROM user_wallets WHERE status <> 'INVALID_SIMULATED') AS billeteras_sin_marcar,
+          (SELECT after FROM audit_events WHERE action = 'CHAIN_SIMULATED_WALLETS_INVALIDATED') AS anotado;
+   ```
+
+   `bodegas_con_legado` = el `bodegas_con_valores_simulados` de antes; los otros dos, 0.
+
+Para deshacerla sin restaurar la copia (los datos siguen en las columnas `legacy_*`): `UPDATE wineries SET stellar_public_key = legacy_simulated_data->>'stellarPublicKey', dynamic_vault_id = legacy_simulated_data->>'dynamicVaultId', onchain_producer_id = legacy_simulated_data->>'onchainProducerId', onchain_register_tx_hash = legacy_simulated_data->>'onchainRegisterTxHash' WHERE legacy_simulated_data IS NOT NULL;` y desplegar la versión anterior (que ignora las tablas y columnas nuevas).
+
+### 5. Cuentas de la plataforma en testnet (cuando toque el paso 3.1)
+
+La apertura no necesita ninguna variable de la cadena: sin ellas arranca con la cadena deshabilitada. Para habilitarla, en `~/doc-dev/.env` (permisos `600`), con las claves **generadas en el servidor** y sin imprimirlas: `STELLAR_RPC_URL`, `CHAIN_CUSTODY_DRIVER=ENV`, `CHAIN_SECRET_OPERATIONS`, `CHAIN_SECRET_ANCHOR`, `CHAIN_DEV_WINERY_SEED`, `STELLAR_HOME_DOMAIN`, `WINERY_NFT_WASM_HASH` y `API_PUBLIC_URL` (ver `dev/.env.example`). `CHAIN_MINT_ENABLED` se queda en `false` hasta que la coordinación lo active (ADR-011). Las tablas de la Ola 3 están en la lista de [`dev/sql/rol-app-sin-delete.sql`](dev/sql/rol-app-sin-delete.sql): si el rol de la aplicación ya se creó, repite el script.

@@ -80,9 +80,13 @@ drinks-on-chain-backend/
 │   │   │   └── strategies/             # Strategy Pattern (Vino, Singani, Cerveza)
 │   │   ├── uploads/                    # Subida multiparte de imágenes y PDFs con validación MIME
 │   │   ├── users/                      # Perfiles de usuario y gestión de cuenta
-│   │   ├── wallets/                    # Provisión de billeteras custodiales en Stellar
+│   │   ├── chain/                      # Cadena (Ola 3): rutas, configuración y custodia de claves
+│   │   │   ├── custody/                # KeyCustody: drivers LOCAL y ENV, derivación SEP-0005
+│   │   │   └── jobs/                   # Lo que carga el worker (custodio; firmante desde 3.1)
+│   │   ├── tokenization/               # Tokenización (Ola 3): solicitudes, colecciones, NFT, cierre
+│   │   ├── wallets/                    # Ruta legada de la dirección custodial del consumidor (SE-02)
 │   │   └── wineries/                   # Onboarding institucional y membresías
-│   │       └── jobs/                   # Procesadores del worker (winery.created, member.added)
+│   │       └── jobs/                   # Procesadores del worker (winery.activated)
 │   ├── worker/                         # Proceso worker: relay del outbox, colas BullMQ,
 │   │                                   # tareas programadas, latido (healthcheck)
 │   ├── main.ts                         # Proceso api (HTTP)
@@ -180,7 +184,7 @@ pnpm start:worker:dev             # worker (otra terminal): outbox, colas y tare
 
 #### Variables de entorno
 
-`.env.example` documenta cada variable; la validación está en `src/config/env.validation.ts`. Solo son obligatorias `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` y `JWT_REFRESH_SECRET` (y `CORS_ALLOWED_ORIGINS` en producción). Detrás de un proxy, `TRUST_PROXY=1` (el servidor de desarrollo ya lo fija en `deploy/dev/compose.yml`); `JWT_REFRESH_EXPIRES_IN` ya no se usa. Stellar y el indexador son opcionales hasta la Ola 3; las variables de Dynamic, Supabase, pasarela bancaria y los contratos `CONTRACT_*` antiguos ya no se leen.
+`.env.example` documenta cada variable; la validación está en `src/config/env.validation.ts`. Solo son obligatorias `DATABASE_URL`, `REDIS_URL`, `JWT_SECRET` y `JWT_REFRESH_SECRET` (y `CORS_ALLOWED_ORIGINS` en producción). Detrás de un proxy, `TRUST_PROXY=1` (el servidor de desarrollo ya lo fija en `deploy/dev/compose.yml`); `JWT_REFRESH_EXPIRES_IN` ya no se usa. Las variables de la cadena (Ola 3) son todas opcionales: sin ellas la cadena queda deshabilitada ([más abajo](#-cadena-y-tokenización-ola-3--apertura)). Las de Dynamic, Supabase, pasarela bancaria, los contratos `CONTRACT_*` antiguos y las de Stellar de antes de la Ola 3 (`STELLAR_HORIZON_URL`, `STELLAR_RELAYER_SECRET_KEY`, `STELLAR_INDEXER_*`) ya no se leen.
 
 Variables nuevas de la Ola 0 · 0.7–0.9 (todas con valores por defecto de desarrollo, ver [`docs/arquitectura/correo-y-archivos.md`](docs/arquitectura/correo-y-archivos.md)):
 
@@ -251,7 +255,7 @@ La CI además aplica las migraciones sobre una base vacía (`prisma migrate depl
 | Aviso | Paquete (ruta) | Motivo |
 |---|---|---|
 | GHSA-ggr8-5vv4-36mx | `deepmerge-ts` (`prisma` → `@prisma/config`) | Solo lo usa la CLI de Prisma al leer su configuración; se va con Prisma 7 |
-| GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j | `toml` (`@stellar/stellar-sdk` 13) | Solo para resolver `stellar.toml`, que el backend no usa; el SDK se actualiza en la Ola 3 (SE-02) |
+| GHSA-82x6-q7mm-w9cf, GHSA-v5mp-jgw5-2x6j | `toml` (`@stellar/stellar-sdk` 13) | Solo para resolver el `stellar.toml` de otros dominios, que el backend no hace (publica el suyo, no lee ninguno); el SDK se actualiza con el firmante (paso 3.1) |
 
 ### 🧵 Procesos: `api` y `worker`
 
@@ -324,6 +328,17 @@ Captación de interesados desde la landing (consumidores) y el sitio de bodegas 
 - **Bitácora** (recurso `waitlist_entry`): `WAITLIST_JOINED` (origen `PUBLIC`, solo el tipo y el origen de la inscripción), `WAITLIST_STATUS_CHANGED` (estado anterior y nuevo, sin el texto de las notas) y `WAITLIST_EXPORTED` (número de filas y filtros).
 - **Datos personales**: se guardan además la IP real y el agente de usuario (para abuso; no se exportan ni salen por la API) y la fecha del consentimiento.
 
+### ⛓️ Cadena y tokenización (Ola 3 · apertura)
+
+Contrato: `plan/contratos/o3-tokenizacion.md` (carpeta del ecosistema). La apertura (O3-BE-1) publica el contrato y prepara la base; la lógica llega con los pasos 3.1–3.6 ([roadmap](docs/ROADMAP.md#etapa-3--tokenización-y-cadena-ola-3)).
+
+- **Rutas**: módulos `src/modules/chain` y `src/modules/tokenization` (etiquetas `Chain`, `Tokenization`, `Public`). Las 54 rutas nuevas responden **`501 NOT_IMPLEMENTED`** (con `details[0].meta.step` = su paso) después de validar sesión, organización, rol, `Idempotency-Key`, `reason` y cuerpo. Las ampliaciones de las Olas 1 y 2 ya dan datos reales: `LotSummary.tokenization`, bloques `tokenization` y `chain` de `GET /v1/platform/dashboard` y `tokenization` de `GET /v1/traceability/dashboard`.
+- **Imágenes públicas de las colecciones**: el almacenamiento de objetos es privado, así que las sirve la API en `GET /v1/public/collections/images/{imageId}` (U-5). `CollectionImage.url`, `coverImageUrl` y `image` de los metadatos del NFT apuntan ahí (`{API_PUBLIC_URL}/v1/public/collections/images/{id}`) una vez publicada la colección.
+- **SE-02 · sin billeteras simuladas**: las direcciones de antes de la Ola 3 no tenían clave. La migración `o3_cadena_expand` las conserva en `wineries.legacy_simulated_address` / `legacy_simulated_data` y en `user_wallets` (marcada `INVALID_SIMULATED`), y nada las lee. `GET /v1/users/me/wallet` responde 404 `CHN_WALLET_NOT_AVAILABLE` al personal (un consumidor recibirá su dirección derivada desde la Ola 4); `WineryResponseDto.stellarPublicKey` devuelve la cuenta real de la bodega o `null`. Las tablas y columnas simuladas se borran en el cierre H3.
+- **Custodia de claves** (`src/modules/chain/custody/`, solo en el **worker**; la API nunca tiene claves): interfaz `KeyCustody` (`publicKey`, `sign`, `ensureKey`) con dos drivers. `LOCAL` guarda las claves en memoria (pruebas). `ENV` es **solo para testnet y la red local** (la validación rechaza `STELLAR_NETWORK=PUBLIC`): operaciones y anclaje salen de `CHAIN_SECRET_OPERATIONS` y `CHAIN_SECRET_ANCHOR`; la clave de cada bodega se deriva con SEP-0005 (`m/44'/148'/{índice}'`) de `CHAIN_DEV_WINERY_SEED` por `chain_accounts.derivation_index`. Producción usará Vault Transit o KMS (D7, sin decidir).
+- **Variables** (todas opcionales; `.env.example` y `src/modules/chain/chain.config.ts`): `STELLAR_NETWORK` (`TESTNET`, `PUBLIC`, `LOCAL`), `STELLAR_NETWORK_PASSPHRASE`, `STELLAR_RPC_URL`, `STELLAR_EXPLORER_BASE_URL`, `STELLAR_HOME_DOMAIN`, `WINERY_NFT_WASM_HASH`, `CHAIN_CUSTODY_DRIVER`, `CHAIN_MINT_ENABLED`, `CHAIN_TX_MAX_FEE_STROOPS`, `CHAIN_OPERATIONS_MIN_BALANCE_XLM`, `CHAIN_ANCHOR_MIN_BALANCE_XLM`, `CHAIN_WINERY_STARTING_BALANCE_XLM`, `CHAIN_TTL_EXTEND_BELOW_DAYS`, `CHAIN_CONSUMER_SEED_CHECK_ADDRESS` y los secretos `CHAIN_SECRET_OPERATIONS`, `CHAIN_SECRET_ANCHOR`, `CHAIN_DEV_WINERY_SEED`, `CHAIN_CONSUMER_MASTER_SEED`. Sin `CHAIN_CUSTODY_DRIVER` y `STELLAR_RPC_URL` la cadena queda **deshabilitada** y la aplicación arranca igual. `CHAIN_MINT_ENABLED` es `false` por defecto (ADR-011). El origen público de la API es `API_PUBLIC_URL` (de la Ola 2; el contrato lo llama `PUBLIC_API_BASE_URL`). Ya no se leen `STELLAR_HORIZON_URL`, `STELLAR_SOROBAN_RPC_URL`, `STELLAR_RELAYER_SECRET_KEY` ni `STELLAR_INDEXER_*`.
+- **Secretos**: se generan en el entorno donde se usan, nunca se imprimen ni se escriben en el repo; los mensajes de validación y los errores del custodio no repiten su valor.
+
 ### 🌱 Datos de demostración (0.10, OPS-09)
 
 La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se puede ejecutar las veces que haga falta sin duplicar nada. Los datos maestros (personas, bodegas, membresías, parcelas) se escriben con `upsert` por su id fijo (o por su clave natural: correo, persona + organización): volver a ejecutarla los devuelve a su estado inicial. La **trazabilidad es de solo inserción**: cada lote de demostración se crea entero la primera vez y, si ya existe, no se toca (ni él ni sus registros). Nunca toca lo creado aparte. Va compilada en la imagen (`dist/seed.js` y los fixtures en `dist/seed/fixtures/`), así que no necesita `ts-node`.
@@ -369,7 +384,7 @@ Las contraseñas deben tener al menos 10 caracteres y la semilla rechaza los `ch
 | Ajustes por bodega, bitácora y buzón de la Ola 1 | Se crean con el uso (no se siembran) |
 | Tratamientos sin autor | `authorizedByMemberId` obligatorio: la enóloga activa de la bodega (si no, el dueño) |
 | Lecturas con `recordedByMemberId` | `recordedByUserId`: la persona de ese miembro |
-| Billeteras sin bóveda | `dynamicVaultId` simulado `demo-vault-<id>` (billeteras y bodegas con cuenta Stellar) |
+| Billeteras (`wallets.json`) y cuenta Stellar de las bodegas | **No se siembran** desde la Ola 3 (SE-02): eran direcciones simuladas, sin clave. La cuenta y el contrato de cada bodega los crea el aprovisionamiento de su identidad en la red |
 | Archivos `/mocks/uploads/…` | Las mismas rutas, sin archivo en el almacenamiento: los informes y las etiquetas de los lotes sembrados no se abren, ni hay adjuntos sembrados (los eventos `FILE_ATTACHED` de los mocks no se siembran) |
 | Expediente cerrado con huella fija | La huella y la raíz Merkle se calculan al sembrar (dependen de las sales de los códigos de botella, que son aleatorias) |
 
