@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaModule } from '@shared/prisma/prisma.module';
-import { WalletsModule } from '@modules/wallets/wallets.module';
 import { OrganizationsModule } from '@modules/organizations/organizations.module';
 import { MailModule } from '@modules/mail/mail.module';
 import { AuthService } from './auth.service';
@@ -26,7 +25,6 @@ import { AccountController } from './account/account.controller';
 @Module({
   imports: [
     PrismaModule,
-    WalletsModule,
     SessionsModule,
     OrganizationsModule,
     MailModule,

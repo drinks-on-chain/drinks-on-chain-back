@@ -19,7 +19,7 @@ import {
 } from '../src/shared/queue/job-handler';
 import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { CorrelationIdMiddleware } from '../src/shared/middleware/correlation-id.middleware';
-import { WineryCreatedHandler } from '../src/modules/wineries/jobs/winery-created.handler';
+import { WineryActivatedHandler } from '../src/modules/wineries/jobs/winery-activated.handler';
 import { LotCertifiedHandler } from '../src/modules/lots/jobs/lot-certified.handler';
 import { BOTTLE_CODE_EXPORTS_CLEANUP_TASK } from '../src/modules/lots/jobs/bottle-code-exports-cleanup.task';
 import { TRACE_LOCKS_RELEASE_TASK } from '../src/modules/lots/jobs/locks-release.task';
@@ -152,8 +152,7 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
   it('registra los procesadores de los módulos y el de las pruebas', () => {
     expect(moduleRef.get(JobDispatcher).registeredJobs()).toEqual(
       expect.arrayContaining([
-        'chain/member.added',
-        'chain/winery.created',
+        'chain/winery.activated',
         'default/e2e.ping',
         'scheduled/outbox.cleanup',
       ]),
@@ -297,22 +296,21 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
     expect(await queues.get('default').getJob(eventId)).toBeUndefined();
   });
 
-  it('winery.created llega al procesador de la cola chain', async () => {
-    const handler = moduleRef.get(WineryCreatedHandler);
+  it('winery.activated llega al procesador de la cola chain', async () => {
+    const handler = moduleRef.get(WineryActivatedHandler);
     const spy = jest.spyOn(handler, 'handle');
     const correlationId = `${run}-winery`;
     const event = await prisma.$transaction((tx) =>
       outbox.add(tx, {
-        type: 'winery.created',
+        type: 'winery.activated',
         aggregateType: 'winery',
         aggregateId: `${run}-winery`,
         queue: 'chain',
         payload: {
           wineryId: `${run}-winery`,
+          lotPrefix: 'EEE',
           ownerUserId: 'u',
-          walletId: 'w',
-          vaultId: 'dyn_vault_e2e',
-          stellarPublicKey: 'G',
+          activatedAt: new Date().toISOString(),
         },
         correlationId,
       }),

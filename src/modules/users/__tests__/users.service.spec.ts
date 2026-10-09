@@ -8,11 +8,7 @@ import type { AuthenticatedUser } from '@shared/decorators/current-user.decorato
 import { NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AuditService } from '@shared/audit/audit.service';
-import {
-  WineryMemberRoleEnum,
-  WalletTypeEnum,
-  WalletPurposeEnum,
-} from '@prisma/client';
+import { WineryMemberRoleEnum } from '@prisma/client';
 
 describe('UsersService', () => {
   let service: UsersService;
@@ -24,7 +20,7 @@ describe('UsersService', () => {
   };
 
   const mockWalletsService = {
-    getUserPrimaryWallet: jest.fn(),
+    getWallet: jest.fn(),
   };
 
   const mockMemberships = {
@@ -87,19 +83,6 @@ describe('UsersService', () => {
             },
           },
         ],
-        wallets: [
-          {
-            id: 'wallet-uuid-1',
-            userId: 'user-uuid-1',
-            wineryId: null,
-            stellarPublicAddress:
-              'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-            walletType: WalletTypeEnum.CUSTODIAL,
-            walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
-            isPrimary: true,
-            createdAt: new Date(),
-          },
-        ],
       });
 
       const profile = await service.getProfile('user-uuid-1');
@@ -107,9 +90,8 @@ describe('UsersService', () => {
       expect(profile.email).toBe('enologo@kohlberg.bo');
       expect(profile.wineryMemberships).toHaveLength(1);
       expect(profile.wineryMemberships[0].wineryName).toBe('Bodega Kohlberg');
-      expect(profile.primaryWallet?.stellarPublicAddress).toBe(
-        'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-      );
+      // SE-02: sin billeteras simuladas; el campo legado queda en null
+      expect(profile.primaryWallet).toBeNull();
     });
 
     it('debe arrojar NotFoundException si el usuario no existe', async () => {
@@ -134,7 +116,6 @@ describe('UsersService', () => {
       notificationPrefs: { lotProgress: true },
       promotionsConsentAt: null as Date | null,
       wineryMemberships: [],
-      wallets: [],
     };
     const membership = {
       id: 'm1',

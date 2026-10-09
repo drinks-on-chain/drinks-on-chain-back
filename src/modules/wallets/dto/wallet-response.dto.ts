@@ -16,8 +16,9 @@ export class WalletResponseDto {
   wineryId?: string | null;
 
   @ApiProperty({
-    example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
-    description: 'Dirección pública de Stellar (56 caracteres)',
+    example: 'GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6',
+    description:
+      'Dirección custodial derivada del consumidor (StrKey `G…` de 56 caracteres; sin fondear)',
   })
   stellarPublicAddress!: string;
 

@@ -182,19 +182,6 @@ export class UsersService {
   private toProfile(
     user: NonNullable<Awaited<ReturnType<UserRepository['findById']>>>,
   ): UserProfileResponseDto {
-    const primaryWallet = user.wallets[0]
-      ? {
-          id: user.wallets[0].id,
-          userId: user.wallets[0].userId,
-          wineryId: user.wallets[0].wineryId,
-          stellarPublicAddress: user.wallets[0].stellarPublicAddress,
-          walletType: user.wallets[0].walletType,
-          walletPurpose: user.wallets[0].walletPurpose,
-          isPrimary: user.wallets[0].isPrimary,
-          createdAt: user.wallets[0].createdAt,
-        }
-      : null;
-
     const wineryMemberships = user.wineryMemberships.map((membership) => ({
       wineryId: membership.wineryId,
       wineryName: membership.winery.commercialName,
@@ -214,15 +201,22 @@ export class UsersService {
       lastLoginAt: user.lastLoginAt,
       createdAt: user.createdAt,
       wineryMemberships,
-      primaryWallet,
+      // SE-02 (contrato O3 §3.3): `user_wallets` eran direcciones simuladas y
+      // ya no se lee. El campo se conserva en `null` hasta H3; la dirección
+      // del consumidor llega con su perfil en la Ola 4
+      primaryWallet: null,
     };
   }
 
   /**
-   * Obtiene los datos de la billetera custodial del usuario
+   * `GET /v1/users/me/wallet` (ruta legada, contrato O3 §3.3.5): el personal
+   * ya no tiene billetera (404 `CHN_WALLET_NOT_AVAILABLE`); un consumidor
+   * recibe su dirección custodial derivada si ya la tiene.
    */
-  async getUserWallet(userId: string): Promise<WalletResponseDto> {
-    return this.walletsService.getUserPrimaryWallet(userId);
+  async getUserWallet(
+    principal: Pick<AuthenticatedUser, 'id' | 'audience'>,
+  ): Promise<WalletResponseDto> {
+    return this.walletsService.getWallet(principal);
   }
 }
 

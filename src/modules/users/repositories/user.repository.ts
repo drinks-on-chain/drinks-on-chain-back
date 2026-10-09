@@ -21,10 +21,6 @@ export class UserRepository {
             },
           },
         },
-        wallets: {
-          where: { isPrimary: true },
-          take: 1,
-        },
       },
     });
   }

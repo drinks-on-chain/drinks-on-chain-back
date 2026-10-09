@@ -2,7 +2,6 @@ import { ConflictException } from '@nestjs/common';
 import { AudienceEnum } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { WalletsService } from '@modules/wallets/wallets.service';
 import {
   MembershipsService,
   MembershipView,
@@ -77,7 +76,6 @@ describe('AuthService', () => {
     recordFailure: jest.fn().mockResolvedValue(0),
     recordSuccess: jest.fn(),
   };
-  const wallets = { provisionUserWallet: jest.fn() };
   const mfa = { startChallenge: jest.fn() };
   const client = { ip: '203.0.113.7', userAgent: 'jest' };
 
@@ -108,7 +106,6 @@ describe('AuthService', () => {
       accessTokens as unknown as AccessTokenService,
       memberships as unknown as MembershipsService,
       loginAttempts as unknown as LoginAttemptsService,
-      wallets as unknown as WalletsService,
       mfa as unknown as MfaService,
     );
     loginAttempts.lockedFor.mockResolvedValue(0);
@@ -616,7 +613,8 @@ describe('AuthService', () => {
       expect(issued.body.user.audience).toBe('CONSUMER');
       expect(issued.body.user).not.toHaveProperty('userRole');
       expect(issued.body.memberships).toEqual([]);
-      expect(wallets.provisionUserWallet).toHaveBeenCalled();
+      // SE-02: el registro ya no crea ninguna billetera simulada
+      expect(prisma).not.toHaveProperty('userWallet');
       // Sin rol global: solo los datos de la cuenta
       expect(prisma.user.create).toHaveBeenCalledWith({
         data: expect.not.objectContaining({ userRole: expect.anything() }),

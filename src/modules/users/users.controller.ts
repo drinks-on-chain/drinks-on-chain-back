@@ -105,19 +105,29 @@ export class UsersController {
   @Get('me/wallet')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
-    summary: 'Obtener la billetera custodial del usuario autenticado',
+    summary: 'Dirección custodial del consumidor (ruta legada)',
     description:
-      'Retorna la dirección pública de Stellar y estado de la bóveda custodial.',
+      'Contrato O3 §3.3 y §12.2 (SE-02): las billeteras simuladas se retiraron. El **personal** (bodega y ' +
+      'plataforma) ya no tiene billetera: 404 `CHN_WALLET_NOT_AVAILABLE` (la cuenta de la bodega en la red está ' +
+      'en `GET /v1/organizations/current/chain-account`). Un **consumidor** recibe su dirección custodial ' +
+      'derivada (`walletType: CUSTODIAL`, `walletPurpose: CONSUMER_NFT`) cuando la tenga asignada (Ola 4); ' +
+      'hasta entonces, el mismo 404. La ruta se retira en la Ola 4.',
   })
   @ApiResponse({
     status: HttpStatus.OK,
-    description: 'Billetera obtenida exitosamente',
+    description: 'Dirección custodial del consumidor',
     type: WalletResponseDto,
   })
   @ApiUnauthorizedResponse({ description: 'No autenticado' })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description:
+      'CHN_WALLET_NOT_AVAILABLE: personal, o consumidor sin dirección asignada',
+    type: ApiErrorResponseDto,
+  })
   async getWallet(
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<WalletResponseDto> {
-    return this.usersService.getUserWallet(user.id);
+    return this.usersService.getUserWallet(user);
   }
 }

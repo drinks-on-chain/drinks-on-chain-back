@@ -4,7 +4,6 @@ import {
   MembershipStatusEnum,
   OrganizationStatusEnum,
   User,
-  WalletPurposeEnum,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '@shared/prisma/prisma.service';
@@ -14,7 +13,6 @@ import {
 } from '@shared/exceptions/app.exception';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
-import { WalletsService } from '@modules/wallets/wallets.service';
 import {
   MembershipsService,
   MembershipView,
@@ -107,7 +105,6 @@ export class AuthService {
     private readonly accessTokens: AccessTokenService,
     private readonly memberships: MembershipsService,
     private readonly loginAttempts: LoginAttemptsService,
-    private readonly walletsService: WalletsService,
     private readonly mfa: MfaService,
   ) {}
 
@@ -150,10 +147,8 @@ export class AuthService {
       },
     });
 
-    await this.walletsService.provisionUserWallet(
-      user.id,
-      WalletPurposeEnum.CONSUMER_NFT,
-    );
+    // Sin billetera simulada (SE-02): la dirección custodial del consumidor
+    // (`consumer_addresses`, SEP-0005) se asigna en el registro de la Ola 4
     this.logger.log(`Consumidor registrado: ${user.id}`);
 
     return this.openSession(user, [], client);

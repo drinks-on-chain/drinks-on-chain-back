@@ -1,140 +1,53 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
-import { WalletRepository } from './repositories/wallet.repository';
-import { IWalletProvider } from './interfaces/wallet-provider.interface';
-import {
-  Prisma,
-  UserWallet,
-  WalletPurposeEnum,
-  WalletTypeEnum,
-} from '@prisma/client';
+import { Injectable } from '@nestjs/common';
+import { WalletPurposeEnum, WalletTypeEnum } from '@prisma/client';
+import { AppException } from '@shared/exceptions/app.exception';
+import { ErrorCode } from '@shared/exceptions/error-codes';
+import { PrismaService } from '@shared/prisma/prisma.service';
+import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { WalletResponseDto } from './dto/wallet-response.dto';
 
+/**
+ * Ruta legada `GET /v1/users/me/wallet` (contrato O3 §3.3.5 y §12.2; SE-02).
+ *
+ * Las billeteras simuladas se retiraron: `user_wallets` eran direcciones sin
+ * clave, quedaron marcadas `INVALID_SIMULATED` por la migración de la Ola 3 y
+ * **no se leen ni se crean**. El personal (de bodega o de plataforma) no
+ * tiene billetera personal: la cuenta de una bodega en la red es de la bodega.
+ * Un consumidor tiene una dirección custodial derivada (`consumer_addresses`,
+ * §4), que se le asigna en su registro de la Ola 4.
+ */
 @Injectable()
 export class WalletsService {
-  private readonly logger = new Logger(WalletsService.name);
+  constructor(private readonly prisma: PrismaService) {}
 
-  constructor(
-    private readonly walletRepository: WalletRepository,
-    private readonly walletProvider: IWalletProvider,
-  ) {}
-
-  /**
-   * Aprovisiona una billetera custodial para un usuario (consumidor o personal).
-   * Con `tx`, la fila se escribe dentro de esa transacción (OP-01).
-   */
-  async provisionUserWallet(
-    userId: string,
-    purpose: WalletPurposeEnum = WalletPurposeEnum.CONSUMER_NFT,
-    tx?: Prisma.TransactionClient,
-  ): Promise<UserWallet> {
-    const existingWallet = await this.walletRepository.findByUserId(userId, tx);
-    if (existingWallet) {
-      return existingWallet;
+  async getWallet(
+    principal: Pick<AuthenticatedUser, 'id' | 'audience'>,
+  ): Promise<WalletResponseDto> {
+    if (principal.audience !== 'CONSUMER') {
+      throw notAvailable(
+        'El personal no tiene billetera: la cuenta de la bodega en la red está en /v1/organizations/current/chain-account',
+      );
     }
-
-    const { vaultId, stellarPublicKey } =
-      await this.walletProvider.createCustodialVault(userId, purpose);
-
-    const wallet = await this.walletRepository.create(
-      {
-        userId,
-        stellarPublicAddress: stellarPublicKey,
-        dynamicVaultId: vaultId,
-        walletType: WalletTypeEnum.CUSTODIAL,
-        walletPurpose: purpose,
-        isPrimary: true,
-      },
-      tx,
-    );
-
-    this.logger.log(
-      `Billetera custodial creada exitosamente para usuario: ${userId} -> ${wallet.stellarPublicAddress}`,
-    );
-
-    return wallet;
-  }
-
-  /**
-   * Aprovisiona una billetera custodial institucional para una bodega.
-   * Con `tx`, la fila se escribe dentro de esa transacción (OP-01).
-   */
-  async provisionWineryWallet(
-    userId: string,
-    wineryId: string,
-    purpose: WalletPurposeEnum = WalletPurposeEnum.PRODUCER_SIGNING,
-    tx?: Prisma.TransactionClient,
-  ): Promise<UserWallet> {
-    const existingWallet = await this.walletRepository.findByWineryId(
-      wineryId,
-      tx,
-    );
-    if (existingWallet) {
-      return existingWallet;
+    const address = await this.prisma.consumerAddress.findUnique({
+      where: { userId: principal.id },
+    });
+    if (!address || address.status !== 'ACTIVE') {
+      throw notAvailable('Tu cuenta aún no tiene una dirección asignada');
     }
-
-    const { vaultId, stellarPublicKey } =
-      await this.walletProvider.createCustodialVault(wineryId, purpose);
-
-    const wallet = await this.walletRepository.create(
-      {
-        userId,
-        wineryId,
-        stellarPublicAddress: stellarPublicKey,
-        dynamicVaultId: vaultId,
-        walletType: WalletTypeEnum.CUSTODIAL,
-        walletPurpose: purpose,
-        isPrimary: true,
-      },
-      tx,
-    );
-
-    this.logger.log(
-      `Billetera custodial creada exitosamente para bodega: ${wineryId} -> ${wallet.stellarPublicAddress}`,
-    );
-
-    return wallet;
-  }
-
-  /**
-   * Obtiene la billetera primaria del usuario autenticado
-   */
-  async getUserPrimaryWallet(userId: string): Promise<WalletResponseDto> {
-    let wallet = await this.walletRepository.findByUserId(userId);
-    if (!wallet) {
-      // Si por alguna razón no tuviese billetera, se aprovisiona on-demand
-      wallet = await this.provisionUserWallet(userId);
-    }
-
     return {
-      id: wallet.id,
-      userId: wallet.userId,
-      wineryId: wallet.wineryId,
-      stellarPublicAddress: wallet.stellarPublicAddress,
-      walletType: wallet.walletType,
-      walletPurpose: wallet.walletPurpose,
-      isPrimary: wallet.isPrimary,
-      createdAt: wallet.createdAt,
+      // La dirección es única por persona: su id es el de la persona
+      id: address.userId,
+      userId: address.userId,
+      wineryId: null,
+      stellarPublicAddress: address.address,
+      walletType: WalletTypeEnum.CUSTODIAL,
+      walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
+      isPrimary: true,
+      createdAt: address.createdAt,
     };
   }
+}
 
-  /**
-   * Obtiene la billetera de una bodega
-   */
-  async getWineryWallet(wineryId: string): Promise<WalletResponseDto> {
-    const wallet = await this.walletRepository.findByWineryId(wineryId);
-    if (!wallet) {
-      throw new NotFoundException('Billetera de bodega no encontrada');
-    }
-
-    return {
-      id: wallet.id,
-      userId: wallet.userId,
-      wineryId: wallet.wineryId,
-      stellarPublicAddress: wallet.stellarPublicAddress,
-      walletType: wallet.walletType,
-      walletPurpose: wallet.walletPurpose,
-      isPrimary: wallet.isPrimary,
-      createdAt: wallet.createdAt,
-    };
-  }
+function notAvailable(message: string): AppException {
+  return new AppException(404, ErrorCode.CHN_WALLET_NOT_AVAILABLE, message);
 }

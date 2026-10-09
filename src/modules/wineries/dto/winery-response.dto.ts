@@ -94,21 +94,28 @@ export class WineryResponseDto {
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    example: 'GBZXN7PIRZGNMHGA728JHIITLTINIQUVFD2AZN5HQG5Y3SQ4Q',
+    example: 'GDRXE2BQUC3AZNPVFSCEZ76NJ3WWL25FYFK6RGZGIEKWE4SOOHSUJUJ6',
+    description:
+      'Legado (se retira en H3 en favor de `chain-account`): la cuenta **real** de la bodega en la red, o ' +
+      '`null` mientras no exista. Ya no devuelve direcciones simuladas (SE-02)',
   })
   stellarPublicKey?: string | null;
 
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    example: 'PROD_BO_1028374029',
+    example: null,
+    description:
+      'Legado: siempre `null` (sin ProducerRegistry, C7); se retira en H3',
   })
   onchainProducerId?: string | null;
 
   @ApiPropertyOptional({
     type: String,
     nullable: true,
-    example: '0x_simulated_tx_88a1b2c3',
+    example: null,
+    description:
+      'Legado: hash de la transacción que creó la cuenta de la bodega, o `null`; se retira en H3',
   })
   onchainRegisterTxHash?: string | null;
 

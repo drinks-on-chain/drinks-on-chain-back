@@ -10,6 +10,7 @@ export class WineryRepository {
     return this.prisma.winery.findUnique({
       where: { id },
       include: {
+        chainAccount: { select: { address: true, status: true } },
         members: {
           include: {
             user: {

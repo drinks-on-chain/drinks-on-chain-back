@@ -207,8 +207,8 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
       wineries: fx.wineries.length,
       wineryMembers: demo.wineryMemberships,
       memberships: demo.wineryMemberships + demo.platformMemberships + 1,
-      // superusuario + billeteras de las personas de demostración
-      wallets: demo.wallets + 1,
+      // SE-02: la semilla ya no crea billeteras simuladas
+      wallets: 0,
       terroirs: fx.terroirs.length,
       harvestBatches: fx.harvestBatches.length,
       tanks: seeded.fermentationTanks.length,

@@ -178,9 +178,13 @@ describe('Cuenta, sesión y equipo tras H1 (e2e)', () => {
     expect(me.body.data.user.email).toBe(consumerEmail);
     expect(me.body.data.user.audience).toBe('CONSUMER');
     expect(me.body.data.user).not.toHaveProperty('userRole');
-    expect(me.body.data.user.primaryWallet.stellarPublicAddress).toMatch(
-      /^G[A-Z0-9]{55}$/,
-    );
+    // SE-02: sin billetera simulada; el campo legado queda en null
+    expect(me.body.data.user.primaryWallet).toBeNull();
+    const wallet = await http()
+      .get('/v1/users/me/wallet')
+      .set(auth(consumerToken))
+      .expect(404);
+    expect(wallet.body.error.code).toBe('CHN_WALLET_NOT_AVAILABLE');
 
     const patched = await http()
       .patch('/v1/users/me')
