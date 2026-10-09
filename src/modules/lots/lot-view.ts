@@ -17,10 +17,8 @@ import {
 import type { LotProductType, LotStage } from './domain/lot-stage';
 import { distillationHeart, num, tankLiters } from './domain/sources';
 import { actorOf, TraceActor } from './trace-actors';
-import {
-  NO_LOT_TOKENIZATION,
-  type LotTokenizationState,
-} from '@modules/tokenization/tokenization.constants';
+import { lotTokenizationState } from '@modules/tokenization/domain/state-machines';
+import type { LotTokenizationState } from '@modules/tokenization/tokenization.constants';
 
 /** Lo que se carga de un lote para responder `Lot` / `LotSummary`. */
 export const LOT_VIEW_INCLUDE = {
@@ -103,6 +101,21 @@ export const LOT_VIEW_INCLUDE = {
       recordedAt: true,
       actorMembershipId: true,
     },
+  },
+  // Marca de tokenización (contrato O3 §5.3): la colección y la solicitud abierta
+  collection: {
+    select: {
+      id: true,
+      status: true,
+      mintStatus: true,
+      quota: true,
+      minted: true,
+    },
+  },
+  tokenizationRequests: {
+    where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'CHANGES_REQUESTED'] } },
+    select: { status: true },
+    take: 1,
   },
   _count: { select: { bottleUnits: { where: { status: 'ACTIVE' } } } },
 } satisfies Prisma.LotInclude;
@@ -328,9 +341,15 @@ export function toLotSummary(lot: LotWithView, today: string): LotSummaryView {
     dossierStatus: lot.dossier?.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
     complianceIssuesOpen: lot.complianceIssues.filter((i) => !i.resolvedAt)
       .length,
-    // Apertura de la Ola 3: ningún lote tiene solicitud ni colección todavía
-    // (sus rutas llegan con los pasos 3.3 y 3.4, que calculan esta marca)
-    tokenization: { ...NO_LOT_TOKENIZATION },
+    tokenization: {
+      state: lotTokenizationState(
+        lot.tokenizationRequests[0]?.status ?? null,
+        lot.collection,
+      ),
+      quota: lot.collection?.quota ?? 0,
+      minted: lot.collection?.minted ?? 0,
+      collectionId: lot.collection?.id ?? null,
+    },
     createdAt: lot.createdAt.toISOString(),
     updatedAt: lot.updatedAt.toISOString(),
   };
