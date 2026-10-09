@@ -565,11 +565,15 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
   const implemented = (route: Route) => IMPLEMENTED.has(template(route));
 
   beforeAll(async () => {
-    // 1. El estado anterior a la Ola 3: todas las migraciones menos la nueva
+    // 1. El estado anterior a la Ola 3: las migraciones previas a la expand
+    // (ni ella ni las posteriores, que ya usan sus tablas)
+    const laterOrSame = readdirSync('prisma/migrations').filter(
+      (name) => /^\d{14}_/.test(name) && name >= MIGRATION,
+    );
     cpSync('prisma/schema.prisma', join(before, 'schema.prisma'));
     cpSync('prisma/migrations', join(before, 'migrations'), {
       recursive: true,
-      filter: (source) => !source.includes(MIGRATION),
+      filter: (source) => !laterOrSame.some((name) => source.includes(name)),
     });
     expect(readdirSync(join(before, 'migrations'))).not.toContain(MIGRATION);
     expect(

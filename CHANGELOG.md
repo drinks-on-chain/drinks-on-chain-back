@@ -2,6 +2,32 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Ola 3 · pasos 3.4 y 3.5: emisión, preventa y anclaje
+
+Contrato `o3-tokenizacion` §2.2, §2.3, §6.1, §7 y §14, sobre la integración de las ramas de la cadena (3.1 y 3.2) y de las solicitudes (3.3). Detalle en el [README](README.md#emisión-y-anclaje-pasos-34-y-35).
+
+### Añadido
+
+- **Emisión**: aprobar una solicitud registra una intención `MINT_BATCH` por cada trozo de hasta 32 000 NFT; el firmante la valida (`CHN_INTENT_REJECTED` si no cuadra), la firma (autorización de la bodega, sobre de operaciones) y, al confirmarse, crea un `Token` por botella, pasa la colección a `READY` (o `PUBLISHED` con `publishOnMint`) y avisa al dueño (correo `nft-emitidos`). Con `CHAIN_MINT_ENABLED=false` la intención queda `PENDING` con `lastError.code = CHN_MINT_DISABLED`.
+- **Anclaje**: al certificarse un lote (`lot.certified`) se registra `ANCHOR_DOSSIER`; al confirmarse y verificarse el memo, el lote pasa a `ANCHORED`, la colección queda canjeable y sus NFT `SOLD` pasan a `REDEEMABLE`. Tarea `chain.anchor.backfill` para los expedientes ya cerrados.
+- `GET /v1/public/lots/{lotCode}/verification` deja de responder `501`: huella, anclaje y las cuatro comprobaciones (43 de las 54 rutas de la ola tienen lógica).
+- `SET_TOKEN_URI_BASE`: se registra sola cuando la URI base del contrato ya no es la de la bodega.
+- Eventos del outbox: `collection.minted`, `collection.redeemable` y `lot.anchored`. Alertas `MINT_RANGE_MISMATCH` y `ANCHOR_MISMATCH` (`CRITICAL`). Bitácora: `NFT_MINTED`, `DOSSIER_ANCHORED`, `TOKENS_REDEEMABLE`.
+- Migración aditiva `20261009120000_o3_emision_anclaje`.
+
+### Cambios de comportamiento
+
+- `Mint.transactions` trae sus transacciones `MINT_BATCH` desde la respuesta de aprobar (antes, `[]` hasta el paso 3.4).
+- `LotDossier.anchor` (`GET /v1/lots/{id}/dossier`) y `PublicLotPassport.dossier.anchor` dejan de ser siempre `null`. En público, un anclaje fallido o a medias es `PENDING` y sin transacción.
+- `Lot.stage`: `CERTIFIED → ANCHORED` automático al anclarse (§12.2).
+- `BottlingBatch.isAnchoredOnChain`, `blockchainAnchorTxHash` y `anchoredAt` solo los escribe el anclaje real. **Los valores simulados que hubiera se mueven a `legacy_simulated_anchor_tx_hash` y quedan como «sin anclar»**; la semilla ya no los escribe.
+- El `slug` de una colección es único **por bodega** (antes, global): dos bodegas pueden repetir nombre. `PublicNftMetadata.external_url` sin pasaporte pasa de `{Marketplace}/colecciones/{slug}` a `{Marketplace}/colecciones/{slugBodega}/{slug}`.
+- `GET /v1/public/lots/{lotCode}/verification`: mismo esquema de respuesta; el 429 declara ahora la cabecera `Retry-After`, como el pasaporte.
+
+### Retirado
+
+- `MockOnchainBatchAnchorHook` (anclaje simulado del embotellado).
+
 ## Sin publicar · Ola 3 · paso 3.3: solicitud de tokenización y colecciones (sin red)
 
 Contrato `o3-tokenizacion` §5, §6.2, §6.4, §6.5 y §8.5. **Nada sale a la red**: la emisión queda registrada y pendiente del paso 3.4.

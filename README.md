@@ -366,6 +366,16 @@ Contrato: `plan/contratos/o3-tokenizacion.md` (carpeta del ecosistema). La apert
   Sin esas variables la prueba se omite y el resto de e2e corre con la cadena deshabilitada.
 - **Claves en el servidor de desarrollo**: [`deploy/README.md` §5](deploy/README.md#5-cuentas-de-la-plataforma-en-testnet-pasos-31-y-32) y `deploy/dev/generar-claves-cadena.sh` (las genera sin imprimirlas).
 
+
+#### Emisión y anclaje (pasos 3.4 y 3.5)
+
+- **Emisión** (`MINT_BATCH`, contrato O3 §6.1): aprobar una solicitud deja, en la misma transacción, una intención por cada trozo de hasta 32 000 NFT (`intentKey = mint:{mintId}:{trozo}`). El firmante del worker la valida con las filas bloqueadas (trozo pendiente y en orden, cuota, estimación o botellas del lote, contrato vigente y sin pausar), firma la autorización con la clave custodiada de la bodega y el sobre con la de operaciones, y la envía. Al confirmarse, el valor devuelto y el evento `lot_minted` fijan el rango de ids; si no coinciden, alerta `CRITICAL` y nada se publica. Código: `src/modules/chain/jobs/handlers/mint-batch.handler.ts` y `src/modules/tokenization/mint-effects.ts`.
+- **`CHAIN_MINT_ENABLED`** (ADR-011): con `false` (valor por defecto) las emisiones aprobadas esperan `PENDING` con `CHN_MINT_DISABLED`; al ponerla a `true` y reiniciar el worker, el barrido las recoge en menos de un minuto.
+- **Idempotencia**: aprobar dos veces, reprocesar el evento del outbox o perder la respuesta del envío no emite dos veces. Antes de reconstruir una emisión el firmante compara `total_minted()` con lo que leyó al construirla y busca un `lot_minted` de un intento propio.
+- **Anclaje** (`ANCHOR_DOSSIER`, §7): al cerrarse un expediente (`lot.certified`), transacción clásica de la cuenta de anclaje con `bumpSequence` y `MEMO_HASH` = SHA-256 del expediente. Al confirmarse se lee la transacción (memo y cuenta de origen) y solo entonces el lote pasa a `ANCHORED`. La tarea `chain.anchor.backfill` (al arrancar el worker) ancla los expedientes cerrados que no tengan anclaje. Código: `src/modules/chain/anchor/` y `…/handlers/anchor-dossier.handler.ts`.
+- **Verificación pública**: `GET /v1/public/lots/{lotCode}/verification` (cuatro comprobaciones; el visor recalcula la huella con `…/dossier`).
+- **Pruebas contra la red local**: `test/emision-o3.e2e-spec.ts` (junto a `test/chain-o3.e2e-spec.ts`), con las variables `CHAIN_E2E_*` de la CI. En la red local, emitir 100 NFT tarda ≈ 3 s y anclar ≈ 2,5 s (ledgers de 1 s).
+
 ### 🌱 Datos de demostración (0.10, OPS-09)
 
 La semilla (`src/seed.ts` y `src/seed/`) es **determinista e idempotente**: se puede ejecutar las veces que haga falta sin duplicar nada. Los datos maestros (personas, bodegas, membresías, parcelas) se escriben con `upsert` por su id fijo (o por su clave natural: correo, persona + organización): volver a ejecutarla los devuelve a su estado inicial. La **trazabilidad es de solo inserción**: cada lote de demostración se crea entero la primera vez y, si ya existe, no se toca (ni él ni sus registros). Nunca toca lo creado aparte. Va compilada en la imagen (`dist/seed.js` y los fixtures en `dist/seed/fixtures/`), así que no necesita `ts-node`.

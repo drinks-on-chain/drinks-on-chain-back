@@ -246,3 +246,12 @@ Para **deshabilitar** la cadena sin perder nada: vaciar `CHAIN_CUSTODY_DRIVER` (
 Las tablas de la Ola 3 están en la lista de [`dev/sql/rol-app-sin-delete.sql`](dev/sql/rol-app-sin-delete.sql): si el rol de la aplicación ya se creó, repite el script.
 
 > Si testnet se reinicia (S-22), las cuentas y los contratos desaparecen de la red: es un procedimiento manual de desarrollo (limpiar `chain_accounts`, `nft_contracts` y `chain_transactions` de esa red y dejar que el relleno los regenere); avisa a la coordinación antes.
+
+### 6. Emisión y anclaje (pasos 3.4 y 3.5)
+
+Al desplegar esta versión (la coordinación, con `~/doc-dev/bin/deploy.sh <sha>`):
+
+1. **Migración `20261009120000_o3_emision_anclaje`** (aditiva; la aplica el arranque de la API como las demás). Mueve los anclajes **simulados** de `bottling_batches` a `legacy_simulated_anchor_tx_hash` y deja `is_anchored_on_chain = false`; cambia el índice único de `collections.slug` por `(winery_id, slug)`. No borra nada. Comprobación previa opcional (solo lectura): `SELECT count(*) FROM bottling_batches WHERE is_anchored_on_chain OR blockchain_anchor_tx_hash IS NOT NULL;` (son los que se moverán).
+2. **Relleno de anclajes**: con la cadena habilitada, al arrancar el worker la tarea `chain.anchor.backfill` registra `ANCHOR_DOSSIER` para cada expediente cerrado sin anclaje (p. ej. «Singani Gran Reserva 2026»). Cada anclaje cuesta 100 stroops a la cuenta de anclaje. Se ve en `GET /v1/platform/chain/transactions?kind=ANCHOR_DOSSIER`.
+3. **`CHAIN_MINT_ENABLED`**: sigue en `false` hasta que la coordinación lo decida (ADR-011). Mientras tanto, aprobar una solicitud deja su emisión `PENDING` con `CHN_MINT_DISABLED`; al ponerla a `true` en `~/doc-dev/.env` y volver a desplegar, las pendientes se emiten solas. El anclaje **no** depende de esta variable.
+4. Sin variables nuevas. Costes observados en la red local (comisión cobrada a operaciones): primer `mint_batch` de 100 ≈ 0,04 XLM; siguientes ≈ 0,04 XLM; 32 000 NFT ≈ 0,014 XLM; anclaje, 100 stroops (cuenta de anclaje). En testnet la renta puede diferir: `feeChargedStroops` de cada transacción guarda lo real.
