@@ -8,7 +8,10 @@ import type {
   SchemaObject,
 } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import { generateOpenApiDocument } from '../document';
-import { O3_STEP_3_3_ROUTES } from '@modules/tokenization/o3-implemented-routes';
+import {
+  O3_STEP_3_3_ROUTES,
+  O3_STEP_3_5_ROUTES,
+} from '@modules/tokenization/o3-implemented-routes';
 import { BEARER_AUTH, serializeOpenApiDocument } from '../openapi';
 
 type Operation = OperationObject & { method: string; path: string };
@@ -621,10 +624,11 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/platform/wineries/{id}/chain/provision',
       'POST /v1/platform/wineries/{id}/chain/unpause',
     ];
-    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las del paso 3.3. */
+    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las de los pasos 3.3 y 3.5. */
     const O3_IMPLEMENTED = new Set<string>([
       ...O3_CHAIN_IMPLEMENTED,
       ...O3_STEP_3_3_ROUTES,
+      ...O3_STEP_3_5_ROUTES,
     ]);
     const O3_PENDING = O3_ROUTES.filter((route) => !O3_IMPLEMENTED.has(route));
 
@@ -632,7 +636,9 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       expect(O3_ROUTES).toHaveLength(54);
       expect(O3_ROUTES.filter((route) => !find(route))).toEqual([]);
       expect(O3_IMPLEMENTED.size).toBe(
-        O3_CHAIN_IMPLEMENTED.length + O3_STEP_3_3_ROUTES.length,
+        O3_CHAIN_IMPLEMENTED.length +
+          O3_STEP_3_3_ROUTES.length +
+          O3_STEP_3_5_ROUTES.length,
       );
       expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.size);
       const declared = ops

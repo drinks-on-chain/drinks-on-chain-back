@@ -80,9 +80,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -123,9 +121,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -162,12 +158,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "e26c2890-b4e4-5973-aec2-0f092355ad3b"
@@ -178,9 +170,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "2a643ce2-9f17-5017-9d6a-b4eb661d4648"
-      ],
+      "harvestBatchIds": ["2a643ce2-9f17-5017-9d6a-b4eb661d4648"],
       "tankIds": [
         "70893e8a-d534-5620-acbc-95e0e6090fd1",
         "d78d6307-f96b-533b-8f6e-710f6533bb42"
@@ -251,9 +241,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -294,9 +282,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -333,12 +319,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "536b1e93-996e-5835-9794-02c12f1319c4"
@@ -349,21 +331,15 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "19928e77-9724-5a4e-a7c4-3c494041add9"
-      ],
+      "harvestBatchIds": ["19928e77-9724-5a4e-a7c4-3c494041add9"],
       "tankIds": [
         "d4e37fed-41e1-5399-9b50-e8263a6ca797",
         "c66f62ff-e355-5e2c-8a47-1ac5282b77b2"
       ],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "c667fe6f-790b-5fe9-89b1-a13cdef77a4c"
-      ],
+      "productionBatchIds": ["c667fe6f-790b-5fe9-89b1-a13cdef77a4c"],
       "bottlingBatchId": "afef7d2a-4817-556f-ae16-24b38eee217a",
-      "labAnalysisIds": [
-        "3ad42b33-75c5-5b16-8283-8d3e74d8ee5a"
-      ]
+      "labAnalysisIds": ["3ad42b33-75c5-5b16-8283-8d3e74d8ee5a"]
     },
     "discarded": null,
     "notes": null,
@@ -423,9 +399,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -466,9 +440,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -505,12 +477,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "0a623529-957a-5edd-92de-9c0acccb8bfc"
@@ -521,20 +489,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "b1452d63-b1bd-5f10-978f-75bd7f6081df"
-      ],
-      "tankIds": [
-        "576b3ce2-a007-592e-8491-27202f13a995"
-      ],
+      "harvestBatchIds": ["b1452d63-b1bd-5f10-978f-75bd7f6081df"],
+      "tankIds": ["576b3ce2-a007-592e-8491-27202f13a995"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "155b8e15-bdbc-54cf-ab72-b3c8c01439ba"
-      ],
+      "productionBatchIds": ["155b8e15-bdbc-54cf-ab72-b3c8c01439ba"],
       "bottlingBatchId": "16887e29-6c0f-5820-85df-951b7372e1aa",
-      "labAnalysisIds": [
-        "e371629e-607f-5454-b111-8c3d5cf43527"
-      ]
+      "labAnalysisIds": ["e371629e-607f-5454-b111-8c3d5cf43527"]
     },
     "discarded": null,
     "notes": null,
@@ -594,9 +554,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -637,9 +595,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -669,15 +625,9 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "f96daa52-78dd-533a-98b6-7d5b008edf6a"
-      ],
-      "tankIds": [
-        "6e49c5f9-adc8-503b-a1db-2b576bef7078"
-      ],
-      "wineAgingBatchIds": [
-        "a48ddc67-0e24-51fe-a43d-877f55ac9de6"
-      ],
+      "harvestBatchIds": ["f96daa52-78dd-533a-98b6-7d5b008edf6a"],
+      "tankIds": ["6e49c5f9-adc8-503b-a1db-2b576bef7078"],
+      "wineAgingBatchIds": ["a48ddc67-0e24-51fe-a43d-877f55ac9de6"],
       "productionBatchIds": [],
       "bottlingBatchId": "c95f78e7-f72a-556c-8bae-e6670da39e8b",
       "labAnalysisIds": []
@@ -725,9 +675,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -768,9 +716,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -800,9 +746,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "93bd36a1-673b-52ed-adec-539d805cd018"
-      ],
+      "harvestBatchIds": ["93bd36a1-673b-52ed-adec-539d805cd018"],
       "tankIds": [],
       "wineAgingBatchIds": [],
       "productionBatchIds": [],
@@ -880,9 +824,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -910,9 +852,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -925,9 +865,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -957,16 +895,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "e4b491e3-1fc1-5d2d-8244-204b4fb99b3f"
-      ],
+      "harvestBatchIds": ["e4b491e3-1fc1-5d2d-8244-204b4fb99b3f"],
       "tankIds": [
         "9da648ee-bdf1-5701-b362-83eced36156a",
         "75d30fdf-eff5-596b-a2c3-d0d04db104ae"
       ],
-      "wineAgingBatchIds": [
-        "0086c315-a8e7-56f2-9554-0bcd9ed6e4f6"
-      ],
+      "wineAgingBatchIds": ["0086c315-a8e7-56f2-9554-0bcd9ed6e4f6"],
       "productionBatchIds": [],
       "bottlingBatchId": null,
       "labAnalysisIds": []
@@ -1014,9 +948,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1044,9 +976,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1059,9 +989,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1091,9 +1019,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "010ecdc8-6d52-5877-aecf-73bebb5c4d82"
-      ],
+      "harvestBatchIds": ["010ecdc8-6d52-5877-aecf-73bebb5c4d82"],
       "tankIds": [
         "04e8d15f-24ff-5943-83db-6f915387071c",
         "f87af6c0-197d-5fa3-b85e-29d7b27f00d9",
@@ -1175,9 +1101,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1205,9 +1129,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1220,9 +1142,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1252,15 +1172,9 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "ed733522-34e1-57c0-b03d-0c5ac52dd2ab"
-      ],
-      "tankIds": [
-        "e8a31a4f-1593-5ffc-9b81-15410f404d2a"
-      ],
-      "wineAgingBatchIds": [
-        "848d54be-3d51-5a62-93e6-d15eba6df89a"
-      ],
+      "harvestBatchIds": ["ed733522-34e1-57c0-b03d-0c5ac52dd2ab"],
+      "tankIds": ["e8a31a4f-1593-5ffc-9b81-15410f404d2a"],
+      "wineAgingBatchIds": ["848d54be-3d51-5a62-93e6-d15eba6df89a"],
       "productionBatchIds": [],
       "bottlingBatchId": null,
       "labAnalysisIds": []
@@ -1323,9 +1237,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1353,9 +1265,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1368,9 +1278,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1400,20 +1308,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "75cb22bb-1e85-5d00-8439-d4dd6e10a914"
-      ],
-      "tankIds": [
-        "5ecf8ac9-c9d8-5edd-a359-33956b6294f5"
-      ],
-      "wineAgingBatchIds": [
-        "a1370e1f-d1d9-5aad-b0a3-821677553361"
-      ],
+      "harvestBatchIds": ["75cb22bb-1e85-5d00-8439-d4dd6e10a914"],
+      "tankIds": ["5ecf8ac9-c9d8-5edd-a359-33956b6294f5"],
+      "wineAgingBatchIds": ["a1370e1f-d1d9-5aad-b0a3-821677553361"],
       "productionBatchIds": [],
       "bottlingBatchId": "bc10077a-bf11-575c-8bba-331fbc6887c2",
-      "labAnalysisIds": [
-        "314156cd-cf40-5a03-a272-9424663a7d25"
-      ]
+      "labAnalysisIds": ["314156cd-cf40-5a03-a272-9424663a7d25"]
     },
     "discarded": null,
     "notes": null,
@@ -1458,9 +1358,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1488,9 +1386,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1503,9 +1399,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1535,9 +1429,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "95ed7865-429e-57e7-9fe4-e037a8063738"
-      ],
+      "harvestBatchIds": ["95ed7865-429e-57e7-9fe4-e037a8063738"],
       "tankIds": [],
       "wineAgingBatchIds": [],
       "productionBatchIds": [],
@@ -1587,9 +1479,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1617,9 +1507,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1632,9 +1520,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1664,9 +1550,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "be653b6b-868e-51f3-bc11-462afa764ca1"
-      ],
+      "harvestBatchIds": ["be653b6b-868e-51f3-bc11-462afa764ca1"],
       "tankIds": [],
       "wineAgingBatchIds": [],
       "productionBatchIds": [],
@@ -1716,9 +1600,7 @@
       "origin": "MIGRATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1746,9 +1628,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -1761,9 +1641,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1793,9 +1671,7 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "00a123fd-d0bd-526c-b5bd-227250ec0ce4"
-      ],
+      "harvestBatchIds": ["00a123fd-d0bd-526c-b5bd-227250ec0ce4"],
       "tankIds": [],
       "wineAgingBatchIds": [],
       "productionBatchIds": [],
@@ -1832,9 +1708,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2026-09-15T14:00:00Z",
     "updatedAt": "2026-09-15T14:00:00Z",
-    "plannedTerroirIds": [
-      "0a623529-957a-5edd-92de-9c0acccb8bfc"
-    ],
+    "plannedTerroirIds": ["0a623529-957a-5edd-92de-9c0acccb8bfc"],
     "plannedFormatCl": 70,
     "targetAbvPercent": 40,
     "targetReadyDate": "2027-06-30",
@@ -1859,9 +1733,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -1902,9 +1774,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -1941,12 +1811,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "0a623529-957a-5edd-92de-9c0acccb8bfc"
@@ -1999,9 +1865,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2026-03-18T14:00:00Z",
     "updatedAt": "2026-09-22T13:00:00Z",
-    "plannedTerroirIds": [
-      "0a623529-957a-5edd-92de-9c0acccb8bfc"
-    ],
+    "plannedTerroirIds": ["0a623529-957a-5edd-92de-9c0acccb8bfc"],
     "plannedFormatCl": 75,
     "targetAbvPercent": 40,
     "targetReadyDate": null,
@@ -2026,9 +1890,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2069,9 +1931,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2108,12 +1968,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "0a623529-957a-5edd-92de-9c0acccb8bfc"
@@ -2124,16 +1980,10 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "8a2a8525-bfdf-5ade-b3e3-e9ffc6d14712"
-      ],
-      "tankIds": [
-        "ad5d5c1e-9b76-53c7-8047-d2ef82c4b3c6"
-      ],
+      "harvestBatchIds": ["8a2a8525-bfdf-5ade-b3e3-e9ffc6d14712"],
+      "tankIds": ["ad5d5c1e-9b76-53c7-8047-d2ef82c4b3c6"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "d5993d22-4689-5802-9ff8-4c844d8ab807"
-      ],
+      "productionBatchIds": ["d5993d22-4689-5802-9ff8-4c844d8ab807"],
       "bottlingBatchId": null,
       "labAnalysisIds": []
     },
@@ -2197,9 +2047,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2227,9 +2075,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -2242,9 +2088,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2274,12 +2118,8 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "da1eec24-39ab-5e9e-b351-1e0c1df94015"
-      ],
-      "tankIds": [
-        "08d72dc0-fa96-5dbc-bc9b-39300d739c84"
-      ],
+      "harvestBatchIds": ["da1eec24-39ab-5e9e-b351-1e0c1df94015"],
+      "tankIds": ["08d72dc0-fa96-5dbc-bc9b-39300d739c84"],
       "wineAgingBatchIds": [],
       "productionBatchIds": [],
       "bottlingBatchId": null,
@@ -2345,9 +2185,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2375,9 +2213,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -2390,9 +2226,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2422,15 +2256,9 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "924ad785-abfe-5e0b-9857-83de40cae076"
-      ],
-      "tankIds": [
-        "0357af1b-ac1f-5400-b52d-cb701cbbcf75"
-      ],
-      "wineAgingBatchIds": [
-        "c32e9854-fdc7-5782-ac66-9aa3e337f794"
-      ],
+      "harvestBatchIds": ["924ad785-abfe-5e0b-9857-83de40cae076"],
+      "tankIds": ["0357af1b-ac1f-5400-b52d-cb701cbbcf75"],
+      "wineAgingBatchIds": ["c32e9854-fdc7-5782-ac66-9aa3e337f794"],
       "productionBatchIds": [],
       "bottlingBatchId": null,
       "labAnalysisIds": []
@@ -2519,9 +2347,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2549,9 +2375,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -2564,9 +2388,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2596,20 +2418,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "535ed750-3e23-5cd8-94c6-7c454d0ebd9b"
-      ],
-      "tankIds": [
-        "84645346-8236-5be7-be28-11f041cb1d7a"
-      ],
-      "wineAgingBatchIds": [
-        "625ba51c-6c64-5326-93c0-e399db486c43"
-      ],
+      "harvestBatchIds": ["535ed750-3e23-5cd8-94c6-7c454d0ebd9b"],
+      "tankIds": ["84645346-8236-5be7-be28-11f041cb1d7a"],
+      "wineAgingBatchIds": ["625ba51c-6c64-5326-93c0-e399db486c43"],
       "productionBatchIds": [],
       "bottlingBatchId": "8e079a8c-08ac-55e8-8e05-a2ff33aa4e0f",
-      "labAnalysisIds": [
-        "d9050da6-5d4b-5595-a62e-a661c04acb51"
-      ]
+      "labAnalysisIds": ["d9050da6-5d4b-5595-a62e-a661c04acb51"]
     },
     "discarded": null,
     "notes": null,
@@ -2646,9 +2460,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2025-03-12T14:00:00Z",
     "updatedAt": "2025-12-02T16:00:00Z",
-    "plannedTerroirIds": [
-      "ceaf7563-9785-5331-93c3-f9f8193ff45f"
-    ],
+    "plannedTerroirIds": ["ceaf7563-9785-5331-93c3-f9f8193ff45f"],
     "plannedFormatCl": 70,
     "targetAbvPercent": 40,
     "targetReadyDate": null,
@@ -2688,9 +2500,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1500,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2718,9 +2528,7 @@
           }
         }
       },
-      "legalExceptions": [
-        "trazabilidad.singani.altitudMinimaMsnm"
-      ],
+      "legalExceptions": ["trazabilidad.singani.altitudMinimaMsnm"],
       "sources": {
         "trazabilidad.singani.altitudMinimaMsnm": "WINERY",
         "trazabilidad.singani.variedadesExigidas": "GLOBAL",
@@ -2733,9 +2541,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1500,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2772,12 +2578,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "ceaf7563-9785-5331-93c3-f9f8193ff45f"
@@ -2788,20 +2590,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "1d58dac2-5b09-557e-a7c4-1e9fc44f5e55"
-      ],
-      "tankIds": [
-        "6e774392-123e-5707-9b10-69c0d75538ad"
-      ],
+      "harvestBatchIds": ["1d58dac2-5b09-557e-a7c4-1e9fc44f5e55"],
+      "tankIds": ["6e774392-123e-5707-9b10-69c0d75538ad"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "17e3fef4-f096-56a6-a093-0e0f21c3698a"
-      ],
+      "productionBatchIds": ["17e3fef4-f096-56a6-a093-0e0f21c3698a"],
       "bottlingBatchId": "10b56de9-cfbd-5681-b953-bc05eeeea58c",
-      "labAnalysisIds": [
-        "b5857659-0e30-5a0a-b0a5-22c400bd9f76"
-      ]
+      "labAnalysisIds": ["b5857659-0e30-5a0a-b0a5-22c400bd9f76"]
     },
     "discarded": null,
     "notes": null,
@@ -2838,9 +2632,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2024-03-07T14:00:00Z",
     "updatedAt": "2026-08-26T15:00:00Z",
-    "plannedTerroirIds": [
-      "e26c2890-b4e4-5973-aec2-0f092355ad3b"
-    ],
+    "plannedTerroirIds": ["e26c2890-b4e4-5973-aec2-0f092355ad3b"],
     "plannedFormatCl": 75,
     "targetAbvPercent": 40,
     "targetReadyDate": null,
@@ -2880,9 +2672,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -2923,9 +2713,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -2962,12 +2750,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "e26c2890-b4e4-5973-aec2-0f092355ad3b"
@@ -2978,16 +2762,10 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "3c228caf-ba8d-5e96-9880-1f28560245f8"
-      ],
-      "tankIds": [
-        "fe50165d-6ba5-563c-9bb6-b6c1a1c7a806"
-      ],
+      "harvestBatchIds": ["3c228caf-ba8d-5e96-9880-1f28560245f8"],
+      "tankIds": ["fe50165d-6ba5-563c-9bb6-b6c1a1c7a806"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "00bc292a-8178-5216-8578-6d97a524f182"
-      ],
+      "productionBatchIds": ["00bc292a-8178-5216-8578-6d97a524f182"],
       "bottlingBatchId": "1281f02c-e882-5df1-aea7-eab5c8919350",
       "labAnalysisIds": []
     },
@@ -3035,9 +2813,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2025-03-12T14:00:00Z",
     "updatedAt": "2026-03-12T16:00:00Z",
-    "plannedTerroirIds": [
-      "7e56480f-c3fb-5706-9723-54e4a4c1b5e6"
-    ],
+    "plannedTerroirIds": ["7e56480f-c3fb-5706-9723-54e4a4c1b5e6"],
     "plannedFormatCl": 75,
     "targetAbvPercent": 40,
     "targetReadyDate": null,
@@ -3077,9 +2853,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -3120,9 +2894,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -3159,12 +2931,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "7e56480f-c3fb-5706-9723-54e4a4c1b5e6"
@@ -3175,20 +2943,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "36304582-8e8f-5e31-ae49-ff7584e9cb91"
-      ],
-      "tankIds": [
-        "7cd03350-4cc8-5206-95df-3fec384ec4e0"
-      ],
+      "harvestBatchIds": ["36304582-8e8f-5e31-ae49-ff7584e9cb91"],
+      "tankIds": ["7cd03350-4cc8-5206-95df-3fec384ec4e0"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "f9b48669-3b05-5bb4-9251-7905c2e343fc"
-      ],
+      "productionBatchIds": ["f9b48669-3b05-5bb4-9251-7905c2e343fc"],
       "bottlingBatchId": "7a347a28-d916-5e64-8fea-25a28abcd9e6",
-      "labAnalysisIds": [
-        "633c1f3a-dbef-5766-a16a-52127d1bd145"
-      ]
+      "labAnalysisIds": ["633c1f3a-dbef-5766-a16a-52127d1bd145"]
     },
     "discarded": null,
     "notes": null,
@@ -3225,9 +2985,7 @@
     "complianceIssuesOpen": 0,
     "createdAt": "2026-03-07T14:00:00Z",
     "updatedAt": "2026-09-24T15:00:00Z",
-    "plannedTerroirIds": [
-      "536b1e93-996e-5835-9794-02c12f1319c4"
-    ],
+    "plannedTerroirIds": ["536b1e93-996e-5835-9794-02c12f1319c4"],
     "plannedFormatCl": 75,
     "targetAbvPercent": 40,
     "targetReadyDate": null,
@@ -3278,9 +3036,7 @@
       "origin": "LOT_CREATION",
       "singani": {
         "minAltitudeMasl": 1600,
-        "requiredVarieties": [
-          "Moscatel de Alejandría"
-        ],
+        "requiredVarieties": ["Moscatel de Alejandría"],
         "minRestDays": 180
       },
       "wine": {
@@ -3321,9 +3077,7 @@
       },
       "values": {
         "trazabilidad.singani.altitudMinimaMsnm": 1600,
-        "trazabilidad.singani.variedadesExigidas": [
-          "Moscatel de Alejandría"
-        ],
+        "trazabilidad.singani.variedadesExigidas": ["Moscatel de Alejandría"],
         "trazabilidad.singani.reposoMinimoDias": 180,
         "trazabilidad.vino.crianzaMinimaMeses": 0,
         "trazabilidad.fitosanitario.exigirAprobado": true,
@@ -3360,12 +3114,8 @@
         {
           "rule": "VARIETY",
           "settingKey": "trazabilidad.singani.variedadesExigidas",
-          "required": [
-            "Moscatel de Alejandría"
-          ],
-          "legalMinimum": [
-            "Moscatel de Alejandría"
-          ],
+          "required": ["Moscatel de Alejandría"],
+          "legalMinimum": ["Moscatel de Alejandría"],
           "actual": "Moscatel de Alejandría",
           "pass": true,
           "terroirId": "536b1e93-996e-5835-9794-02c12f1319c4"
@@ -3376,20 +3126,12 @@
     },
     "complianceIssues": [],
     "links": {
-      "harvestBatchIds": [
-        "260262b8-47be-5be5-8b71-d5391032200d"
-      ],
-      "tankIds": [
-        "50fb50c9-1ce4-538f-a153-975c6bfb21f4"
-      ],
+      "harvestBatchIds": ["260262b8-47be-5be5-8b71-d5391032200d"],
+      "tankIds": ["50fb50c9-1ce4-538f-a153-975c6bfb21f4"],
       "wineAgingBatchIds": [],
-      "productionBatchIds": [
-        "b7920625-c7f9-5615-b3d3-23ab147e7a36"
-      ],
+      "productionBatchIds": ["b7920625-c7f9-5615-b3d3-23ab147e7a36"],
       "bottlingBatchId": "8f82c09a-bb21-5565-889a-ff2e30be7b5d",
-      "labAnalysisIds": [
-        "eb1118cd-a564-5ab4-83e3-dd15636d6184"
-      ]
+      "labAnalysisIds": ["eb1118cd-a564-5ab4-83e3-dd15636d6184"]
     },
     "discarded": null,
     "notes": "Edición de la vendimia 2026 con la uva de Cañón Viejo.",

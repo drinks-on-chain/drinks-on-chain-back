@@ -15,7 +15,10 @@ import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/app.setup';
 import { PLATFORM_ORGANIZATION_ID } from '../src/modules/organizations/organization.constants';
 import { SimulatedWalletsAuditRunner } from '../src/modules/chain/simulated-wallets-audit.runner';
-import { O3_STEP_3_3_ROUTES } from '../src/modules/tokenization/o3-implemented-routes';
+import {
+  O3_STEP_3_3_ROUTES,
+  O3_STEP_3_5_ROUTES,
+} from '../src/modules/tokenization/o3-implemented-routes';
 import {
   addWineryMember,
   staffToken,
@@ -553,7 +556,10 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
   const name = (route: Route) =>
     `${route.method.toUpperCase()} ${route.path().split('?')[0]}`;
   /** Rutas que ya tienen lógica (dejaron de responder 501): paso 3.3. */
-  const IMPLEMENTED = new Set<string>(O3_STEP_3_3_ROUTES);
+  const IMPLEMENTED = new Set<string>([
+    ...O3_STEP_3_3_ROUTES,
+    ...O3_STEP_3_5_ROUTES,
+  ]);
   const template = (route: Route) =>
     `${route.method.toUpperCase()} ${openapi.resolvePath(route.method, route.path())}`;
   const implemented = (route: Route) => IMPLEMENTED.has(template(route));
@@ -1091,9 +1097,11 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       }
     });
 
-    it('las del paso 3.3 (solicitudes y colecciones sin red) ya no responden 501', async () => {
+    it('las de los pasos 3.3 y 3.5 (solicitudes, colecciones y verificación) ya no responden 501', async () => {
       const done = ROUTES.filter(implemented);
-      expect(done).toHaveLength(O3_STEP_3_3_ROUTES.length);
+      expect(done).toHaveLength(
+        O3_STEP_3_3_ROUTES.length + O3_STEP_3_5_ROUTES.length,
+      );
       for (const route of done) {
         const res = await call(route, route.allowed[0], {
           body: route.body,

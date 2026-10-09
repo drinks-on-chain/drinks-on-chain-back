@@ -40,3 +40,8 @@ export const O3_STEP_3_3_ROUTES: readonly string[] = [
   'GET /v1/public/nft/{winerySlug}/{tokenId}',
   'GET /v1/public/collections/images/{imageId}',
 ];
+
+/** Rutas a las que dio lógica el paso 3.5 (anclaje y verificación pública). */
+export const O3_STEP_3_5_ROUTES: readonly string[] = [
+  'GET /v1/public/lots/{lotCode}/verification',
+];

@@ -4,7 +4,6 @@ import { WineTraceabilityStrategy } from './strategies/wine-traceability.strateg
 import { SinganiTraceabilityStrategy } from './strategies/singani-traceability.strategy';
 import { BeerTraceabilityStrategy } from './strategies/beer-traceability.strategy';
 import { TraceabilityStrategyFactory } from './strategies/traceability-strategy.factory';
-import { MockOnchainBatchAnchorHook } from './hooks/mock-onchain-batch-anchor.hook';
 import { FermentationService } from './services/fermentation.service';
 import { WineAgingService } from './services/wine-aging.service';
 import { ProductionBatchesService } from './services/production-batches.service';
@@ -33,7 +32,6 @@ import { LabAnalysesController } from './controllers/lab-analyses.controller';
     SinganiTraceabilityStrategy,
     BeerTraceabilityStrategy,
     TraceabilityStrategyFactory,
-    MockOnchainBatchAnchorHook,
     FermentationService,
     WineAgingService,
     ProductionBatchesService,
@@ -48,7 +46,6 @@ import { LabAnalysesController } from './controllers/lab-analyses.controller';
     WineTraceabilityStrategy,
     SinganiTraceabilityStrategy,
     BeerTraceabilityStrategy,
-    MockOnchainBatchAnchorHook,
     FermentationService,
     WineAgingService,
     ProductionBatchesService,

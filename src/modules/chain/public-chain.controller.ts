@@ -3,28 +3,18 @@ import {
   Get,
   Header,
   HttpStatus,
-  Param,
   Res,
   VERSION_NEUTRAL,
 } from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
-  ApiParam,
   ApiProduces,
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { Public } from '@modules/auth/decorators/public.decorator';
-import {
-  ApiErrorCodes,
-  ApiNotImplementedO3,
-  notImplementedO3,
-} from './contract/o3-contract';
-import {
-  PublicChainRegistryDto,
-  PublicDossierVerificationDto,
-} from './dto/chain.dto';
+import { PublicChainRegistryDto } from './dto/chain.dto';
 import { PublicChainRegistryService } from './identity/public-chain-registry.service';
 
 const PUBLIC_NOTE =
@@ -34,8 +24,9 @@ const PUBLIC_NOTE =
 const CACHE_5_MIN = 'public, max-age=300';
 
 /**
- * Público · registro de cuentas y contratos oficiales y verificación del
- * anclaje (contrato O3 §3.2 y §7.3; CHN-02, PUB-03). Sin datos personales.
+ * Público · registro de cuentas y contratos oficiales (contrato O3 §3.2;
+ * CHN-02). Sin datos personales. La verificación del anclaje (§7.3) vive con
+ * el pasaporte del lote (`lots/contract/public-verification.controller.ts`).
  */
 @ApiTags('Public')
 @Controller('public')
@@ -55,32 +46,6 @@ export class PublicChainController {
   @ApiOkResponse({ type: PublicChainRegistryDto })
   registry(): Promise<PublicChainRegistryDto> {
     return this.registryService.registry();
-  }
-
-  @Public()
-  @Get('lots/:lotCode/verification')
-  @ApiOperation({
-    summary: 'Verificación pública del anclaje de un lote',
-    description:
-      'Contrato O3 §7.3: huella del expediente, anclaje (memo y transacción) y las cuatro comprobaciones ' +
-      '(`DOSSIER_CLOSED`, `ANCHOR_CONFIRMED`, `MEMO_MATCHES_HASH`, `ANCHOR_ACCOUNT_OFFICIAL`). El visor ' +
-      'recalcula la huella en el navegador con los bytes de `GET /v1/public/lots/{lotCode}/dossier`. ' +
-      `Lote \`ANCHORED\`: \`max-age=3600\`. ${PUBLIC_NOTE}`,
-  })
-  @ApiParam({
-    name: 'lotCode',
-    description: 'Código de lote de la etiqueta',
-    example: 'CVJ-2026-SINGANI-004',
-  })
-  @ApiOkResponse({ type: PublicDossierVerificationDto })
-  @ApiErrorCodes(HttpStatus.NOT_FOUND, ['PUB_CODE_NOT_FOUND'])
-  @ApiErrorCodes(HttpStatus.UNPROCESSABLE_ENTITY, ['PUB_CODE_MALFORMED'])
-  @ApiErrorCodes(HttpStatus.TOO_MANY_REQUESTS, ['PUB_TOO_MANY_LOOKUPS'])
-  @ApiNotImplementedO3('3.5')
-  verification(
-    @Param('lotCode') _lotCode: string,
-  ): Promise<PublicDossierVerificationDto> {
-    throw notImplementedO3('3.5');
   }
 }
 

@@ -25,6 +25,7 @@ import { BOTTLE_CODE_EXPORTS_CLEANUP_TASK } from '../src/modules/lots/jobs/bottl
 import { TRACE_LOCKS_RELEASE_TASK } from '../src/modules/lots/jobs/locks-release.task';
 import {
   BOTTLE_CODES_EXPORT_JOB,
+  LOT_ANCHORED,
   LOT_CERTIFIED,
 } from '../src/modules/lots/lots.events';
 import { EMAIL_REQUESTED } from '../src/modules/mail/mail.events';
@@ -36,6 +37,7 @@ import {
 import {
   CHAIN_ALERT_RAISED,
   CHAIN_BALANCE_CHECK_TASK,
+  CHAIN_ANCHOR_BACKFILL_JOB,
   CHAIN_IDENTITY_BACKFILL_JOB,
   CHAIN_TESTNET_FUND_TASK,
   CHAIN_TX_CONFIRMED,
@@ -56,8 +58,10 @@ import {
 } from '../src/shared/queue/queue.constants';
 import {
   COLLECTION_CLOSED,
+  COLLECTION_MINTED,
   COLLECTION_PAUSED,
   COLLECTION_PUBLISHED,
+  COLLECTION_REDEEMABLE,
   COLLECTION_RESUMED,
   TOKENIZATION_REQUEST_APPROVED,
   TOKENIZATION_REQUEST_CHANGES_REQUESTED,
@@ -213,6 +217,10 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       `${QUEUE_DEFAULT}/${COLLECTION_PAUSED}`,
       `${QUEUE_DEFAULT}/${COLLECTION_RESUMED}`,
       `${QUEUE_DEFAULT}/${COLLECTION_CLOSED}`,
+      // Ola 3 · pasos 3.4 y 3.5: emisión y anclaje
+      `${QUEUE_DEFAULT}/${COLLECTION_MINTED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_REDEEMABLE}`,
+      `${QUEUE_DEFAULT}/${LOT_ANCHORED}`,
     ];
     expect(registered).toEqual(expect.arrayContaining(emitted));
     // Colas y tareas de la cadena: `chain` (firmante), `chain-poll`
@@ -221,6 +229,7 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       expect.arrayContaining([
         `${QUEUE_CHAIN}/${CHAIN_TX_PROCESS_JOB}`,
         `${QUEUE_CHAIN}/${CHAIN_IDENTITY_BACKFILL_JOB}`,
+        `${QUEUE_CHAIN}/${CHAIN_ANCHOR_BACKFILL_JOB}`,
         `${QUEUE_CHAIN_POLL}/${CHAIN_TX_CONFIRM_JOB}`,
         `scheduled/${CHAIN_TX_POLL_TASK}`,
         `scheduled/${CHAIN_BALANCE_CHECK_TASK}`,

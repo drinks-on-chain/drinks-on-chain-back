@@ -15133,8 +15133,8 @@
     },
     "/v1/public/lots/{lotCode}/verification": {
       "get": {
-        "description": "Contrato O3 §7.3: huella del expediente, anclaje (memo y transacción) y las cuatro comprobaciones (`DOSSIER_CLOSED`, `ANCHOR_CONFIRMED`, `MEMO_MATCHES_HASH`, `ANCHOR_ACCOUNT_OFFICIAL`). El visor recalcula la huella en el navegador con los bytes de `GET /v1/public/lots/{lotCode}/dossier`. Lote `ANCHORED`: `max-age=3600`. Sin sesión. Mismo límite por IP real que el pasaporte (O2 §12.4) y respuesta cacheable.",
-        "operationId": "PublicChainController_verification_v1",
+        "description": "Contrato O3 §7.3: huella del expediente, anclaje (memo y transacción) y las cuatro comprobaciones (`DOSSIER_CLOSED`, `ANCHOR_CONFIRMED`, `MEMO_MATCHES_HASH`, `ANCHOR_ACCOUNT_OFFICIAL`; `pass: null` = aún no aplica). Un anclaje fallido o a medias se publica como `PENDING`, sin transacción (S-17). `verifiedOnChainAt` es cuándo el servidor leyó la transacción y comprobó memo y cuenta de origen. El visor recalcula la huella en el navegador con los bytes de `GET /v1/public/lots/{lotCode}/dossier`. Sin sesión; mismo límite por IP real que el pasaporte (O2 §12.4); anclado: `max-age=3600`.",
+        "operationId": "PublicVerificationController_verification_v1",
         "parameters": [
           {
             "name": "lotCode",
@@ -15159,44 +15159,42 @@
             }
           },
           "404": {
+            "description": "PUB_CODE_NOT_FOUND",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
-            },
-            "description": "PUB_CODE_NOT_FOUND"
+            }
           },
           "422": {
+            "description": "PUB_CODE_MALFORMED",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
-            },
-            "description": "PUB_CODE_MALFORMED"
+            }
           },
           "429": {
+            "description": "PUB_TOO_MANY_LOOKUPS",
+            "headers": {
+              "Retry-After": {
+                "description": "Segundos hasta poder reintentar",
+                "schema": {
+                  "type": "integer"
+                }
+              }
+            },
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ApiErrorResponseDto"
                 }
               }
-            },
-            "description": "PUB_TOO_MANY_LOOKUPS"
-          },
-          "501": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiErrorResponseDto"
-                }
-              }
-            },
-            "description": "NOT_IMPLEMENTED: llega con el paso 3.5 de la Etapa 3 (Anclaje)"
+            }
           }
         },
         "summary": "Verificación pública del anclaje de un lote",

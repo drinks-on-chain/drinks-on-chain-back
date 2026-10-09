@@ -41,7 +41,7 @@ const CACHE_NOTE =
   'porque su código se puede anular). Los 404 se cachean 30 s.';
 
 /** 429 del freno a la enumeración de códigos (§12.4, S-24). */
-const ApiTooManyLookups = () =>
+export const ApiTooManyLookups = () =>
   ApiResponse({
     status: HttpStatus.TOO_MANY_REQUESTS,
     type: ApiErrorResponseDto,
@@ -255,11 +255,11 @@ export class PublicPassportsController {
 }
 
 /** IP real del visitante: la firmada por el proxy de las apps o la de la conexión. */
-function clientIp(req: Request): string | null {
+export function clientIp(req: Request): string | null {
   return req.ip ?? null;
 }
 
-function errorCacheControl(error: unknown): string {
+export function errorCacheControl(error: unknown): string {
   return error instanceof AppException && error.statusCode === 404
     ? PASSPORT_NOT_FOUND_CACHE_CONTROL
     : 'no-store';

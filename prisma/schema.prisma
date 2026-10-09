@@ -1238,34 +1238,36 @@ model ProductionBatch {
 }
 
 model BottlingBatch {
-  id                     String           @id @default(uuid()) @db.Uuid
-  wineryId               String           @map("winery_id") @db.Uuid
-  wineAgingBatchId       String?          @map("wine_aging_batch_id") @db.Uuid
-  productionBatchId      String?          @map("production_batch_id") @db.Uuid
-  productType            BeverageTypeEnum @map("product_type")
-  internationalLotCode   String           @unique @map("international_lot_code") @db.VarChar(100)
-  finalAlcoholAbv        Decimal          @map("final_alcohol_abv") @db.Decimal(5, 2)
-  waterDilutionLiters    Decimal?         @map("water_dilution_liters") @db.Decimal(10, 3)
-  totalBottlesPackaged   Int              @map("total_bottles_packaged")
-  packagingFormatCl      Int              @map("packaging_format_cl")
-  bottleType             String?          @map("bottle_type") @db.VarChar(100)
-  labelDesignUrl         String?          @map("label_design_url") @db.VarChar(500)
-  bottlingDate           DateTime         @map("bottling_date") @db.Date
-  releasedByMemberId     String?          @map("released_by_member_id") @db.Uuid
-  blockchainAnchorTxHash String?          @map("blockchain_anchor_tx_hash") @db.VarChar(100)
-  blockchainDataHash     String?          @map("blockchain_data_hash") @db.Char(64)
-  isAnchoredOnChain      Boolean          @default(false) @map("is_anchored_on_chain")
-  anchoredAt             DateTime?        @map("anchored_at") @db.Timestamptz(6)
-  qrBatchUrl             String?          @map("qr_batch_url") @db.VarChar(500)
-  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                          String           @id @default(uuid()) @db.Uuid
+  wineryId                    String           @map("winery_id") @db.Uuid
+  wineAgingBatchId            String?          @map("wine_aging_batch_id") @db.Uuid
+  productionBatchId           String?          @map("production_batch_id") @db.Uuid
+  productType                 BeverageTypeEnum @map("product_type")
+  internationalLotCode        String           @unique @map("international_lot_code") @db.VarChar(100)
+  finalAlcoholAbv             Decimal          @map("final_alcohol_abv") @db.Decimal(5, 2)
+  waterDilutionLiters         Decimal?         @map("water_dilution_liters") @db.Decimal(10, 3)
+  totalBottlesPackaged        Int              @map("total_bottles_packaged")
+  packagingFormatCl           Int              @map("packaging_format_cl")
+  bottleType                  String?          @map("bottle_type") @db.VarChar(100)
+  labelDesignUrl              String?          @map("label_design_url") @db.VarChar(500)
+  bottlingDate                DateTime         @map("bottling_date") @db.Date
+  releasedByMemberId          String?          @map("released_by_member_id") @db.Uuid
+  blockchainAnchorTxHash      String?          @map("blockchain_anchor_tx_hash") @db.VarChar(100)
+  blockchainDataHash          String?          @map("blockchain_data_hash") @db.Char(64)
+  isAnchoredOnChain           Boolean          @default(false) @map("is_anchored_on_chain")
+  anchoredAt                  DateTime?        @map("anchored_at") @db.Timestamptz(6)
+  /// Hash de anclaje **simulado** anterior al paso 3.5 (nunca estuvo en la red)
+  legacySimulatedAnchorTxHash String?          @map("legacy_simulated_anchor_tx_hash") @db.VarChar(100)
+  qrBatchUrl                  String?          @map("qr_batch_url") @db.VarChar(500)
+  createdAt                   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   /// Un embotellado por lote (S-10): restricción única
-  lotId                  String           @unique @map("lot_id") @db.Uuid
-  availableLiters        Decimal?         @map("available_liters") @db.Decimal(12, 3)
-  leftoverLiters         Decimal?         @map("leftover_liters") @db.Decimal(12, 3)
-  leftoverDisposition    String?          @map("leftover_disposition") @db.VarChar(20)
-  leftoverNotes          String?          @map("leftover_notes") @db.Text
-  labelDesignKey         String?          @map("label_design_key") @db.VarChar(500)
-  createdByMembershipId  String?          @map("created_by_membership_id") @db.Uuid
+  lotId                       String           @unique @map("lot_id") @db.Uuid
+  availableLiters             Decimal?         @map("available_liters") @db.Decimal(12, 3)
+  leftoverLiters              Decimal?         @map("leftover_liters") @db.Decimal(12, 3)
+  leftoverDisposition         String?          @map("leftover_disposition") @db.VarChar(20)
+  leftoverNotes               String?          @map("leftover_notes") @db.Text
+  labelDesignKey              String?          @map("label_design_key") @db.VarChar(500)
+  createdByMembershipId       String?          @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
   winery           Winery             @relation(fields: [wineryId], references: [id], onDelete: Restrict)
@@ -1997,8 +1999,8 @@ model TokenizationRequestChange {
 /// Colección de un lote (§6.2): una por lote; `minted ≤ quota` (R6) en la base.
 model Collection {
   id                  String    @id @default(uuid()) @db.Uuid
-  /// Generado desde `name`; no cambia una vez publicada
-  slug                String    @unique @db.VarChar(140)
+  /// Generado desde `name`; único por bodega; no cambia una vez publicada
+  slug                String    @db.VarChar(140)
   wineryId            String    @map("winery_id") @db.Uuid
   lotId               String    @unique @map("lot_id") @db.Uuid
   contractId          String    @map("contract_id") @db.Uuid
@@ -2040,6 +2042,7 @@ model Collection {
   tokens        Token[]
   closure       LotClosure?
 
+  @@unique([wineryId, slug])
   @@index([wineryId, status])
   @@index([status, publishedAt])
   @@map("collections")

@@ -3,6 +3,7 @@ import { PrismaModule } from '@shared/prisma/prisma.module';
 import { LotAttachmentsController } from '../contract/lot-attachments.controller';
 import { LotViewsController } from '../contract/lot-views.controller';
 import { PublicPassportsController } from '../contract/public-passports.controller';
+import { PublicVerificationController } from '../contract/public-verification.controller';
 import { TraceabilityInsightsController } from '../contract/traceability-insights.controller';
 import { LotsModule } from '../lots.module';
 import { PassportLookupLimiter } from '../passport/passport-lookup-limiter';
@@ -24,6 +25,7 @@ import { TraceInsightsService } from './trace-insights.service';
     TraceabilityInsightsController,
     LotAttachmentsController,
     PublicPassportsController,
+    PublicVerificationController,
   ],
   providers: [
     LotViewsService,

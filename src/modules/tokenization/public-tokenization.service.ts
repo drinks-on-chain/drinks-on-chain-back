@@ -149,7 +149,9 @@ export class PublicTokenizationService {
           : null,
       external_url:
         passport ??
-        `${this.links.base('MARKETPLACE')}/colecciones/${encodeURIComponent(collection.slug)}`,
+        // El `slug` de la colección es único por bodega: la ficha se
+        // resuelve con el de la bodega delante
+        `${this.links.base('MARKETPLACE')}/colecciones/${encodeURIComponent(winery.slug)}/${encodeURIComponent(collection.slug)}`,
       attributes: [
         { trait_type: 'Bodega', value: winery.tradeName },
         { trait_type: 'Lote', value: lot.reference },

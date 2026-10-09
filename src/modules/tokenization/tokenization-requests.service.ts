@@ -653,7 +653,7 @@ export class TokenizationRequestsService {
         !lot.collection &&
         draft.name &&
         draft.name !== before.name &&
-        (await this.slugTaken(tx, collectionSlug(draft.name)))
+        (await this.slugTaken(tx, request.wineryId, collectionSlug(draft.name)))
       ) {
         throw slugTaken(collectionSlug(draft.name));
       }
@@ -941,7 +941,9 @@ export class TokenizationRequestsService {
         );
       }
       slug = collectionSlug(draft.name as string);
-      if (await this.slugTaken(tx, slug)) throw slugTaken(slug);
+      if (await this.slugTaken(tx, request.wineryId, slug)) {
+        throw slugTaken(slug);
+      }
       // Imágenes que cambiaron entre el cálculo previo y la transacción
       digests = await this.images.inspect(
         request.wineryId,
@@ -1410,10 +1412,15 @@ export class TokenizationRequestsService {
     return settings[APPROVAL_SETTING]?.value !== false;
   }
 
-  private async slugTaken(tx: Tx, slug: string): Promise<boolean> {
+  /** El `slug` es único **por bodega**: dos bodegas pueden repetir nombre. */
+  private async slugTaken(
+    tx: Tx,
+    wineryId: string,
+    slug: string,
+  ): Promise<boolean> {
     return (
       (await tx.collection.findUnique({
-        where: { slug },
+        where: { wineryId_slug: { wineryId, slug } },
         select: { id: true },
       })) !== null
     );
@@ -1511,7 +1518,8 @@ function slugTaken(slug: string | null): TraceRuleException {
       {
         field: 'commercial.name',
         code: ErrorCode.TOK_SLUG_TAKEN,
-        message: 'El nombre genera un slug que ya usa otra colección',
+        message:
+          'El nombre genera un slug que ya usa otra colección de la bodega',
         ...(slug && { meta: { slug } }),
       },
     ],

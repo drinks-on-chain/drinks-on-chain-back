@@ -510,10 +510,12 @@ export async function seedDemoLots(
           labelDesignUrl: bottling.labelDesignUrl,
           bottlingDate: date(bottling.bottlingDate),
           releasedByMemberId: member(bottling.releasedByMemberId),
-          blockchainAnchorTxHash: bottling.blockchainAnchorTxHash,
+          // Ningún lote sembrado está anclado: esos campos solo los escribe
+          // el anclaje confirmado en la red (contrato O3 §7.2)
+          blockchainAnchorTxHash: null,
           blockchainDataHash: bottling.blockchainDataHash,
-          isAnchoredOnChain: bottling.isAnchoredOnChain,
-          anchoredAt: optionalDate(bottling.anchoredAt),
+          isAnchoredOnChain: false,
+          anchoredAt: null,
           qrBatchUrl: passportUrl(
             deps.passportBaseUrl,
             bottling.internationalLotCode,

@@ -10,18 +10,10 @@ import {
   type ChainSettings,
 } from '@modules/chain/chain.config';
 import type {
-  ChainNetwork,
-  DossierAnchorStatus,
-} from '@modules/chain/chain.constants';
-import type {
   ChainTxRefDto,
   DossierAnchorDto,
 } from '@modules/chain/dto/chain-common.dto';
-import {
-  explorerContractUrl,
-  explorerTxUrl,
-  memoHashFromHex,
-} from '@modules/chain/explorer';
+import { explorerContractUrl } from '@modules/chain/explorer';
 import { isLateEntry } from '@modules/lots/domain/late-entry';
 import type { LotProductType, LotStage } from '@modules/lots/domain/lot-stage';
 import type { LotEventType } from '@modules/lots/lot-events';

@@ -353,19 +353,19 @@ export class CollectionsService {
           const slug = collectionSlug(commercial.name);
           if (slug !== row.slug) {
             const taken = await tx.collection.findUnique({
-              where: { slug },
+              where: { wineryId_slug: { wineryId: row.wineryId, slug } },
               select: { id: true },
             });
             if (taken) {
               throw stateError(
                 ErrorCode.TOK_SLUG_TAKEN,
-                'Ya existe una colección con ese nombre: cámbialo para que su dirección sea única',
+                'La bodega ya tiene una colección con ese nombre: cámbialo para que su dirección sea única',
                 [
                   {
                     field: 'commercial.name',
                     code: ErrorCode.TOK_SLUG_TAKEN,
                     message:
-                      'El nombre genera un slug que ya usa otra colección',
+                      'El nombre genera un slug que ya usa otra colección de la bodega',
                     meta: { slug },
                   },
                 ],
