@@ -61,6 +61,7 @@ import type {
   TokenizationReviewDto,
 } from './dto/tokenization-requests.dto';
 import { toChainTxRef } from '@modules/chain/tx/chain-tx.mapper';
+import { toDossierAnchor } from '@modules/chain/anchor/anchor-view';
 import {
   TOKENIZATION_CHAIN_PORT,
   type TokenizationChainPort,
@@ -669,21 +670,7 @@ export class TokenizationReader {
       where: { lotId },
       include: { transaction: true },
     });
-    if (!anchor || !anchor.transaction) return null;
-    const memo = memoHashFromHex(anchor.memoHashHex);
-    return {
-      status: anchor.status as DossierAnchorStatus,
-      network: anchor.network as ChainNetwork,
-      account: anchor.account,
-      memoHashHex: memo.hex,
-      memoHashBase64: memo.base64,
-      txHash: anchor.txHash,
-      ledger: anchor.ledger,
-      anchoredAt: iso(anchor.anchoredAt),
-      explorerUrl: explorerTxUrl(this.explorer(), anchor.txHash),
-      verifiedAt: iso(anchor.verifiedAt),
-      transaction: toChainTxRef(anchor.transaction, this.explorer()),
-    };
+    return toDossierAnchor(anchor, this.explorer());
   }
 
   // ── Métricas (§8.5) ──────────────────────────────────────────────────────

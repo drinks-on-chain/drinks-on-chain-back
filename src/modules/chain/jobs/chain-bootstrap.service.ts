@@ -67,5 +67,7 @@ export class ChainBootstrap implements OnApplicationBootstrap {
       }
     }
     await this.jobs.backfill();
+    // Expedientes ya certificados sin anclaje (§7.1)
+    await this.jobs.anchorBackfill();
   }
 }

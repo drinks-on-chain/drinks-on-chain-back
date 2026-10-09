@@ -15,6 +15,7 @@ import { ChainTxLifecycle } from './chain-tx-lifecycle.service';
 import { ChainTxSweeper } from './chain-tx.sweeper';
 import { CHAIN_GATEWAY } from './gateway/chain-gateway';
 import { createChainGateway } from './gateway/stellar-chain-gateway';
+import { AnchorDossierHandler } from './handlers/anchor-dossier.handler';
 import {
   PauseContractHandler,
   UnpauseContractHandler,
@@ -46,6 +47,7 @@ const INTENT_HANDLER_CLASSES = [
   FundAccountHandler,
   MintBatchHandler,
   SetTokenUriBaseHandler,
+  AnchorDossierHandler,
 ];
 
 /**

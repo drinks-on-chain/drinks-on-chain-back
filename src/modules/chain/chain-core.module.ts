@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { OutboxModule } from '@shared/outbox/outbox.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { ChainAlertsWriter } from './alerts/chain-alerts.writer';
+import { DossierAnchorService } from './anchor/dossier-anchor.service';
 import { ChainSettingsModule } from './chain-settings.module';
 import { WineryIdentityService } from './identity/winery-identity.service';
 import { ChainIntentsService } from './tx/chain-intents.service';
@@ -13,13 +14,19 @@ import { ChainIntentsService } from './tx/chain-intents.service';
  */
 @Module({
   imports: [PrismaModule, OutboxModule, ChainSettingsModule],
-  providers: [ChainIntentsService, WineryIdentityService, ChainAlertsWriter],
+  providers: [
+    ChainIntentsService,
+    WineryIdentityService,
+    ChainAlertsWriter,
+    DossierAnchorService,
+  ],
   exports: [
     ChainSettingsModule,
     OutboxModule,
     ChainIntentsService,
     WineryIdentityService,
     ChainAlertsWriter,
+    DossierAnchorService,
   ],
 })
 export class ChainCoreModule {}

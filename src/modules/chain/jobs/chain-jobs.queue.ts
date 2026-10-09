@@ -8,6 +8,7 @@ import {
 } from '@shared/queue/queue.constants';
 import { QueueRegistry } from '../../../worker/queue-registry.service';
 import {
+  CHAIN_ANCHOR_BACKFILL_JOB,
   CHAIN_IDENTITY_BACKFILL_JOB,
   CHAIN_TX_CONFIRM_JOB,
   CHAIN_TX_PROCESS_JOB,
@@ -61,6 +62,16 @@ export class ChainJobsQueue {
       CHAIN_IDENTITY_BACKFILL_JOB,
       {},
       { jobId: 'identity-backfill', delay: delayMs },
+    );
+  }
+
+  /** Relleno de anclajes: expedientes cerrados sin anclaje (§7.1). */
+  anchorBackfill(delayMs = 0): Promise<void> {
+    return this.add(
+      QUEUE_CHAIN,
+      CHAIN_ANCHOR_BACKFILL_JOB,
+      {},
+      { jobId: 'anchor-backfill', delay: delayMs },
     );
   }
 

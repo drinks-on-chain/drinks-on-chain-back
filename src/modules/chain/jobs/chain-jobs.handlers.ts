@@ -13,6 +13,7 @@ import {
 import { IDENTITY_TX_KINDS } from '../chain.constants';
 import {
   CHAIN_ALERT_RAISED,
+  CHAIN_ANCHOR_BACKFILL_JOB,
   CHAIN_BALANCE_CHECK_TASK,
   CHAIN_IDENTITY_BACKFILL_JOB,
   CHAIN_TESTNET_FUND_TASK,
@@ -29,6 +30,7 @@ import {
   type ChainTxJobData,
   type WineryChainIdentityReadyPayload,
 } from '../chain.events';
+import { DossierAnchorService } from '../anchor/dossier-anchor.service';
 import { ChainJobsQueue } from './chain-jobs.queue';
 import { ChainTxSweeper } from './chain-tx.sweeper';
 import { PlatformAccountsSync } from './platform-accounts.sync';
@@ -88,7 +90,10 @@ export class ChainTxConfirmedHandler implements JobHandler<
   constructor(private readonly jobs: ChainJobsQueue) {}
 
   async handle(data: OutboxJobData<ChainTxEventPayload>): Promise<void> {
-    if (data.payload.kind === 'FUND_ACCOUNT') await this.jobs.backfill();
+    if (data.payload.kind === 'FUND_ACCOUNT') {
+      await this.jobs.backfill();
+      await this.jobs.anchorBackfill();
+    }
   }
 }
 
@@ -172,6 +177,24 @@ export class ChainIdentityBackfillHandler implements JobHandler {
 }
 
 /**
+ * `chain.anchor.backfill` (§7.1): al arrancar y bajo demanda, ancla los
+ * expedientes cerrados que no tienen anclaje, por tandas.
+ */
+@Injectable()
+@HandlesJob(QUEUE_CHAIN, CHAIN_ANCHOR_BACKFILL_JOB)
+export class ChainAnchorBackfillHandler implements JobHandler {
+  constructor(
+    private readonly anchors: DossierAnchorService,
+    private readonly jobs: ChainJobsQueue,
+  ) {}
+
+  async handle(): Promise<void> {
+    const { more } = await this.anchors.backfill();
+    if (more) await this.jobs.anchorBackfill(1_000);
+  }
+}
+
+/**
  * `winery.status_changed` (O1, aditivo): una bodega **revocada** pausa su
  * contrato en la red (§3.5). Suspender y reactivar no tocan la red (S-8); lo
  * que hagan con las colecciones y las solicitudes llega con los pasos 3.3 y
@@ -248,6 +271,7 @@ export const CHAIN_JOB_HANDLERS = [
   ChainAlertRaisedHandler,
   WineryChainIdentityReadyHandler,
   ChainIdentityBackfillHandler,
+  ChainAnchorBackfillHandler,
   WineryStatusChangedHandler,
   ChainTxPollTask,
   ChainBalanceCheckTask,

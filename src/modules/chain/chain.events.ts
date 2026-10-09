@@ -45,6 +45,8 @@ export const CHAIN_TX_PROCESS_JOB = 'chain.tx.process';
 export const CHAIN_TX_CONFIRM_JOB = 'chain.tx.confirm';
 /** Cola `chain`: relleno de identidades, de una en una (§3.3 paso 4). */
 export const CHAIN_IDENTITY_BACKFILL_JOB = 'chain.identity.backfill';
+/** Cola `chain`: ancla los expedientes cerrados que aún no tienen anclaje (§7.1). */
+export const CHAIN_ANCHOR_BACKFILL_JOB = 'chain.anchor.backfill';
 
 // ── Tareas programadas ──────────────────────────────────────────────────────
 

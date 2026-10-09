@@ -25,6 +25,8 @@ export const TERMINAL_STAGES: readonly LotStage[] = [
 export interface LotStageInput {
   discarded: boolean;
   dossierClosed: boolean;
+  /** El expediente cerrado ya está anclado en la red (contrato O3 §7.2). */
+  anchored?: boolean;
   productType: LotProductType | null;
   harvestStatuses: readonly string[];
   tanks: readonly { status: string }[];
@@ -39,7 +41,7 @@ export interface LotStageInput {
  */
 export function deriveLotStage(input: LotStageInput): LotStage {
   if (input.discarded) return 'DISCARDED';
-  if (input.dossierClosed) return 'CERTIFIED';
+  if (input.dossierClosed) return input.anchored ? 'ANCHORED' : 'CERTIFIED';
   if (input.bottled) return 'BOTTLED';
   const distillations = input.distillations.filter((d) => !d.discarded);
   const agings = input.agings.filter((a) => !a.discarded);
