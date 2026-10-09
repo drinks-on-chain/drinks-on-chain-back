@@ -21,7 +21,7 @@ Primera versión que **habla con la red** (solo testnet y red local; con las var
 - `@stellar/stellar-sdk` 13.3.0 → **17.2.1** (fijada): la 13 no lee transacciones del protocolo 29.
 - `WineryResponseDto.onchainRegisterTxHash`: el hash de `CREATE_WINERY_ACCOUNT` cuando la bodega tiene identidad (antes, siempre `null`).
 - `GET /v1/platform/dashboard`: `chain.operationsBalanceXlm` y `chain.anchorBalanceXlm` son la última lectura del worker (antes, cero).
-- El `ChainTxRef` de `CHN_TX_NOT_ABANDONABLE` y `CHN_TX_NOT_RETRYABLE` lleva también `meta.status` (abandonar exige `FAILED`; una abandonada no se reintenta).
+- Los 409 `CHN_TX_NOT_ABANDONABLE` y `CHN_TX_NOT_RETRYABLE` llevan también `meta.status`: abandonar exige una transacción `FAILED`, y una abandonada no se reintenta.
 
 ## 0.3.0-rc.0 · 2026-10-08 · Ola 3: tokenización y cadena (apertura)
 
