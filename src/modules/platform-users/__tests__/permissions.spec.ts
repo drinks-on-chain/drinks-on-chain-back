@@ -15,6 +15,10 @@ describe('Matriz de permisos (PLT-04, contrato O1 §9)', () => {
       'wineries.revoke',
       'team',
       'audit',
+      // Ola 3 (contrato O3 §10)
+      'tokenization',
+      'chain',
+      'chain.admin',
     ]);
     for (const c of matrix.capabilities) {
       expect(Object.keys(c.roles)).toHaveLength(11);
@@ -46,6 +50,41 @@ describe('Matriz de permisos (PLT-04, contrato O1 §9)', () => {
     expect(levelOf('settings', 'SUPPORT')).toBe('READ');
     expect(levelOf('audit', 'OWNER')).toBe('OWN');
     expect(levelOf('platform.users', 'OWNER')).toBe('NONE');
+  });
+
+  it('tokenización y cadena (contrato O3 §10)', () => {
+    // Bandeja y colecciones: administración y operaciones; soporte lee
+    expect(platformRolesWith('tokenization', 'FULL')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+      'OPERATIONS',
+    ]);
+    expect(platformRolesWith('tokenization', 'FULL', 'READ')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+      'OPERATIONS',
+      'SUPPORT',
+    ]);
+    // Solo el dueño autoriza; enología y contabilidad leen
+    expect(levelOf('tokenization', 'OWNER')).toBe('OWN');
+    expect(levelOf('tokenization', 'ENOLOGIST')).toBe('READ');
+    expect(levelOf('tokenization', 'ACCOUNTANT')).toBe('READ');
+    expect(levelOf('tokenization', 'OPERATOR')).toBe('NONE');
+    expect(levelOf('tokenization', 'AGRONOMIST')).toBe('NONE');
+    // Transacciones y conciliación: operaciones reintenta y lanza; soporte ve
+    expect(platformRolesWith('chain', 'FULL')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+      'OPERATIONS',
+    ]);
+    expect(levelOf('chain', 'SUPPORT')).toBe('READ');
+    // Toda la bodega lee su cuenta en la red (ORG-12)
+    expect(levelOf('chain', 'OPERATOR')).toBe('READ');
+    // Abandonar, pausar un contrato y quemar: solo administración
+    expect(platformRolesWith('chain.admin', 'FULL')).toEqual([
+      'SUPERADMIN',
+      'ADMIN',
+    ]);
   });
 });
 

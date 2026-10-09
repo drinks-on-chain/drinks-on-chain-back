@@ -271,6 +271,75 @@ export const ErrorCode = {
   /** 429 · Demasiados códigos inexistentes desde una IP (con `Retry-After`). */
   PUB_TOO_MANY_LOOKUPS: 'PUB_TOO_MANY_LOOKUPS',
 
+  /** 404 · Metadatos de un token inexistente en ese contrato. */
+  PUB_TOKEN_NOT_FOUND: 'PUB_TOKEN_NOT_FOUND',
+
+  // ── Tokenización (contrato O3 §9) ─────────────────────────
+  /** 404 · Solicitud inexistente o de otra bodega. */
+  TOK_REQUEST_NOT_FOUND: 'TOK_REQUEST_NOT_FOUND',
+  /** 404 · Colección inexistente o de otra bodega. */
+  TOK_COLLECTION_NOT_FOUND: 'TOK_COLLECTION_NOT_FOUND',
+  /** 409 · Lote en `CERTIFIED`, `ANCHORED`, `REJECTED` o `DISCARDED` (`meta.stage`). */
+  TOK_LOT_NOT_TOKENIZABLE: 'TOK_LOT_NOT_TOKENIZABLE',
+  /** 422 · Lote sin `productType`. */
+  TOK_LOT_PRODUCT_UNDEFINED: 'TOK_LOT_PRODUCT_UNDEFINED',
+  /** 422 · Lote sin `estimatedBottles`. */
+  TOK_LOT_ESTIMATE_MISSING: 'TOK_LOT_ESTIMATE_MISSING',
+  /** 422 · Cantidad no entera o menor que 1. */
+  TOK_QUOTA_INVALID: 'TOK_QUOTA_INVALID',
+  /** 422 · Cuota resultante mayor que la estimación del lote. */
+  TOK_QUOTA_EXCEEDS_ESTIMATE: 'TOK_QUOTA_EXCEEDS_ESTIMATE',
+  /** 422 · Cuota resultante mayor que los códigos de botella activos. */
+  TOK_QUOTA_EXCEEDS_BOTTLES: 'TOK_QUOTA_EXCEEDS_BOTTLES',
+  /** 422 · `PATCH /v1/lots/{id}` baja la estimación por debajo de lo emitido. */
+  TOK_ESTIMATE_BELOW_MINTED: 'TOK_ESTIMATE_BELOW_MINTED',
+  /** 409 · Otra solicitud abierta del lote (`meta.requestId`). */
+  TOK_REQUEST_ALREADY_OPEN: 'TOK_REQUEST_ALREADY_OPEN',
+  /** 409 · Acción no permitida en el estado de la solicitud (`meta.from`, `meta.to`). */
+  TOK_REQUEST_INVALID_TRANSITION: 'TOK_REQUEST_INVALID_TRANSITION',
+  /** 409 · Aprobar o publicar con la bodega suspendida o revocada. */
+  TOK_WINERY_NOT_ACTIVE: 'TOK_WINERY_NOT_ACTIVE',
+  /** 409 · Aprobar sin identidad en la red `ACTIVE`. */
+  TOK_WINERY_CHAIN_NOT_READY: 'TOK_WINERY_CHAIN_NOT_READY',
+  /** 422 · Faltan datos comerciales obligatorios (un detalle por campo). */
+  TOK_COMMERCIAL_DATA_INCOMPLETE: 'TOK_COMMERCIAL_DATA_INCOMPLETE',
+  /** 422 · Importe no entero, menor que 1 o moneda distinta de `BOB`. */
+  TOK_PRICE_INVALID: 'TOK_PRICE_INVALID',
+  /** 409 · Cambio de precio con ventas (Ola 4). */
+  TOK_PRICE_LOCKED: 'TOK_PRICE_LOCKED',
+  /** 409 · El nombre genera un `slug` ya usado. */
+  TOK_SLUG_TAKEN: 'TOK_SLUG_TAKEN',
+  /** 409 · Publicar con la emisión sin confirmar (`meta.mintStatus`). */
+  TOK_MINT_NOT_CONFIRMED: 'TOK_MINT_NOT_CONFIRMED',
+  /** 409 · Transición de colección no válida (`meta.from`, `meta.to`). */
+  TOK_COLLECTION_INVALID_TRANSITION: 'TOK_COLLECTION_INVALID_TRANSITION',
+  /** 409 · Cerrar la colección con el cierre del lote sin resolver. */
+  TOK_CLOSURE_PENDING: 'TOK_CLOSURE_PENDING',
+  /** 409 · Cierre de un lote sin embotellar ni descartar. */
+  TOK_CLOSURE_NOT_APPLICABLE: 'TOK_CLOSURE_NOT_APPLICABLE',
+
+  // ── Cadena (contrato O3 §9) ───────────────────────────────
+  /** 404 · Transacción inexistente. */
+  CHN_TX_NOT_FOUND: 'CHN_TX_NOT_FOUND',
+  /** 409 · Reintentar una transacción que no está `FAILED`. */
+  CHN_TX_NOT_RETRYABLE: 'CHN_TX_NOT_RETRYABLE',
+  /** 409 · Abandonar una emisión, un anclaje o una identidad. */
+  CHN_TX_NOT_ABANDONABLE: 'CHN_TX_NOT_ABANDONABLE',
+  /** 409 · Publicar o emitir con el contrato pausado en la red. */
+  CHN_CONTRACT_PAUSED: 'CHN_CONTRACT_PAUSED',
+  /** 409 · Pausar un contrato ya pausado. */
+  CHN_CONTRACT_ALREADY_PAUSED: 'CHN_CONTRACT_ALREADY_PAUSED',
+  /** 409 · Reanudar un contrato que no está pausado. */
+  CHN_CONTRACT_NOT_PAUSED: 'CHN_CONTRACT_NOT_PAUSED',
+  /** 409 · `chain/provision` sobre una identidad `ACTIVE`. */
+  CHN_IDENTITY_ALREADY_ACTIVE: 'CHN_IDENTITY_ALREADY_ACTIVE',
+  /** 409 · Conciliación ya en curso para ese alcance (`meta.runId`). */
+  CHN_RECONCILIATION_RUNNING: 'CHN_RECONCILIATION_RUNNING',
+  /** 409 · Resolver dos veces la misma alerta. */
+  CHN_ALERT_ALREADY_RESOLVED: 'CHN_ALERT_ALREADY_RESOLVED',
+  /** 404 · `GET /v1/users/me/wallet` del personal, o de un consumidor sin dirección (ruta legada, SE-02). */
+  CHN_WALLET_NOT_AVAILABLE: 'CHN_WALLET_NOT_AVAILABLE',
+
   // ── Contrato publicado sin lógica todavía ─────────────────
   /** 501 · Ruta del contrato publicada en el OpenAPI cuya lógica llega en un paso posterior. */
   NOT_IMPLEMENTED: 'NOT_IMPLEMENTED',
