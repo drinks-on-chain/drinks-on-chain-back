@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OutboxModule } from '@shared/outbox/outbox.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { LotsController } from './lots.controller';
 import { LotsService } from './lots.service';
@@ -9,7 +10,7 @@ import { LotsService } from './lots.service';
  * (`LotsContractModule` y `LotViewsModule`); ninguna responde ya 501.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, OutboxModule],
   controllers: [LotsController],
   providers: [LotsService],
   exports: [LotsService],

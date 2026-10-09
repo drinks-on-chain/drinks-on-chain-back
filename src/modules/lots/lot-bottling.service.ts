@@ -4,6 +4,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
+import { OutboxService } from '@shared/outbox/outbox.service';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import type { ErrorDetail } from '@shared/interfaces/api-response.interface';
@@ -23,6 +24,11 @@ import {
 } from './bottling-engine';
 import type { BottlingBalance } from './domain/bottling-balance';
 import { stateError, throwViolations, violation } from './domain/trace-errors';
+import {
+  LOT_AGGREGATE,
+  LOT_BOTTLED,
+  type LotBottlesChangedPayload,
+} from './lots.events';
 
 /** Cuerpo de `POST /v1/lots/{id}/bottling[/preview]` (contrato O2 §6.1). */
 export interface LotBottlingInput {
@@ -58,6 +64,7 @@ export class LotBottlingService {
     private readonly audit: AuditService,
     private readonly config: ConfigService,
     @Inject(STORAGE_SERVICE) private readonly storage: ObjectStorage,
+    private readonly outbox: OutboxService,
   ) {}
 
   /**
@@ -156,6 +163,19 @@ export class LotBottlingService {
       });
       const created = await tx.bottlingBatch.findUniqueOrThrow({
         where: { id: bottlingId },
+      });
+      // Contrato O3 §8.4: con el lote embotellado se calcula el cierre de su
+      // colección (si hay menos botellas que NFT, faltante)
+      await this.outbox.add<LotBottlesChangedPayload>(tx, {
+        type: LOT_BOTTLED,
+        aggregateType: LOT_AGGREGATE,
+        aggregateId: lotId,
+        payload: {
+          lotId,
+          wineryId,
+          lotCode: created.internationalLotCode,
+          bottles: created.totalBottlesPackaged,
+        },
       });
       await this.audit.record(tx, {
         action: AuditAction.BOTTLED,

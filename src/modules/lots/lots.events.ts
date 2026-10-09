@@ -55,3 +55,32 @@ export interface BottleCodesExportPayload {
   lotId: string;
   wineryId: string;
 }
+
+/**
+ * Hechos del lote que cambian sus botellas (contrato O3 §8.4 y §11; aditivos
+ * al outbox de la Ola 2): los consume el cierre con faltante de la
+ * tokenización. Cola `default`.
+ *
+ * - `lot.bottled`: el lote se embotelló (ya tiene sus códigos `ACTIVE`).
+ * - `lot.bottle_code_voided`: se anuló un código de botella. Con sustituto
+ *   (`replaced = 1`) el número de botellas no cambia.
+ * - `lot.discarded`: el lote se descartó (0 botellas).
+ */
+export const LOT_BOTTLED = 'lot.bottled';
+export const LOT_BOTTLE_CODE_VOIDED = 'lot.bottle_code_voided';
+export const LOT_DISCARDED = 'lot.discarded';
+
+export interface LotBottlesChangedPayload {
+  [key: string]: string | number | null;
+  lotId: string;
+  wineryId: string;
+  lotCode: string | null;
+  /** Códigos `ACTIVE` del lote tras el hecho. */
+  bottles: number;
+}
+
+export interface LotBottleCodeVoidedPayload extends LotBottlesChangedPayload {
+  serial: number;
+  /** 1 = anulado y sustituido por otro código; 0 = anulado sin sustituto. */
+  replaced: number;
+}
