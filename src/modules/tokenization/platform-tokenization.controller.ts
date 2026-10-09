@@ -29,10 +29,8 @@ import {
 import { platformRolesWith } from '@modules/platform-users/permissions';
 import {
   ApiErrorCodes,
-  ApiNotImplementedO3,
   ApiRoleForbidden,
   ApiRuleErrors,
-  notImplementedO3,
 } from '@modules/chain/contract/o3-contract';
 import {
   AddTokenizationNoteDto,
@@ -45,6 +43,11 @@ import {
   TokenizationReasonDto,
   TokenizationRequestSummaryDto,
 } from './dto/tokenization-requests.dto';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
+import { TokenizationRequestsService } from './tokenization-requests.service';
 
 /** Bandeja en lectura: administración, operaciones y soporte. */
 const READERS = platformRolesWith('tokenization', 'FULL', 'READ');
@@ -67,6 +70,8 @@ const INVALID_TRANSITION =
 @OrgType('PLATFORM')
 @Controller('platform/tokenization-requests')
 export class PlatformTokenizationController {
+  constructor(private readonly requests: TokenizationRequestsService) {}
+
   @Get()
   @Roles(...READERS)
   @ApiOperation({
@@ -77,11 +82,10 @@ export class PlatformTokenizationController {
   })
   @ApiPaginatedResponse(TokenizationRequestSummaryDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.3')
   list(
-    @Query() _query: PlatformTokenizationRequestsQueryDto,
+    @Query() query: PlatformTokenizationRequestsQueryDto,
   ): Promise<Paginated<TokenizationRequestSummaryDto>> {
-    throw notImplementedO3('3.3');
+    return this.requests.platformList(query);
   }
 
   @Get(':id')
@@ -96,11 +100,10 @@ export class PlatformTokenizationController {
   @ApiOkResponse({ type: PlatformTokenizationRequestDto })
   @ApiRoleForbidden()
   @REQUEST_NOT_FOUND()
-  @ApiNotImplementedO3('3.3')
   get(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.platformGet(id);
   }
 
   @Post(':id/take')
@@ -115,11 +118,11 @@ export class PlatformTokenizationController {
   @ApiRoleForbidden()
   @REQUEST_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [INVALID_TRANSITION])
-  @ApiNotImplementedO3('3.3')
   take(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.take(id, user.id);
   }
 
   @Post(':id/notes')
@@ -133,12 +136,12 @@ export class PlatformTokenizationController {
   @ApiRoleForbidden()
   @REQUEST_NOT_FOUND()
   @ApiRuleErrors()
-  @ApiNotImplementedO3('3.3')
   addNote(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: AddTokenizationNoteDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AddTokenizationNoteDto,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.addNote(id, user.id, dto);
   }
 
   @Patch(':id')
@@ -153,12 +156,12 @@ export class PlatformTokenizationController {
   @REQUEST_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [INVALID_TRANSITION, 'TOK_SLUG_TAKEN'])
   @ApiRuleErrors(['TOK_PRICE_INVALID'])
-  @ApiNotImplementedO3('3.3')
   review(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ReviewTokenizationRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ReviewTokenizationRequestDto,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.review(id, user.id, dto);
   }
 
   @Post(':id/request-changes')
@@ -174,12 +177,12 @@ export class PlatformTokenizationController {
   @REQUEST_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [INVALID_TRANSITION])
   @ApiRuleErrors()
-  @ApiNotImplementedO3('3.3')
   requestChanges(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: RequestTokenizationChangesDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RequestTokenizationChangesDto,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.requestChanges(id, user.id, dto);
   }
 
   @Post(':id/approve')
@@ -217,12 +220,12 @@ export class PlatformTokenizationController {
     'TOK_LOT_ESTIMATE_MISSING',
     'TOK_LOT_PRODUCT_UNDEFINED',
   ])
-  @ApiNotImplementedO3('3.3')
   approve(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ApproveTokenizationRequestDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveTokenizationRequestDto,
   ): Promise<TokenizationApprovalDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.approve(id, user.id, dto);
   }
 
   @Post(':id/reject')
@@ -239,11 +242,11 @@ export class PlatformTokenizationController {
   @REQUEST_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [INVALID_TRANSITION])
   @ApiRuleErrors(['(falta `reason`)'])
-  @ApiNotImplementedO3('3.3')
   reject(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: TokenizationReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: TokenizationReasonDto,
   ): Promise<PlatformTokenizationRequestDto> {
-    throw notImplementedO3('3.3');
+    return this.requests.reject(id, user.id, dto);
   }
 }

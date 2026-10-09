@@ -7,6 +7,7 @@ import { SettingsJobsModule } from '@modules/settings/jobs/settings-jobs.module'
 import { MailJobsModule } from '@modules/mail/jobs/mail-jobs.module';
 import { LotsJobsModule } from '@modules/lots/jobs/lots-jobs.module';
 import { ChainJobsModule } from '@modules/chain/jobs/chain-jobs.module';
+import { TokenizationJobsModule } from '@modules/tokenization/jobs/tokenization-jobs.module';
 import {
   WORKER_SETTINGS,
   workerEnvValidationSchema,
@@ -29,6 +30,7 @@ const JOB_MODULES = [
   MailJobsModule,
   LotsJobsModule,
   ChainJobsModule,
+  TokenizationJobsModule,
 ];
 
 /**

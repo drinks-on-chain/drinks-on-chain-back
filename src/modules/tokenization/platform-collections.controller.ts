@@ -53,6 +53,11 @@ import {
   TokensQueryDto,
   UpdateCollectionDto,
 } from './dto/collections.dto';
+import {
+  CurrentUser,
+  type AuthenticatedUser,
+} from '@shared/decorators/current-user.decorator';
+import { CollectionsService } from './collections.service';
 
 /** Ver: administración, operaciones y soporte. */
 const READERS = platformRolesWith('tokenization', 'FULL', 'READ');
@@ -83,6 +88,8 @@ const PUBLISH_CONFLICTS = [
 @OrgType('PLATFORM')
 @Controller('platform/collections')
 export class PlatformCollectionsController {
+  constructor(private readonly collections: CollectionsService) {}
+
   @Get()
   @Roles(...READERS)
   @ApiOperation({
@@ -92,11 +99,10 @@ export class PlatformCollectionsController {
   })
   @ApiPaginatedResponse(CollectionSummaryDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.4')
   list(
-    @Query() _query: PlatformCollectionsQueryDto,
+    @Query() query: PlatformCollectionsQueryDto,
   ): Promise<Paginated<CollectionSummaryDto>> {
-    throw notImplementedO3('3.4');
+    return this.collections.platformList(query);
   }
 
   @Get(':id')
@@ -105,9 +111,8 @@ export class PlatformCollectionsController {
   @ApiOkResponse({ type: CollectionDto })
   @ApiRoleForbidden()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.4')
-  get(@Param('id', ParseUUIDPipe) _id: string): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+  get(@Param('id', ParseUUIDPipe) id: string): Promise<CollectionDto> {
+    return this.collections.get(undefined, id);
   }
 
   @Patch(':id')
@@ -126,13 +131,17 @@ export class PlatformCollectionsController {
     'TOK_SLUG_TAKEN',
     INVALID_TRANSITION,
   ])
-  @ApiRuleErrors(['(falta `reason`)', 'TOK_PRICE_INVALID'])
-  @ApiNotImplementedO3('3.4')
+  @ApiRuleErrors([
+    '(falta `reason`)',
+    'TOK_PRICE_INVALID',
+    'TOK_COMMERCIAL_DATA_INCOMPLETE (imágenes sin portada)',
+  ])
   update(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: UpdateCollectionDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateCollectionDto,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.update(id, user.id, dto);
   }
 
   @Post(':id/publish')
@@ -154,12 +163,12 @@ export class PlatformCollectionsController {
     'IDEMPOTENCY_KEY_REQUIRED',
     'TOK_COMMERCIAL_DATA_INCOMPLETE (un detalle por campo)',
   ])
-  @ApiNotImplementedO3('3.4')
   publish(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CollectionOptionalReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CollectionOptionalReasonDto,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.publish(id, user.id, dto);
   }
 
   @Post(':id/pause')
@@ -177,12 +186,12 @@ export class PlatformCollectionsController {
   @COLLECTION_NOT_FOUND()
   @ApiErrorCodes(HttpStatus.CONFLICT, [INVALID_TRANSITION, ...IDEMPOTENCY])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', '(falta `reason`)'])
-  @ApiNotImplementedO3('3.4')
   pause(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CollectionReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CollectionReasonDto,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.pause(id, user.id, dto);
   }
 
   @Post(':id/resume')
@@ -203,12 +212,12 @@ export class PlatformCollectionsController {
     'IDEMPOTENCY_KEY_REQUIRED',
     'TOK_COMMERCIAL_DATA_INCOMPLETE (un detalle por campo)',
   ])
-  @ApiNotImplementedO3('3.4')
   resume(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CollectionOptionalReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CollectionOptionalReasonDto,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.resume(id, user.id, dto);
   }
 
   @Post(':id/close')
@@ -229,12 +238,12 @@ export class PlatformCollectionsController {
     'TOK_CLOSURE_PENDING (`meta.closureStatus`)',
   ])
   @ApiRuleErrors(['(falta `reason`)'])
-  @ApiNotImplementedO3('3.4')
   close(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: CollectionReasonDto,
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CollectionReasonDto,
   ): Promise<CollectionDto> {
-    throw notImplementedO3('3.4');
+    return this.collections.close(id, user.id, dto);
   }
 
   @Get(':id/tokens')
@@ -246,12 +255,11 @@ export class PlatformCollectionsController {
   @ApiPaginatedResponse(TokenDto)
   @ApiRoleForbidden()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.4')
   listTokens(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Query() _query: TokensQueryDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: TokensQueryDto,
   ): Promise<Paginated<TokenDto>> {
-    throw notImplementedO3('3.4');
+    return this.collections.tokens(undefined, id, query);
   }
 
   @Get(':id/transactions')
@@ -264,12 +272,11 @@ export class PlatformCollectionsController {
   @ApiPaginatedResponse(ChainTxRefDto)
   @ApiRoleForbidden()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.4')
   listTransactions(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Query() _query: PaginationQueryDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Query() query: PaginationQueryDto,
   ): Promise<Paginated<ChainTxRefDto>> {
-    throw notImplementedO3('3.4');
+    return this.collections.transactions(id, query);
   }
 
   @Get(':id/metrics')
@@ -282,11 +289,10 @@ export class PlatformCollectionsController {
   @ApiOkResponse({ type: CollectionMetricsDto })
   @ApiRoleForbidden()
   @COLLECTION_NOT_FOUND()
-  @ApiNotImplementedO3('3.6')
   metrics(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<CollectionMetricsDto> {
-    throw notImplementedO3('3.6');
+    return this.collections.metrics(id);
   }
 
   // ── Cierre del lote con faltante (§8.4) ──────────────────────────────────

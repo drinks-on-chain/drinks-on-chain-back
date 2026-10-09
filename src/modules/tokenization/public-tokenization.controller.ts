@@ -5,6 +5,8 @@ import {
   Param,
   ParseIntPipe,
   ParseUUIDPipe,
+  Req,
+  Res,
 } from '@nestjs/common';
 import {
   ApiExtraModels,
@@ -15,28 +17,28 @@ import {
   ApiTags,
   getSchemaPath,
 } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
+import { AppException } from '@shared/exceptions/app.exception';
 import { Public } from '@modules/auth/decorators/public.decorator';
-import {
-  ApiErrorCodes,
-  ApiNotImplementedO3,
-  notImplementedO3,
-} from '@modules/chain/contract/o3-contract';
+import { ApiErrorCodes } from '@modules/chain/contract/o3-contract';
 import { PublicNftMetadataDto } from './dto/public-nft.dto';
+import {
+  COLLECTION_IMAGE_CACHE_CONTROL,
+  NFT_METADATA_CACHE_CONTROL,
+  NFT_NOT_FOUND_CACHE_CONTROL,
+  PublicTokenizationService,
+} from './public-tokenization.service';
 
-/** Ruta de la API que sirve una imagen pública de una colección (U-5). */
-export const PUBLIC_COLLECTION_IMAGE_PATH = '/v1/public/collections/images';
+// Compatibilidad: la URL pública de las imágenes se definía aquí en la apertura
+export {
+  PUBLIC_COLLECTION_IMAGE_PATH,
+  publicCollectionImageUrl,
+} from './collection-images';
 
-/**
- * URL pública de una imagen de colección: `{API_PUBLIC_URL}/v1/public/collections/images/{id}`
- * (o la ruta relativa, que la app resuelve contra su proxy, si la API no
- * tiene origen público configurado). Es lo que llevan `CollectionImage.url` y
- * `coverImageUrl` de una colección publicada.
- */
-export function publicCollectionImageUrl(
-  publicApiBaseUrl: string | null,
-  imageId: string,
-): string {
-  return `${publicApiBaseUrl ?? ''}${PUBLIC_COLLECTION_IMAGE_PATH}/${imageId}`;
+function errorCacheControl(error: unknown): string {
+  return error instanceof AppException && error.statusCode === 404
+    ? NFT_NOT_FOUND_CACHE_CONTROL
+    : 'no-store';
 }
 
 /**
@@ -47,6 +49,8 @@ export function publicCollectionImageUrl(
 @ApiExtraModels(PublicNftMetadataDto)
 @Controller('public')
 export class PublicTokenizationController {
+  constructor(private readonly publicTokenization: PublicTokenizationService) {}
+
   @Public()
   @Get('nft/:winerySlug/:tokenId')
   @ApiOperation({
@@ -74,12 +78,26 @@ export class PublicTokenizationController {
   })
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['PUB_TOKEN_NOT_FOUND'])
   @ApiErrorCodes(HttpStatus.TOO_MANY_REQUESTS, ['TOO_MANY_REQUESTS'])
-  @ApiNotImplementedO3('3.4')
-  nftMetadata(
-    @Param('winerySlug') _winerySlug: string,
-    @Param('tokenId', ParseIntPipe) _tokenId: number,
-  ): Promise<PublicNftMetadataDto> {
-    throw notImplementedO3('3.4');
+  async nftMetadata(
+    @Param('winerySlug') winerySlug: string,
+    @Param('tokenId', ParseIntPipe) tokenId: number,
+    @Req() req: Request,
+    @Res() res: Response,
+  ): Promise<void> {
+    try {
+      const metadata = await this.publicTokenization.nftMetadata(
+        winerySlug,
+        tokenId,
+        req.ip ?? null,
+      );
+      // Sin envoltorio: el cuerpo es el objeto de metadatos (`token_uri`)
+      res.status(HttpStatus.OK);
+      res.setHeader('Cache-Control', NFT_METADATA_CACHE_CONTROL);
+      res.json(metadata);
+    } catch (error) {
+      res.setHeader('Cache-Control', errorCacheControl(error));
+      throw error;
+    }
   }
 
   @Public()
@@ -109,10 +127,28 @@ export class PublicTokenizationController {
     },
   })
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['FILE_NOT_FOUND'])
-  @ApiNotImplementedO3('3.4')
-  collectionImage(
-    @Param('imageId', ParseUUIDPipe) _imageId: string,
+  async collectionImage(
+    @Param('imageId', ParseUUIDPipe) imageId: string,
+    @Req() req: Request,
+    @Res() res: Response,
   ): Promise<void> {
-    throw notImplementedO3('3.4');
+    try {
+      const image = await this.publicTokenization.collectionImage(imageId);
+      const etag = `"${image.sha256}"`;
+      res.setHeader('Cache-Control', COLLECTION_IMAGE_CACHE_CONTROL);
+      res.setHeader('ETag', etag);
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      if (req.headers['if-none-match'] === etag) {
+        res.status(HttpStatus.NOT_MODIFIED).end();
+        return;
+      }
+      res.status(HttpStatus.OK);
+      res.setHeader('Content-Type', image.mimeType);
+      res.setHeader('Content-Length', String(image.body.length));
+      res.send(image.body);
+    } catch (error) {
+      res.setHeader('Cache-Control', errorCacheControl(error));
+      throw error;
+    }
   }
 }
