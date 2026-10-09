@@ -22,6 +22,7 @@ import { toPage } from '@shared/dto/pagination-query.dto';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
 import type { AuthenticatedUser } from '@shared/decorators/current-user.decorator';
 import { MailService } from '@modules/mail/mail.service';
+import { applyWineryStatusToTokenization } from '@modules/tokenization/winery-status';
 import { OrganizationsService } from '@modules/organizations/organizations.service';
 import { MembershipsService } from '@modules/organizations/memberships.service';
 import {
@@ -481,6 +482,20 @@ export class WineryManagementService implements OnModuleInit {
           where: { organizationId: id, status: InvitationStatusEnum.PENDING },
           data: { status: InvitationStatusEnum.REVOKED, revokedAt: new Date() },
         });
+      }
+      if (
+        rule.to === WineryStatusEnum.SUSPENDED ||
+        rule.to === WineryStatusEnum.REVOKED
+      ) {
+        // Contrato O3 §3.5 (parte de base de datos): colecciones publicadas a
+        // `PAUSED` y, al revocar, solicitudes abiertas rechazadas por el sistema
+        await applyWineryStatusToTokenization(
+          tx,
+          { audit: this.audit, mail: this.mail, outbox: this.outbox },
+          { id },
+          rule.to,
+          reason,
+        );
       }
       for (const owner of await this.activeOwners(tx, id)) {
         await this.mail.enqueue(tx, {
