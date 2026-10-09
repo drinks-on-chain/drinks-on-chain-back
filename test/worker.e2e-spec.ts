@@ -29,10 +29,27 @@ import {
 } from '../src/modules/lots/lots.events';
 import { EMAIL_REQUESTED } from '../src/modules/mail/mail.events';
 import { SETTING_CHANGED } from '../src/modules/settings/settings.events';
-import { WINERY_ACTIVATED } from '../src/modules/wineries/wineries.events';
+import {
+  WINERY_ACTIVATED,
+  WINERY_STATUS_CHANGED,
+} from '../src/modules/wineries/wineries.events';
+import {
+  CHAIN_ALERT_RAISED,
+  CHAIN_BALANCE_CHECK_TASK,
+  CHAIN_IDENTITY_BACKFILL_JOB,
+  CHAIN_TESTNET_FUND_TASK,
+  CHAIN_TX_CONFIRMED,
+  CHAIN_TX_CONFIRM_JOB,
+  CHAIN_TX_FAILED,
+  CHAIN_TX_POLL_TASK,
+  CHAIN_TX_PROCESS_JOB,
+  CHAIN_TX_REQUESTED,
+  WINERY_CHAIN_IDENTITY_READY,
+} from '../src/modules/chain/chain.events';
 import { heartbeatAgeMs } from '../src/worker-healthcheck';
 import {
   QUEUE_CHAIN,
+  QUEUE_CHAIN_POLL,
   QUEUE_DEFAULT,
   QUEUE_EMAIL,
   workerHeartbeatKey,
@@ -170,8 +187,27 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       `${QUEUE_CHAIN}/${WINERY_ACTIVATED}`,
       `${QUEUE_EMAIL}/${EMAIL_REQUESTED}`,
       `${QUEUE_DEFAULT}/${SETTING_CHANGED}`,
+      // Ola 3 · cadena (contrato O3 §11)
+      `${QUEUE_CHAIN}/${WINERY_STATUS_CHANGED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_REQUESTED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_CONFIRMED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_FAILED}`,
+      `${QUEUE_CHAIN}/${CHAIN_ALERT_RAISED}`,
+      `${QUEUE_CHAIN}/${WINERY_CHAIN_IDENTITY_READY}`,
     ];
     expect(registered).toEqual(expect.arrayContaining(emitted));
+    // Colas y tareas de la cadena: `chain` (firmante), `chain-poll`
+    // (confirmaciones) y sus tareas programadas
+    expect(registered).toEqual(
+      expect.arrayContaining([
+        `${QUEUE_CHAIN}/${CHAIN_TX_PROCESS_JOB}`,
+        `${QUEUE_CHAIN}/${CHAIN_IDENTITY_BACKFILL_JOB}`,
+        `${QUEUE_CHAIN_POLL}/${CHAIN_TX_CONFIRM_JOB}`,
+        `scheduled/${CHAIN_TX_POLL_TASK}`,
+        `scheduled/${CHAIN_BALANCE_CHECK_TASK}`,
+        `scheduled/${CHAIN_TESTNET_FUND_TASK}`,
+      ]),
+    );
     // Tareas programadas de la trazabilidad
     expect(registered).toEqual(
       expect.arrayContaining([

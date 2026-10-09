@@ -95,6 +95,11 @@ interface Route {
   public?: boolean;
   /** No responde JSON de datos con el envoltorio (texto, imagen). */
   raw?: boolean;
+  /**
+   * La ruta ya tiene lógica (pasos 3.1 y 3.2): en vez de 501, lo que responde
+   * con la cadena sin configurar y sin datos.
+   */
+  implemented?: { status: number; code?: string };
 }
 
 const ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
@@ -204,16 +209,19 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       path: () =>
         '/v1/platform/chain/transactions?status=FAILED&kind=MINT_BATCH',
       ...PLATFORM_READ,
+      implemented: { status: 200 },
     },
     {
       method: 'get',
       path: () => `/v1/platform/chain/transactions/${ID}`,
       ...PLATFORM_READ,
+      implemented: { status: 404, code: 'CHN_TX_NOT_FOUND' },
     },
     {
       method: 'post',
       path: () => `/v1/platform/chain/transactions/${ID}/retry`,
       ...PLATFORM_WRITE,
+      implemented: { status: 404, code: 'CHN_TX_NOT_FOUND' },
       body: REASON,
       idempotent: true,
       reason: true,
@@ -222,6 +230,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       method: 'post',
       path: () => `/v1/platform/chain/transactions/${ID}/abandon`,
       ...ADMIN_ONLY,
+      implemented: { status: 404, code: 'CHN_TX_NOT_FOUND' },
       body: REASON,
       reason: true,
     },
@@ -229,6 +238,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       method: 'get',
       path: () => '/v1/platform/chain/accounts',
       ...PLATFORM_READ,
+      implemented: { status: 200 },
     },
     {
       method: 'get',
@@ -267,11 +277,13 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       method: 'get',
       path: () => `/v1/platform/wineries/${WINERY}/chain-account`,
       ...PLATFORM_READ,
+      implemented: { status: 200 },
     },
     {
       method: 'post',
       path: () => `/v1/platform/wineries/${WINERY}/chain/provision`,
       ...PLATFORM_WRITE,
+      implemented: { status: 409, code: 'CHN_DISABLED' },
       body: REASON,
       reason: true,
     },
@@ -279,6 +291,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       method: 'post',
       path: () => `/v1/platform/wineries/${WINERY}/chain/pause`,
       ...ADMIN_ONLY,
+      implemented: { status: 409, code: 'CHN_DISABLED' },
       body: REASON,
       idempotent: true,
       reason: true,
@@ -287,6 +300,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       method: 'post',
       path: () => `/v1/platform/wineries/${WINERY}/chain/unpause`,
       ...ADMIN_ONLY,
+      implemented: { status: 409, code: 'CHN_DISABLED' },
       body: REASON,
       idempotent: true,
       reason: true,
@@ -296,6 +310,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       path: () => '/v1/organizations/current/chain-account',
       allowed: ['owner', 'enologist', 'accountant', 'operator'],
       denied: [],
+      implemented: { status: 200 },
     },
     // ── Tokenización · ERP (§5.3) ────────────────────────────────────────
     {
@@ -501,6 +516,8 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       allowed: ['nobody'],
       denied: [],
       public: true,
+      raw: true,
+      implemented: { status: 200 },
     },
     {
       method: 'get',
@@ -508,6 +525,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       allowed: ['nobody'],
       denied: [],
       public: true,
+      implemented: { status: 200 },
     },
     {
       method: 'get',
@@ -1040,8 +1058,93 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       expect(new Set(templates).size).toBe(54);
     });
 
-    it('con sesión y rol válidos responden 501 NOT_IMPLEMENTED con su paso', async () => {
-      for (const route of ROUTES) {
+    it('las de los pasos 3.1 y 3.2 ya tienen lógica: responden lo suyo, no 501', async () => {
+      const implemented = ROUTES.filter((r) => r.implemented);
+      expect(implemented).toHaveLength(12);
+      for (const route of implemented) {
+        for (const who of route.allowed) {
+          const res = await call(route, who, {
+            body: route.body,
+            idempotencyKey: route.idempotent ? randomUUID() : null,
+          });
+          expect({
+            route: name(route),
+            who,
+            status: res.status,
+            code: res.body?.error?.code,
+          }).toEqual({
+            route: name(route),
+            who,
+            status: route.implemented?.status,
+            code: route.implemented?.code,
+          });
+          if (!route.raw) {
+            openapi.expectResponse(route.method, route.path(), res);
+          }
+        }
+      }
+    });
+
+    it('con la cadena sin configurar: sin cuentas, sin identidad y sin tocar la red', async () => {
+      const accounts = await call(
+        { method: 'get', path: () => '/v1/platform/chain/accounts' },
+        'support',
+      );
+      expect(accounts.body.data).toMatchObject({
+        operations: {
+          address: null,
+          status: 'MISSING',
+          balanceXlm: '0.0000000',
+          checkedAt: null,
+        },
+        anchor: { address: null, status: 'MISSING' },
+        codeTtlDays: null,
+      });
+      const account = await call(
+        {
+          method: 'get',
+          path: () => '/v1/organizations/current/chain-account',
+        },
+        'owner',
+      );
+      expect(account.body.data).toMatchObject({
+        identity: {
+          wineryId: WINERY,
+          status: 'NOT_PROVISIONED',
+          account: null,
+          contract: null,
+          pendingTransactions: [],
+          lastError: null,
+        },
+        byLot: [],
+        recentTransactions: [],
+        chainCosts: { feesChargedXlm: '0.0000000', since: null },
+      });
+      expect(account.body.data.totals.minted).toBe(0);
+      const registry = await call(
+        { method: 'get', path: () => '/v1/public/chain/registry' },
+        'nobody',
+      );
+      expect(registry.headers['cache-control']).toBe('public, max-age=300');
+      expect(registry.body.data).toMatchObject({
+        platform: { operationsAccount: null, anchorAccount: null },
+        wineries: [],
+      });
+      const toml = await call(
+        { method: 'get', path: () => '/.well-known/stellar.toml' },
+        'nobody',
+      );
+      expect(toml.headers['content-type']).toMatch(/^text\/plain/);
+      expect(toml.headers['access-control-allow-origin']).toBe('*');
+      expect(toml.text).toContain('ACCOUNTS=[]');
+      expect(toml.text).toContain('ORG_NAME="Drinks on Chain"');
+      // Nada quedó registrado para la red
+      expect(await count('chain_transactions')).toBe(0);
+      expect(await count('chain_accounts')).toBe(0);
+    });
+
+    it('el resto, con sesión y rol válidos, responde 501 NOT_IMPLEMENTED con su paso', async () => {
+      for (const route of ROUTES.filter((r) => !r.implemented)) {
         for (const who of route.allowed) {
           const res = await call(route, who, {
             body: route.body,
@@ -1058,7 +1161,7 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
             status: 501,
             code: 'NOT_IMPLEMENTED',
           });
-          expect(res.body.error.details[0].meta.step).toMatch(/^3\.[1-6]$/);
+          expect(res.body.error.details[0].meta.step).toMatch(/^3\.[3-6]$/);
           openapi.expectResponse(route.method, route.path(), res);
         }
       }
@@ -1246,9 +1349,12 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
           .get(path)
           .set('X-Forwarded-For', nextIp())
           .set('Authorization', `Bearer ${token}`);
-      expect(
-        (await get('/v1/organizations/current/chain-account')).status,
-      ).toBe(501);
+      const account = await get('/v1/organizations/current/chain-account');
+      expect(account.status).toBe(200);
+      expect(account.body.data.identity).toMatchObject({
+        wineryId,
+        status: 'NOT_PROVISIONED',
+      });
       const requests = await get('/v1/tokenization-requests');
       expect({
         status: requests.status,
