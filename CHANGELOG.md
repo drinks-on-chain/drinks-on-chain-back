@@ -2,6 +2,27 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Ola 3: firmante, transacciones e identidad de la bodega (pasos 3.1 y 3.2)
+
+Primera versión que **habla con la red** (solo testnet y red local; con las variables de la cadena vacías sigue deshabilitada). Detalle en el [README](README.md#firmante-transacciones-e-identidad-de-la-bodega-pasos-31-y-32).
+
+### Añadido
+
+- Firmante del worker que solo acepta intenciones registradas (`chain.tx.requested`), con validación previa (`CHN_INTENT_REJECTED`), firma separada de autorización y sobre, reintentos e idempotencia en la red. Colas `chain` y `chain-poll`; tareas `chain.tx.poll`, `chain.balance.check` y `chain.testnet.fund`.
+- Identidad de cada bodega en la red al activarse (cuenta + contrato NFT leído de vuelta) y relleno de las bodegas activas (`chain.identity.backfill`).
+- 12 rutas dejan de responder 501: `GET /v1/platform/chain/transactions`, `GET /v1/platform/chain/transactions/{id}`, `POST …/{id}/retry`, `POST …/{id}/abandon`, `GET /v1/platform/chain/accounts`, `GET /v1/platform/wineries/{id}/chain-account`, `POST /v1/platform/wineries/{id}/chain/provision`, `POST …/chain/pause`, `POST …/chain/unpause`, `GET /v1/organizations/current/chain-account`, `GET /.well-known/stellar.toml` y `GET /v1/public/chain/registry`.
+- Código de error `CHN_DISABLED` (409): acción sobre la red con la cadena sin configurar.
+- Evento del outbox `winery.status_changed` (suspensión, reactivación, revocación) y los de la cadena: `chain.tx.requested`, `chain.tx.confirmed`, `chain.tx.failed`, `chain.alert.raised`, `winery.chain_identity_ready`.
+- Variables opcionales: `CHAIN_DEPLOY_MAX_FEE_STROOPS`, `CHAIN_TX_RETRY_DELAYS_MS`, `CHAIN_ENVIRONMENT`, `STELLAR_FRIENDBOT_URL`.
+- `deploy/dev/generar-claves-cadena.sh`: genera las claves de la cadena en el servidor sin imprimirlas.
+
+### Cambios
+
+- `@stellar/stellar-sdk` 13.3.0 → **17.2.1** (fijada): la 13 no lee transacciones del protocolo 29.
+- `WineryResponseDto.onchainRegisterTxHash`: el hash de `CREATE_WINERY_ACCOUNT` cuando la bodega tiene identidad (antes, siempre `null`).
+- `GET /v1/platform/dashboard`: `chain.operationsBalanceXlm` y `chain.anchorBalanceXlm` son la última lectura del worker (antes, cero).
+- El `ChainTxRef` de `CHN_TX_NOT_ABANDONABLE` y `CHN_TX_NOT_RETRYABLE` lleva también `meta.status` (abandonar exige `FAILED`; una abandonada no se reintenta).
+
 ## 0.3.0-rc.0 · 2026-10-08 · Ola 3: tokenización y cadena (apertura)
 
 Primera versión de la Ola 3 (contrato `o3-tokenizacion`, §12.1): publica el contrato y prepara la base; **todavía no envía nada a la red**. Detalle en el [README](README.md#-cadena-y-tokenización-ola-3--apertura) y en el [roadmap](docs/ROADMAP.md#etapa-3--tokenización-y-cadena-ola-3).
