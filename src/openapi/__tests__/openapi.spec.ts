@@ -8,6 +8,10 @@ import type {
   SchemaObject,
 } from '@nestjs/swagger/dist/interfaces/open-api-spec.interface';
 import { generateOpenApiDocument } from '../document';
+import {
+  O3_STEP_3_3_ROUTES,
+  O3_STEP_3_5_ROUTES,
+} from '@modules/tokenization/o3-implemented-routes';
 import { BEARER_AUTH, serializeOpenApiDocument } from '../openapi';
 
 type Operation = OperationObject & { method: string; path: string };
@@ -79,6 +83,8 @@ describe('Contrato OpenAPI (OPS-12)', () => {
   describe('listas (contrato O0 §2)', () => {
     const COLLECTIONS = [
       'GET /v1/bottling',
+      'GET /v1/collections',
+      'GET /v1/collections/{id}/tokens',
       'GET /v1/fermentation-tanks',
       'GET /v1/harvest-batches',
       'GET /v1/harvest-batches/{id}/maturity-analyses',
@@ -92,10 +98,19 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/organizations/current/invitations',
       'GET /v1/organizations/current/members',
       'GET /v1/platform/audit',
+      'GET /v1/platform/chain/alerts',
+      'GET /v1/platform/chain/events',
+      'GET /v1/platform/chain/reconciliation/runs',
+      'GET /v1/platform/chain/transactions',
+      'GET /v1/platform/collections',
+      'GET /v1/platform/collections/{id}/tokens',
+      'GET /v1/platform/collections/{id}/transactions',
+      'GET /v1/platform/lot-closures',
       'GET /v1/platform/organizations/{organizationId}/invitations',
       'GET /v1/platform/organizations/{organizationId}/members',
       'GET /v1/platform/settings/{key}/history',
       'GET /v1/platform/settings/{key}/overrides',
+      'GET /v1/platform/tokenization-requests',
       'GET /v1/platform/users',
       'GET /v1/platform/waitlist',
       'GET /v1/platform/wineries',
@@ -103,6 +118,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'GET /v1/production-batches',
       'GET /v1/public/wineries',
       'GET /v1/terroirs',
+      'GET /v1/tokenization-requests',
       'GET /v1/wine-aging',
       'GET /v1/wineries',
     ];
@@ -165,14 +181,19 @@ describe('Contrato OpenAPI (OPS-12)', () => {
 
   describe('seguridad (SE-08)', () => {
     const PUBLIC = [
+      'GET /.well-known/stellar.toml',
       'GET /v1/health',
       'GET /v1/health/live',
       'GET /v1/health/ready',
       'GET /v1/invitations/{token}',
       'GET /v1/public/bottles/{code}',
+      'GET /v1/public/chain/registry',
+      'GET /v1/public/collections/images/{imageId}',
       'GET /v1/public/lots/{lotCode}',
       'GET /v1/public/lots/{lotCode}/attachments/{attachmentId}',
       'GET /v1/public/lots/{lotCode}/dossier',
+      'GET /v1/public/lots/{lotCode}/verification',
+      'GET /v1/public/nft/{winerySlug}/{tokenId}',
       'GET /v1/public/passports/{code}',
       'GET /v1/public/waitlist/stats',
       'GET /v1/public/wineries',
@@ -264,7 +285,7 @@ describe('Contrato OpenAPI (OPS-12)', () => {
     expect(missing).toEqual([]);
   });
 
-  it('las altas del ERP declaran Idempotency-Key (UUID, opcional)', () => {
+  it('las escrituras idempotentes declaran Idempotency-Key (UUID; opcional en las altas del ERP)', () => {
     const idempotent = ops
       .filter((op) =>
         (op.parameters ?? []).some(
@@ -295,11 +316,21 @@ describe('Contrato OpenAPI (OPS-12)', () => {
       'POST /v1/lots/{id}/discard',
       'POST /v1/lots/{id}/dossier/close',
       'POST /v1/lots/{id}/lab-analyses',
+      'POST /v1/lots/{id}/tokenization-requests',
+      'POST /v1/platform/chain/transactions/{id}/retry',
+      'POST /v1/platform/collections/{id}/closure/decide',
+      'POST /v1/platform/collections/{id}/pause',
+      'POST /v1/platform/collections/{id}/publish',
+      'POST /v1/platform/collections/{id}/resume',
+      'POST /v1/platform/tokenization-requests/{id}/approve',
+      'POST /v1/platform/wineries/{id}/chain/pause',
+      'POST /v1/platform/wineries/{id}/chain/unpause',
       'POST /v1/production-batches/distillation',
       'POST /v1/production-batches/{id}/close',
       'POST /v1/production-batches/{id}/discard',
       'POST /v1/terroirs',
       'POST /v1/terroirs/{id}/corrections',
+      'POST /v1/tokenization-requests/{id}/resubmit',
       'POST /v1/wine-aging',
       'POST /v1/wine-aging/{id}/discard',
     ]);
@@ -490,6 +521,436 @@ describe('Contrato OpenAPI (OPS-12)', () => {
         ]),
       );
       expect(props('CreatePhytoDecisionDto')).toContain('inspectionReportKey');
+    });
+  });
+  describe('apertura de la Ola 3 (contrato O3 §12.1)', () => {
+    const schema = (name: string) =>
+      document.components?.schemas?.[name] as SchemaObject;
+    const props = (name: string) => Object.keys(schema(name).properties ?? {});
+    const find = (k: string) => ops.find((o) => key(o) === k)!;
+    const refOf = (value: unknown): string | undefined => {
+      const prop = value as SchemaObject & {
+        allOf?: ReferenceObject[];
+        $ref?: string;
+      };
+      return prop.$ref ?? prop.allOf?.[0]?.$ref;
+    };
+
+    /** Todas las rutas de la cadena y la tokenización, publicadas con 501. */
+    const O3_ROUTES = [
+      'GET /.well-known/stellar.toml',
+      'GET /v1/collections',
+      'GET /v1/collections/{id}',
+      'GET /v1/collections/{id}/closure',
+      'GET /v1/collections/{id}/tokens',
+      'GET /v1/lots/{id}/tokenization',
+      'GET /v1/organizations/current/chain-account',
+      'GET /v1/platform/chain/accounts',
+      'GET /v1/platform/chain/alerts',
+      'GET /v1/platform/chain/events',
+      'GET /v1/platform/chain/reconciliation/runs',
+      'GET /v1/platform/chain/reconciliation/runs/{id}',
+      'GET /v1/platform/chain/transactions',
+      'GET /v1/platform/chain/transactions/{id}',
+      'GET /v1/platform/collections',
+      'GET /v1/platform/collections/{id}',
+      'GET /v1/platform/collections/{id}/closure',
+      'GET /v1/platform/collections/{id}/metrics',
+      'GET /v1/platform/collections/{id}/tokens',
+      'GET /v1/platform/collections/{id}/transactions',
+      'GET /v1/platform/lot-closures',
+      'GET /v1/platform/tokenization-requests',
+      'GET /v1/platform/tokenization-requests/{id}',
+      'GET /v1/platform/wineries/{id}/chain-account',
+      'GET /v1/public/chain/registry',
+      'GET /v1/public/collections/images/{imageId}',
+      'GET /v1/public/lots/{lotCode}/verification',
+      'GET /v1/public/nft/{winerySlug}/{tokenId}',
+      'GET /v1/tokenization-requests',
+      'GET /v1/tokenization-requests/{id}',
+      'PATCH /v1/platform/collections/{id}',
+      'PATCH /v1/platform/tokenization-requests/{id}',
+      'PATCH /v1/tokenization-requests/{id}',
+      'POST /v1/lots/{id}/tokenization-requests',
+      'POST /v1/platform/chain/alerts/{id}/resolve',
+      'POST /v1/platform/chain/reconciliation/runs',
+      'POST /v1/platform/chain/transactions/{id}/abandon',
+      'POST /v1/platform/chain/transactions/{id}/retry',
+      'POST /v1/platform/collections/{id}/close',
+      'POST /v1/platform/collections/{id}/closure/decide',
+      'POST /v1/platform/collections/{id}/closure/items/{tokenId}/resolve',
+      'POST /v1/platform/collections/{id}/pause',
+      'POST /v1/platform/collections/{id}/publish',
+      'POST /v1/platform/collections/{id}/resume',
+      'POST /v1/platform/tokenization-requests/{id}/approve',
+      'POST /v1/platform/tokenization-requests/{id}/notes',
+      'POST /v1/platform/tokenization-requests/{id}/reject',
+      'POST /v1/platform/tokenization-requests/{id}/request-changes',
+      'POST /v1/platform/tokenization-requests/{id}/take',
+      'POST /v1/platform/wineries/{id}/chain/pause',
+      'POST /v1/platform/wineries/{id}/chain/provision',
+      'POST /v1/platform/wineries/{id}/chain/unpause',
+      'POST /v1/tokenization-requests/{id}/resubmit',
+      'POST /v1/tokenization-requests/{id}/withdraw',
+    ];
+
+    /** `Idempotency-Key` obligatoria (contrato O3 §0). */
+    const REQUIRED_IDEMPOTENCY = [
+      'POST /v1/lots/{id}/tokenization-requests',
+      'POST /v1/platform/chain/transactions/{id}/retry',
+      'POST /v1/platform/collections/{id}/closure/decide',
+      'POST /v1/platform/collections/{id}/pause',
+      'POST /v1/platform/collections/{id}/publish',
+      'POST /v1/platform/collections/{id}/resume',
+      'POST /v1/platform/tokenization-requests/{id}/approve',
+      'POST /v1/platform/wineries/{id}/chain/pause',
+      'POST /v1/platform/wineries/{id}/chain/unpause',
+      'POST /v1/tokenization-requests/{id}/resubmit',
+    ];
+
+    // Con lógica desde los pasos 3.1 (firmante y transacciones) y 3.2
+    // (identidad de la bodega): ya no declaran 501
+    const O3_CHAIN_IMPLEMENTED = [
+      'GET /.well-known/stellar.toml',
+      'GET /v1/organizations/current/chain-account',
+      'GET /v1/platform/chain/accounts',
+      'GET /v1/platform/chain/transactions',
+      'GET /v1/platform/chain/transactions/{id}',
+      'GET /v1/platform/wineries/{id}/chain-account',
+      'GET /v1/public/chain/registry',
+      'POST /v1/platform/chain/transactions/{id}/abandon',
+      'POST /v1/platform/chain/transactions/{id}/retry',
+      'POST /v1/platform/wineries/{id}/chain/pause',
+      'POST /v1/platform/wineries/{id}/chain/provision',
+      'POST /v1/platform/wineries/{id}/chain/unpause',
+    ];
+    /** Rutas con lógica: las de la cadena (3.1, 3.2) y las de los pasos 3.3 y 3.5. */
+    const O3_IMPLEMENTED = new Set<string>([
+      ...O3_CHAIN_IMPLEMENTED,
+      ...O3_STEP_3_3_ROUTES,
+      ...O3_STEP_3_5_ROUTES,
+    ]);
+    const O3_PENDING = O3_ROUTES.filter((route) => !O3_IMPLEMENTED.has(route));
+
+    it('publica las 54 rutas del contrato; las pendientes de su paso, con su 501 NOT_IMPLEMENTED', () => {
+      expect(O3_ROUTES).toHaveLength(54);
+      expect(O3_ROUTES.filter((route) => !find(route))).toEqual([]);
+      expect(O3_IMPLEMENTED.size).toBe(
+        O3_CHAIN_IMPLEMENTED.length +
+          O3_STEP_3_3_ROUTES.length +
+          O3_STEP_3_5_ROUTES.length,
+      );
+      expect(O3_PENDING).toHaveLength(54 - O3_IMPLEMENTED.size);
+      const declared = ops
+        .filter((op) => op.responses['501'])
+        .map(key)
+        .sort();
+      expect(declared).toEqual(O3_PENDING);
+      for (const route of O3_PENDING) {
+        const response = find(route).responses['501'] as {
+          description: string;
+          content?: Record<string, { schema?: unknown }>;
+        };
+        expect({ route, description: response.description }).toEqual({
+          route,
+          description: expect.stringMatching(
+            /^NOT_IMPLEMENTED: llega con el paso 3\.[3-6] de la Etapa 3/,
+          ),
+        });
+        expect(response.content?.['application/json']?.schema).toEqual({
+          $ref: '#/components/schemas/ApiErrorResponseDto',
+        });
+      }
+    });
+
+    it('usa las etiquetas Chain, Tokenization y Public', () => {
+      const tags = new Set(
+        O3_ROUTES.flatMap((route) => find(route).tags ?? []),
+      );
+      expect([...tags].sort()).toEqual(['Chain', 'Public', 'Tokenization']);
+      for (const route of O3_ROUTES) {
+        const isPublic =
+          route.includes('/v1/public/') || route.includes('/.well-known/');
+        expect({ route, tags: find(route).tags }).toEqual({
+          route,
+          tags: isPublic
+            ? ['Public']
+            : [expect.stringMatching(/^(Chain|Tokenization)$/)],
+        });
+      }
+    });
+
+    it('exige Idempotency-Key donde el contrato la hace obligatoria (§0)', () => {
+      const required = ops
+        .filter((op) =>
+          (op.parameters ?? []).some(
+            (p) =>
+              !('$ref' in p) &&
+              p.in === 'header' &&
+              p.name === 'Idempotency-Key' &&
+              p.required,
+          ),
+        )
+        .map(key)
+        .sort();
+      expect(required).toEqual(REQUIRED_IDEMPOTENCY);
+      // Autorizar, reenviar, aprobar, publicar, pausar, reanudar, decidir el
+      // cierre, reintentar una transacción y pausar o reanudar un contrato
+      expect(required).toHaveLength(10);
+    });
+
+    it('las acciones del back office sobre una bodega declaran el motivo obligatorio', () => {
+      const withReason = ops
+        .filter(
+          (op) =>
+            O3_ROUTES.includes(key(op)) &&
+            (op as unknown as Record<string, unknown>)['x-requires-reason'] ===
+              'always',
+        )
+        .map(key)
+        .sort();
+      expect(withReason).toEqual([
+        'PATCH /v1/platform/collections/{id}',
+        'POST /v1/platform/chain/transactions/{id}/abandon',
+        'POST /v1/platform/chain/transactions/{id}/retry',
+        'POST /v1/platform/collections/{id}/close',
+        'POST /v1/platform/collections/{id}/closure/decide',
+        'POST /v1/platform/collections/{id}/pause',
+        'POST /v1/platform/tokenization-requests/{id}/reject',
+        'POST /v1/platform/wineries/{id}/chain/pause',
+        'POST /v1/platform/wineries/{id}/chain/provision',
+        'POST /v1/platform/wineries/{id}/chain/unpause',
+      ]);
+    });
+
+    it('stellar.toml queda fuera de /v1 y responde text/plain', () => {
+      const toml = document.paths['/.well-known/stellar.toml'].get!;
+      const ok = toml.responses['200'] as {
+        content: Record<string, unknown>;
+      };
+      expect(Object.keys(ok.content)).toEqual(['text/plain']);
+      expect(document.paths['/v1/.well-known/stellar.toml']).toBeUndefined();
+    });
+
+    it('LotSummary lleva la marca de tokenización (aditivo, O2 §2.1)', () => {
+      expect(schema('LotSummaryDto').required).toContain('tokenization');
+      expect(refOf(schema('LotSummaryDto').properties!.tokenization)).toBe(
+        '#/components/schemas/LotTokenizationMarkDto',
+      );
+      expect(schema('LotTokenizationState').enum).toEqual([
+        'NONE',
+        'REQUESTED',
+        'CHANGES_REQUESTED',
+        'MINTING',
+        'MINT_FAILED',
+        'READY',
+        'PUBLISHED',
+        'PAUSED',
+        'CLOSED',
+      ]);
+      // `Lot` la hereda
+      expect(props('LotDto')).toContain('tokenization');
+    });
+
+    it('la línea de tiempo admite los eventos de la tokenización y el anclaje', () => {
+      const types = (schema('LotEventDto').properties!.type as SchemaObject)
+        .enum as string[];
+      expect(types).toEqual(
+        expect.arrayContaining([
+          'TOKENIZATION_AUTHORIZED',
+          'NFT_MINTED',
+          'COLLECTION_PUBLISHED',
+          'DOSSIER_ANCHORED',
+          'TOKENS_REDEEMABLE',
+          'SHORTFALL_DETECTED',
+          // Los de la Ola 2 siguen ahí
+          'LOT_CREATED',
+          'DOSSIER_CLOSED',
+        ]),
+      );
+    });
+
+    it('el anclaje del expediente tiene forma (y sigue siendo anulable)', () => {
+      const anchor = schema('LotDossierDto').properties!.anchor as SchemaObject;
+      expect(anchor.nullable).toBe(true);
+      expect(refOf(anchor)).toBe('#/components/schemas/DossierAnchorDto');
+      const publicAnchor = schema('PublicDossierDto').properties!
+        .anchor as SchemaObject;
+      expect(publicAnchor.nullable).toBe(true);
+      expect(refOf(publicAnchor)).toBe(
+        '#/components/schemas/PublicDossierAnchorDto',
+      );
+      expect(schema('DossierAnchorStatus').enum).toEqual([
+        'PENDING',
+        'SUBMITTED',
+        'ANCHORED',
+        'FAILED',
+      ]);
+      // En público, FAILED se muestra como PENDING (S-17)
+      expect(schema('PublicDossierAnchorStatus').enum).toEqual([
+        'PENDING',
+        'ANCHORED',
+      ]);
+      expect(
+        (schema('PublicLotPassportDto').properties!.stage as SchemaObject).enum,
+      ).toContain('ANCHORED');
+    });
+
+    it('el tablero y el panel del ERP llevan sus bloques nuevos', () => {
+      expect(schema('DashboardDto').required).toEqual(
+        expect.arrayContaining(['tokenization', 'chain']),
+      );
+      expect(props('DashboardTokenizationDto')).toEqual([
+        'submitted',
+        'inReview',
+        'changesRequested',
+        'oldestOpenHours',
+        'collectionsMinting',
+        'mintFailures',
+        'collectionsPublished',
+        'shortfallsOpen',
+      ]);
+      expect(props('DashboardChainDto')).toEqual([
+        'network',
+        'operationsBalanceXlm',
+        'anchorBalanceXlm',
+        'failedTransactions',
+        'stuckTransactions',
+        'openAlerts',
+        'lastReconciliation',
+        'indexerLagSeconds',
+      ]);
+      expect(props('TraceDashboardTokenizationDto')).toEqual([
+        'openRequests',
+        'changesRequested',
+        'collectionsPublished',
+      ]);
+      expect(schema('TraceDashboardDto').required).toContain('tokenization');
+    });
+
+    it('las enumeraciones de la cadena y la tokenización son las del contrato', () => {
+      expect(schema('ChainNetwork').enum).toEqual([
+        'TESTNET',
+        'PUBLIC',
+        'LOCAL',
+      ]);
+      expect(schema('ChainTxStatus').enum).toEqual([
+        'PENDING',
+        'BUILDING',
+        'SUBMITTED',
+        'CONFIRMED',
+        'RETRYING',
+        'FAILED',
+      ]);
+      expect(schema('ChainTxKind').enum).toEqual([
+        'CREATE_WINERY_ACCOUNT',
+        'DEPLOY_WINERY_CONTRACT',
+        'SET_TOKEN_URI_BASE',
+        'MINT_BATCH',
+        'ANCHOR_DOSSIER',
+        'PAUSE_CONTRACT',
+        'UNPAUSE_CONTRACT',
+        'BURN_UNSOLD',
+        'EXTEND_TTL',
+        'RESTORE_ENTRIES',
+        'FUND_ACCOUNT',
+        'OPERATOR_TRANSFER',
+        'REDEEM_BURN',
+      ]);
+      expect(schema('ChainIdentityStatus').enum).toEqual([
+        'NOT_PROVISIONED',
+        'PROVISIONING',
+        'ACTIVE',
+        'FAILED',
+        'PAUSED',
+      ]);
+      expect(schema('TokenizationRequestStatus').enum).toEqual([
+        'SUBMITTED',
+        'IN_REVIEW',
+        'CHANGES_REQUESTED',
+        'APPROVED',
+        'REJECTED',
+        'WITHDRAWN',
+      ]);
+      expect(schema('CollectionStatus').enum).toEqual([
+        'MINTING',
+        'READY',
+        'PUBLISHED',
+        'PAUSED',
+        'CLOSED',
+      ]);
+      expect(schema('TokenStatus').enum).toEqual([
+        'MINTED',
+        'RESERVED',
+        'SOLD',
+        'REDEEMABLE',
+        'PASS_ACTIVE',
+        'REDEEMED',
+        'BURNED',
+        'EXPIRED',
+      ]);
+      expect(schema('LotClosureStatus').enum).toEqual([
+        'NO_SHORTFALL',
+        'SHORTFALL_OPEN',
+        'DECIDED',
+        'RESOLVED',
+      ]);
+      expect(schema('PriceCurrency').enum).toEqual(['BOB']);
+    });
+
+    it('ChainTxRef es lo que ven las apps; la transacción completa, solo la plataforma', () => {
+      expect(props('ChainTxRefDto')).toEqual([
+        'id',
+        'kind',
+        'status',
+        'network',
+        'txHash',
+        'explorerUrl',
+        'ledger',
+        'confirmedAt',
+        'attempts',
+        'lastError',
+        'createdAt',
+        'updatedAt',
+      ]);
+      // Ningún esquema expone XDR, claves ni semillas. El único "secreto" del
+      // contrato es el del alta del TOTP, que se muestra una vez a su dueño
+      const leaked = Object.entries(document.components?.schemas ?? {})
+        .flatMap(([name, value]) =>
+          Object.keys((value as SchemaObject).properties ?? {}).map(
+            (prop) => `${name}.${prop}`,
+          ),
+        )
+        .filter((field) => /xdr|secret|seed|privateKey|mnemonic/i.test(field));
+      expect(leaked).toEqual(['MfaEnrollResponseDto.secret']);
+    });
+
+    it('las imágenes públicas de las colecciones las sirve la API (U-5)', () => {
+      const image = find('GET /v1/public/collections/images/{imageId}');
+      expect(image.security).toEqual([]);
+      const ok = image.responses['200'] as { content: Record<string, unknown> };
+      expect(Object.keys(ok.content).sort()).toEqual([
+        'image/gif',
+        'image/jpeg',
+        'image/png',
+        'image/webp',
+      ]);
+      expect(props('CollectionImageDto')).toEqual([
+        'id',
+        'key',
+        'sha256',
+        'url',
+        'alt',
+        'isCover',
+      ]);
+      expect(props('CollectionSummaryDto')).toContain('coverImageUrl');
+    });
+
+    it('la billetera legada declara su 404 CHN_WALLET_NOT_AVAILABLE (SE-02)', () => {
+      const wallet = find('GET /v1/users/me/wallet');
+      expect(
+        (wallet.responses['404'] as { description: string }).description,
+      ).toContain('CHN_WALLET_NOT_AVAILABLE');
     });
   });
 });

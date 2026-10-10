@@ -12,6 +12,8 @@ import {
   JobContext,
   JobHandler,
   JobHandlerMetadata,
+  SCHEDULED_TASK_METADATA,
+  ScheduledTaskMetadata,
 } from '@shared/queue/job-handler';
 import { QUEUE_NAMES, QueueName } from '@shared/queue/queue.constants';
 import { runWithCorrelationId } from '@shared/logging/correlation';
@@ -47,6 +49,8 @@ function correlationIdOf(job: Job, queue: QueueName): string {
 export class JobDispatcher implements OnApplicationBootstrap, OnModuleDestroy {
   private readonly logger = new Logger(JobDispatcher.name);
   private readonly handlers = new Map<string, JobHandler>();
+  /** Trabajos cuyo "completado" va a `debug` (tareas muy frecuentes). */
+  private readonly quiet = new Set<string>();
   private readonly workers: Worker[] = [];
   private closed = false;
 
@@ -110,6 +114,11 @@ export class JobDispatcher implements OnApplicationBootstrap, OnModuleDestroy {
         throw new Error(`Hay dos procesadores para ${key}`);
       }
       this.handlers.set(key, instance);
+      const task = this.reflector.get<ScheduledTaskMetadata | undefined>(
+        SCHEDULED_TASK_METADATA,
+        metatype,
+      );
+      if (task?.quiet) this.quiet.add(key);
     }
     this.logger.log(
       `Procesadores registrados: ${this.registeredJobs().join(', ') || 'ninguno'}`,
@@ -163,9 +172,9 @@ export class JobDispatcher implements OnApplicationBootstrap, OnModuleDestroy {
       };
       const started = Date.now();
       await handler.handle(job.data, context);
-      this.logger.log(
-        `Trabajo ${queue}/${job.name} ${job.id} completado en ${Date.now() - started} ms`,
-      );
+      const done = `Trabajo ${queue}/${job.name} ${job.id} completado en ${Date.now() - started} ms`;
+      if (this.quiet.has(this.key(queue, job.name))) this.logger.debug(done);
+      else this.logger.log(done);
     });
   }
 }

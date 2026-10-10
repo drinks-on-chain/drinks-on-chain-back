@@ -3,6 +3,10 @@ import { tmpdir } from 'os';
 import { join } from 'path';
 import { ConfigService } from '@nestjs/config';
 import { mailEnvValidationSchema } from '@modules/mail/mail.transport';
+import {
+  assertChainEnvCoherent,
+  chainEnvValidationSchema,
+} from '@modules/chain/chain.config';
 
 /**
  * Variables de entorno del proceso `worker`. No necesita secretos de JWT ni
@@ -48,7 +52,16 @@ export const workerEnvValidationSchema = Joi.object({
 
   // Correo (cola `email`): SMTP y remitente; por defecto, Mailpit en local
   ...mailEnvValidationSchema,
-});
+
+  // Cadena (contrato O3 §2.1): todas opcionales; sin ellas, deshabilitada.
+  // El custodio de claves vive en este proceso
+  ...chainEnvValidationSchema,
+  // Origen público de la API: URI base de los contratos (§3.1)
+  API_PUBLIC_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .optional(),
+}).custom(assertChainEnvCoherent);
 
 export const WORKER_SETTINGS = Symbol('WORKER_SETTINGS');
 

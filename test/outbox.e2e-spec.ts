@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
-import { WalletPurposeEnum, WineryCategoryEnum } from '@prisma/client';
+import { WineryCategoryEnum } from '@prisma/client';
 import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { OutboxService } from '../src/shared/outbox/outbox.service';
@@ -10,24 +10,20 @@ import {
   WineryManagementService,
 } from '../src/modules/winery-management/winery-management.service';
 import { InvitationsService } from '../src/modules/invitations/invitations.service';
-import { MockDynamicWalletProvider } from '../src/modules/wallets/providers/mock-dynamic-wallet.provider';
 import { createPlatformUser, deleteIdentityData } from './helpers/identity';
 
-/** Proveedor simulado que puede fallar a propósito a mitad de la operación. */
-class FlakyWalletProvider extends MockDynamicWalletProvider {
-  fail = false;
-
-  async createCustodialVault(owner: string, purpose: WalletPurposeEnum) {
-    if (this.fail) throw new Error('fallo simulado del proveedor');
-    return super.createCustodialVault(owner, purpose);
-  }
-}
+/**
+ * Fallo a propósito a mitad de la aceptación: un gancho de la transacción
+ * (`InvitationsService.onAccepted`) que lanza cuando se le pide. Antes de
+ * SE-02 el fallo lo provocaba el proveedor simulado de billeteras.
+ */
+const flaky = { fail: false };
 
 /**
  * OP-01 y outbox con Postgres real: las operaciones de varios pasos son todo
  * o nada, y el evento del outbox existe solo si la transacción se confirma.
  * Desde H1 la operación de referencia es aceptar la invitación del dueño
- * (cuenta, billetera, membresía, activación y `winery.activated`); la
+ * (cuenta, membresía, activación y `winery.activated`); la
  * autoinscripción y `members/create` se retiraron.
  */
 describe('Outbox y transacciones (e2e)', () => {
@@ -37,7 +33,6 @@ describe('Outbox y transacciones (e2e)', () => {
   let management: WineryManagementService;
   let invitations: InvitationsService;
   let actor: ActorRef;
-  const walletProvider = new FlakyWalletProvider();
 
   const run = `o0be3-${Date.now()}`;
   const createdWineryIds: string[] = [];
@@ -47,10 +42,7 @@ describe('Outbox y transacciones (e2e)', () => {
   beforeAll(async () => {
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    })
-      .overrideProvider(MockDynamicWalletProvider)
-      .useValue(walletProvider)
-      .compile();
+    }).compile();
 
     app = moduleFixture.createNestApplication();
     await app.init();
@@ -58,6 +50,11 @@ describe('Outbox y transacciones (e2e)', () => {
     outbox = app.get(OutboxService);
     management = app.get(WineryManagementService);
     invitations = app.get(InvitationsService);
+    invitations.onAccepted(() => {
+      if (flaky.fail)
+        throw new Error('fallo simulado a mitad de la aceptación');
+      return Promise.resolve();
+    });
     const staff = await createPlatformUser(prisma, {
       email: `staff_${run}@test.bo`,
       password: 'Password123!',
@@ -68,7 +65,7 @@ describe('Outbox y transacciones (e2e)', () => {
   });
 
   afterEach(() => {
-    walletProvider.fail = false;
+    flaky.fail = false;
   });
 
   afterAll(async () => {
@@ -157,7 +154,7 @@ describe('Outbox y transacciones (e2e)', () => {
       { ip: '127.0.0.1', userAgent: 'e2e' },
     );
 
-  it('aceptar la invitación del dueño confirma cuenta, billetera, membresía, activación y winery.activated', async () => {
+  it('aceptar la invitación del dueño confirma cuenta, membresía, activación y winery.activated, sin billetera simulada', async () => {
     const { wineryId, ownerEmail, token } = await invitedWinery('A');
     const correlationId = `${run}-ok`;
 
@@ -166,10 +163,10 @@ describe('Outbox y transacciones (e2e)', () => {
     const owner = await prisma.user.findUniqueOrThrow({
       where: { email: ownerEmail },
     });
-    const wallet = await prisma.userWallet.findFirst({
-      where: { userId: owner.id },
-    });
-    expect(wallet?.stellarPublicAddress).toMatch(/^G[A-Z0-9]{55}$/);
+    // SE-02: aceptar una invitación ya no crea ninguna billetera simulada
+    expect(await prisma.userWallet.count({ where: { userId: owner.id } })).toBe(
+      0,
+    );
     // Membresía OWNER y su espejo en winery_members (mismo id)
     const membership = await prisma.membership.findUniqueOrThrow({
       where: {
@@ -198,14 +195,14 @@ describe('Outbox y transacciones (e2e)', () => {
     });
   });
 
-  it('una aceptación que falla a mitad (billetera) no deja cuenta, membresía, activación ni evento', async () => {
+  it('una aceptación que falla a mitad no deja cuenta, membresía, activación ni evento', async () => {
     const { wineryId, ownerEmail, token } = await invitedWinery('B');
     const correlationId = `${run}-fail`;
-    walletProvider.fail = true;
+    flaky.fail = true;
 
     await expect(
       runWithCorrelationId(correlationId, () => accept(token)),
-    ).rejects.toThrow('fallo simulado del proveedor');
+    ).rejects.toThrow('fallo simulado a mitad de la aceptación');
 
     expect(await prisma.user.count({ where: { email: ownerEmail } })).toBe(0);
     expect(
@@ -226,7 +223,7 @@ describe('Outbox y transacciones (e2e)', () => {
     );
 
     // Tras el fallo, la misma invitación se puede aceptar
-    walletProvider.fail = false;
+    flaky.fail = false;
     await accept(token);
     expect(
       (await prisma.winery.findUniqueOrThrow({ where: { id: wineryId } }))

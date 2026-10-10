@@ -5,7 +5,11 @@ import { BottleCodeExportBuilder } from '../bottle-code-export.builder';
 import { BottleCodesExportHandler } from './bottle-codes-export.handler';
 import { BottleCodeExportsCleanupTask } from './bottle-code-exports-cleanup.task';
 import { TraceLocksReleaseTask } from './locks-release.task';
-import { LotCertifiedHandler } from './lot-certified.handler';
+import { ChainCoreModule } from '@modules/chain/chain-core.module';
+import {
+  LotAnchoredHandler,
+  LotCertifiedHandler,
+} from './lot-certified.handler';
 
 /**
  * Tareas y procesadores de la trazabilidad en el worker (contrato O2 §15).
@@ -15,13 +19,14 @@ import { LotCertifiedHandler } from './lot-certified.handler';
  * - `trace.locks.release`: candados de crianza y reposo (tarea diaria).
  * - `trace.bottle-codes.export`: ZIP de códigos de botella para la imprenta,
  *   y la limpieza de los caducados.
- * - `lot.certified`: cierre del expediente (la Ola 3 lo ancla).
+ * - `lot.certified`: cierre del expediente → intención `ANCHOR_DOSSIER`
+ *   (contrato O3 §7.1); `lot.anchored`: constancia del anclaje.
  *
  * La bitácora se escribe con `AuditService` directamente (actor sistema): el
  * módulo global de la API trae un interceptor HTTP que el worker no necesita.
  */
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, ChainCoreModule],
   providers: [
     AuditService,
     TraceLocksReleaseTask,
@@ -29,6 +34,7 @@ import { LotCertifiedHandler } from './lot-certified.handler';
     BottleCodesExportHandler,
     BottleCodeExportsCleanupTask,
     LotCertifiedHandler,
+    LotAnchoredHandler,
   ],
   exports: [TraceLocksReleaseTask],
 })

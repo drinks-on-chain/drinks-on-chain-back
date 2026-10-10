@@ -1,27 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { HandlesJob, JobHandler } from '@shared/queue/job-handler';
 import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
 import { OutboxJobData } from '@shared/outbox/outbox.types';
+import { WineryIdentityProvisioner } from '@modules/chain/jobs/winery-identity.provisioner';
 import { WINERY_ACTIVATED, WineryActivatedPayload } from '../wineries.events';
 
 /**
- * `winery.activated` → identidad de la bodega en la red. Llega con la Ola 3
- * (doc 06 §3: cuenta y contrato NFT por bodega); hasta entonces solo queda
- * registrado, para que el evento no se pierda ni falle por falta de
- * procesador.
+ * `winery.activated` → identidad de la bodega en la red (contrato O3 §3.1):
+ * su cuenta y su contrato NFT, encadenados como intenciones que el firmante
+ * valida, firma y envía. Reprocesar el evento no crea otra transacción
+ * (`intentKey`). Con la cadena deshabilitada solo queda registrado.
  */
 @Injectable()
 @HandlesJob(QUEUE_CHAIN, WINERY_ACTIVATED)
 export class WineryActivatedHandler implements JobHandler<
   OutboxJobData<WineryActivatedPayload>
 > {
-  private readonly logger = new Logger(WineryActivatedHandler.name);
+  constructor(private readonly provisioner: WineryIdentityProvisioner) {}
 
-  handle(data: OutboxJobData<WineryActivatedPayload>): Promise<void> {
-    const { wineryId, lotPrefix } = data.payload;
-    this.logger.log(
-      `Bodega ${wineryId} activada (prefijo ${lotPrefix}); identidad en la red pendiente de la Ola 3`,
-    );
-    return Promise.resolve();
+  async handle(data: OutboxJobData<WineryActivatedPayload>): Promise<void> {
+    await this.provisioner.provision(data.payload.wineryId);
   }
 }

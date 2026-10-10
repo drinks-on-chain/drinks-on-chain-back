@@ -100,6 +100,39 @@ export const CAPABILITIES: readonly CapabilityDefinition[] = [
       OWNER: 'OWN',
     },
   },
+  // Ola 3 (contrato O3 §10)
+  {
+    key: 'tokenization',
+    label: 'Tokenización: bandeja, colecciones y cierre con faltante',
+    roles: {
+      SUPERADMIN: 'FULL',
+      ADMIN: 'FULL',
+      OPERATIONS: 'FULL',
+      SUPPORT: 'READ',
+      OWNER: 'OWN',
+      ENOLOGIST: 'READ',
+      ACCOUNTANT: 'READ',
+    },
+  },
+  {
+    key: 'chain',
+    label:
+      'Cadena: transacciones, identidad de las bodegas, conciliación y alertas',
+    roles: {
+      SUPERADMIN: 'FULL',
+      ADMIN: 'FULL',
+      OPERATIONS: 'FULL',
+      SUPPORT: 'READ',
+      OWNER: 'READ',
+      ...others('READ'),
+    },
+  },
+  {
+    key: 'chain.admin',
+    label:
+      'Abandonar transacciones, pausar o reanudar un contrato en la red y quemar NFT sin vender',
+    roles: { SUPERADMIN: 'FULL', ADMIN: 'FULL' },
+  },
 ];
 
 export const ALL_ROLES: readonly MembershipRole[] = [
@@ -116,7 +149,10 @@ export type CapabilityKey =
   | 'wineries.suspend'
   | 'wineries.revoke'
   | 'team'
-  | 'audit';
+  | 'audit'
+  | 'tokenization'
+  | 'chain'
+  | 'chain.admin';
 
 export function levelOf(
   key: CapabilityKey,

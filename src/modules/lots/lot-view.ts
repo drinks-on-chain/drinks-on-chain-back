@@ -17,6 +17,8 @@ import {
 import type { LotProductType, LotStage } from './domain/lot-stage';
 import { distillationHeart, num, tankLiters } from './domain/sources';
 import { actorOf, TraceActor } from './trace-actors';
+import { lotTokenizationState } from '@modules/tokenization/domain/state-machines';
+import type { LotTokenizationState } from '@modules/tokenization/tokenization.constants';
 
 /** Lo que se carga de un lote para responder `Lot` / `LotSummary`. */
 export const LOT_VIEW_INCLUDE = {
@@ -100,6 +102,21 @@ export const LOT_VIEW_INCLUDE = {
       actorMembershipId: true,
     },
   },
+  // Marca de tokenización (contrato O3 §5.3): la colección y la solicitud abierta
+  collection: {
+    select: {
+      id: true,
+      status: true,
+      mintStatus: true,
+      quota: true,
+      minted: true,
+    },
+  },
+  tokenizationRequests: {
+    where: { status: { in: ['SUBMITTED', 'IN_REVIEW', 'CHANGES_REQUESTED'] } },
+    select: { status: true },
+    take: 1,
+  },
   _count: { select: { bottleUnits: { where: { status: 'ACTIVE' } } } },
 } satisfies Prisma.LotInclude;
 
@@ -141,8 +158,17 @@ export interface LotSummaryView {
   labStatus: 'NOT_RECORDED' | 'CONFORMING' | 'NON_CONFORMING' | 'INCOMPLETE';
   dossierStatus: 'OPEN' | 'CLOSED';
   complianceIssuesOpen: number;
+  /** Marca de tokenización (contrato O3 §5.3): no es una etapa del lote. */
+  tokenization: LotTokenizationMark;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface LotTokenizationMark {
+  state: LotTokenizationState;
+  quota: number;
+  minted: number;
+  collectionId: string | null;
 }
 
 export interface LotView extends LotSummaryView {
@@ -315,6 +341,15 @@ export function toLotSummary(lot: LotWithView, today: string): LotSummaryView {
     dossierStatus: lot.dossier?.status === 'CLOSED' ? 'CLOSED' : 'OPEN',
     complianceIssuesOpen: lot.complianceIssues.filter((i) => !i.resolvedAt)
       .length,
+    tokenization: {
+      state: lotTokenizationState(
+        lot.tokenizationRequests[0]?.status ?? null,
+        lot.collection,
+      ),
+      quota: lot.collection?.quota ?? 0,
+      minted: lot.collection?.minted ?? 0,
+      collectionId: lot.collection?.id ?? null,
+    },
     createdAt: lot.createdAt.toISOString(),
     updatedAt: lot.updatedAt.toISOString(),
   };

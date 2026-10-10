@@ -5,6 +5,7 @@ import {
   WINERY_ROLES,
 } from '@modules/lots/dto/lot.dto';
 import { JSON_VALUE_SCHEMA } from '@shared/dto/json-value.schema';
+import { PublicDossierAnchorDto } from '@modules/chain/dto/chain-common.dto';
 import { LOT_EVENT_TYPES, type LotEventType } from './lot-views.dto';
 
 /** Estado de un apartado del pasaporte (contrato O2 §12.2). */
@@ -352,13 +353,13 @@ export class PublicDossierDto {
   canonicalUrl!: string | null;
 
   @ApiProperty({
-    type: 'object',
+    type: () => PublicDossierAnchorDto,
     nullable: true,
-    properties: {},
-    additionalProperties: false,
-    description: 'Siempre `null` en esta ola (anclaje: Ola 3)',
+    description:
+      'Anclaje del hash en la red (contrato O3 §7.3). `null` hasta que el lote certificado tenga su ' +
+      'transacción de anclaje (paso 3.5); `FAILED` se publica como `PENDING`',
   })
-  anchor!: null;
+  anchor!: PublicDossierAnchorDto | null;
 }
 
 export class PublicAttachmentDto {

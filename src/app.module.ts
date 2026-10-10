@@ -41,6 +41,8 @@ import { WineryManagementModule } from './modules/winery-management/winery-manag
 import { WineryApplicationsModule } from './modules/winery-applications/winery-applications.module';
 import { TeamModule } from './modules/team/team.module';
 import { WaitlistModule } from './modules/waitlist/waitlist.module';
+import { ChainModule } from './modules/chain/chain.module';
+import { TokenizationModule } from './modules/tokenization/tokenization.module';
 
 @Module({
   imports: [
@@ -79,6 +81,8 @@ import { WaitlistModule } from './modules/waitlist/waitlist.module';
     WineryApplicationsModule,
     TeamModule,
     WaitlistModule,
+    ChainModule,
+    TokenizationModule,
   ],
   // Guards globales, en este orden (contrato O0 §6): límite de peticiones →
   // acceso válido y sesión viva → audiencia, tipo de organización y rol →

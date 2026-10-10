@@ -19,24 +19,55 @@ import {
 } from '../src/shared/queue/job-handler';
 import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { CorrelationIdMiddleware } from '../src/shared/middleware/correlation-id.middleware';
-import { WineryCreatedHandler } from '../src/modules/wineries/jobs/winery-created.handler';
+import { WineryActivatedHandler } from '../src/modules/wineries/jobs/winery-activated.handler';
 import { LotCertifiedHandler } from '../src/modules/lots/jobs/lot-certified.handler';
 import { BOTTLE_CODE_EXPORTS_CLEANUP_TASK } from '../src/modules/lots/jobs/bottle-code-exports-cleanup.task';
 import { TRACE_LOCKS_RELEASE_TASK } from '../src/modules/lots/jobs/locks-release.task';
 import {
   BOTTLE_CODES_EXPORT_JOB,
+  LOT_ANCHORED,
   LOT_CERTIFIED,
 } from '../src/modules/lots/lots.events';
 import { EMAIL_REQUESTED } from '../src/modules/mail/mail.events';
 import { SETTING_CHANGED } from '../src/modules/settings/settings.events';
-import { WINERY_ACTIVATED } from '../src/modules/wineries/wineries.events';
+import {
+  WINERY_ACTIVATED,
+  WINERY_STATUS_CHANGED,
+} from '../src/modules/wineries/wineries.events';
+import {
+  CHAIN_ALERT_RAISED,
+  CHAIN_BALANCE_CHECK_TASK,
+  CHAIN_ANCHOR_BACKFILL_JOB,
+  CHAIN_IDENTITY_BACKFILL_JOB,
+  CHAIN_TESTNET_FUND_TASK,
+  CHAIN_TX_CONFIRMED,
+  CHAIN_TX_CONFIRM_JOB,
+  CHAIN_TX_FAILED,
+  CHAIN_TX_POLL_TASK,
+  CHAIN_TX_PROCESS_JOB,
+  CHAIN_TX_REQUESTED,
+  WINERY_CHAIN_IDENTITY_READY,
+} from '../src/modules/chain/chain.events';
 import { heartbeatAgeMs } from '../src/worker-healthcheck';
 import {
   QUEUE_CHAIN,
+  QUEUE_CHAIN_POLL,
   QUEUE_DEFAULT,
   QUEUE_EMAIL,
   workerHeartbeatKey,
 } from '../src/shared/queue/queue.constants';
+import {
+  COLLECTION_CLOSED,
+  COLLECTION_MINTED,
+  COLLECTION_PAUSED,
+  COLLECTION_PUBLISHED,
+  COLLECTION_REDEEMABLE,
+  COLLECTION_RESUMED,
+  TOKENIZATION_REQUEST_APPROVED,
+  TOKENIZATION_REQUEST_CHANGES_REQUESTED,
+  TOKENIZATION_REQUEST_REJECTED,
+  TOKENIZATION_REQUEST_SUBMITTED,
+} from '../src/modules/tokenization/tokenization.events';
 
 const run = `o0be3w-${Date.now()}`;
 
@@ -152,8 +183,7 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
   it('registra los procesadores de los módulos y el de las pruebas', () => {
     expect(moduleRef.get(JobDispatcher).registeredJobs()).toEqual(
       expect.arrayContaining([
-        'chain/member.added',
-        'chain/winery.created',
+        'chain/winery.activated',
         'default/e2e.ping',
         'scheduled/outbox.cleanup',
       ]),
@@ -171,8 +201,41 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
       `${QUEUE_CHAIN}/${WINERY_ACTIVATED}`,
       `${QUEUE_EMAIL}/${EMAIL_REQUESTED}`,
       `${QUEUE_DEFAULT}/${SETTING_CHANGED}`,
+      // Ola 3 · cadena (contrato O3 §11)
+      `${QUEUE_CHAIN}/${WINERY_STATUS_CHANGED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_REQUESTED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_CONFIRMED}`,
+      `${QUEUE_CHAIN}/${CHAIN_TX_FAILED}`,
+      `${QUEUE_CHAIN}/${CHAIN_ALERT_RAISED}`,
+      `${QUEUE_CHAIN}/${WINERY_CHAIN_IDENTITY_READY}`,
+      // Ola 3 · paso 3.3: solicitudes de tokenización y colecciones
+      `${QUEUE_CHAIN}/${TOKENIZATION_REQUEST_APPROVED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_SUBMITTED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_CHANGES_REQUESTED}`,
+      `${QUEUE_DEFAULT}/${TOKENIZATION_REQUEST_REJECTED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_PUBLISHED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_PAUSED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_RESUMED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_CLOSED}`,
+      // Ola 3 · pasos 3.4 y 3.5: emisión y anclaje
+      `${QUEUE_DEFAULT}/${COLLECTION_MINTED}`,
+      `${QUEUE_DEFAULT}/${COLLECTION_REDEEMABLE}`,
+      `${QUEUE_DEFAULT}/${LOT_ANCHORED}`,
     ];
     expect(registered).toEqual(expect.arrayContaining(emitted));
+    // Colas y tareas de la cadena: `chain` (firmante), `chain-poll`
+    // (confirmaciones) y sus tareas programadas
+    expect(registered).toEqual(
+      expect.arrayContaining([
+        `${QUEUE_CHAIN}/${CHAIN_TX_PROCESS_JOB}`,
+        `${QUEUE_CHAIN}/${CHAIN_IDENTITY_BACKFILL_JOB}`,
+        `${QUEUE_CHAIN}/${CHAIN_ANCHOR_BACKFILL_JOB}`,
+        `${QUEUE_CHAIN_POLL}/${CHAIN_TX_CONFIRM_JOB}`,
+        `scheduled/${CHAIN_TX_POLL_TASK}`,
+        `scheduled/${CHAIN_BALANCE_CHECK_TASK}`,
+        `scheduled/${CHAIN_TESTNET_FUND_TASK}`,
+      ]),
+    );
     // Tareas programadas de la trazabilidad
     expect(registered).toEqual(
       expect.arrayContaining([
@@ -297,22 +360,21 @@ describe('Worker: outbox, colas y tareas programadas (e2e)', () => {
     expect(await queues.get('default').getJob(eventId)).toBeUndefined();
   });
 
-  it('winery.created llega al procesador de la cola chain', async () => {
-    const handler = moduleRef.get(WineryCreatedHandler);
+  it('winery.activated llega al procesador de la cola chain', async () => {
+    const handler = moduleRef.get(WineryActivatedHandler);
     const spy = jest.spyOn(handler, 'handle');
     const correlationId = `${run}-winery`;
     const event = await prisma.$transaction((tx) =>
       outbox.add(tx, {
-        type: 'winery.created',
+        type: 'winery.activated',
         aggregateType: 'winery',
         aggregateId: `${run}-winery`,
         queue: 'chain',
         payload: {
           wineryId: `${run}-winery`,
+          lotPrefix: 'EEE',
           ownerUserId: 'u',
-          walletId: 'w',
-          vaultId: 'dyn_vault_e2e',
-          stellarPublicKey: 'G',
+          activatedAt: new Date().toISOString(),
         },
         correlationId,
       }),

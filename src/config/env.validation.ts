@@ -1,13 +1,20 @@
 import * as Joi from 'joi';
+import {
+  assertChainEnvCoherent,
+  chainEnvValidationSchema,
+} from '../modules/chain/chain.config';
 
 /**
  * Validación de variables de entorno (OP-03).
  *
  * Solo es obligatorio lo que el backend usa hoy: base de datos, Redis y JWT.
- * Las integraciones que aún no existen (cadena, indexador) son opcionales y se
- * validan solo si se definen. Las variables de proveedores descartados
- * (Dynamic, Supabase, pasarela bancaria, contratos CONTRACT_* antiguos) ya no
- * se leen; si siguen en un .env antiguo se ignoran (`allowUnknown`).
+ * La cadena (Ola 3, contrato O3 §2.1) es opcional: sin sus variables la API
+ * arranca con la cadena deshabilitada; las que se definan se validan. Las
+ * variables de proveedores descartados (Dynamic, Supabase, pasarela bancaria,
+ * contratos CONTRACT_* antiguos) y las de antes de la Ola 3
+ * (`STELLAR_HORIZON_URL`, `STELLAR_SOROBAN_RPC_URL`, `STELLAR_RELAYER_SECRET_KEY`,
+ * `STELLAR_INDEXER_*`) ya no se leen; si siguen en un .env antiguo se ignoran
+ * (`allowUnknown`).
  */
 export const envValidationSchema = Joi.object({
   // Servidor HTTP
@@ -177,23 +184,9 @@ export const envValidationSchema = Joi.object({
   LOGIN_LOCK_EMAIL_THRESHOLD: Joi.number().integer().min(1).optional(),
   LOGIN_LOCK_IP_THRESHOLD: Joi.number().integer().min(1).optional(),
 
-  // Stellar / Soroban (opcional hasta la Ola 3)
-  STELLAR_NETWORK: Joi.string()
-    .valid('testnet', 'mainnet', 'futurenet', 'standalone')
-    .default('testnet'),
-  STELLAR_HORIZON_URL: Joi.string()
-    .uri({ scheme: ['http', 'https'] })
-    .default('https://horizon-testnet.stellar.org'),
-  STELLAR_SOROBAN_RPC_URL: Joi.string()
-    .uri({ scheme: ['http', 'https'] })
-    .default('https://soroban-testnet.stellar.org'),
-  STELLAR_RELAYER_SECRET_KEY: Joi.string()
-    .regex(/^S[A-Z0-9]{55}$/)
-    .optional()
-    .messages({
-      'string.pattern.base':
-        'STELLAR_RELAYER_SECRET_KEY must be a valid 56-character Stellar secret seed starting with S',
-    }),
+  // Cadena (Ola 3, contrato O3 §2.1): red, RPC, explorador, custodio de
+  // claves y puerta de emisión. Todas opcionales (src/modules/chain/chain.config.ts)
+  ...chainEnvValidationSchema,
 
   // Almacenamiento de objetos privado (OPS-06, SE-04): s3 (MinIO) o local
   STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
@@ -236,10 +229,6 @@ export const envValidationSchema = Joi.object({
   // Logs: json (por defecto, una línea por entrada) o text (legible en local)
   LOG_FORMAT: Joi.string().valid('json', 'text').default('json'),
 
-  // Indexador (opcional hasta la Ola 3)
-  STELLAR_INDEXER_POLL_INTERVAL_MS: Joi.number().min(1000).default(5000),
-  STELLAR_INDEXER_START_LEDGER: Joi.number().min(0).default(0),
-
   // Swagger UI en /docs y documento en /docs-json (SE-08). Sin definir:
   // activo fuera de producción, apagado en producción. El contrato versionado
   // es openapi.json.
@@ -262,4 +251,4 @@ export const envValidationSchema = Joi.object({
         'any.invalid': 'CORS_ALLOWED_ORIGINS is required in production',
       }),
     }),
-});
+}).custom(assertChainEnvCoherent);

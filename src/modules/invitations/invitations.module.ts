@@ -3,7 +3,6 @@ import { PrismaModule } from '@shared/prisma/prisma.module';
 import { MailModule } from '@modules/mail/mail.module';
 import { SettingsModule } from '@modules/settings/settings.module';
 import { OrganizationsModule } from '@modules/organizations/organizations.module';
-import { WalletsModule } from '@modules/wallets/wallets.module';
 import { AuthModule } from '@modules/auth/auth.module';
 import { InvitationsService } from './invitations.service';
 import {
@@ -23,7 +22,6 @@ import {
     MailModule,
     SettingsModule,
     OrganizationsModule,
-    WalletsModule,
     AuthModule,
   ],
   controllers: [

@@ -9,7 +9,6 @@ import {
   OrganizationStatusEnum,
   OrganizationTypeEnum,
   Prisma,
-  WalletPurposeEnum,
   WineryMemberRoleEnum,
 } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -36,7 +35,6 @@ import {
   PLATFORM_ORGANIZATION_ID,
   isRoleValidForType,
 } from '@modules/organizations/organization.constants';
-import { WalletsService } from '@modules/wallets/wallets.service';
 import { AuthService } from '@modules/auth/auth.service';
 import type { MfaChallengeBody } from '@modules/auth/mfa/mfa.service';
 import { MfaService } from '@modules/auth/mfa/mfa.service';
@@ -184,7 +182,6 @@ export class InvitationsService {
     private readonly links: AppLinks,
     private readonly settings: SettingsService,
     private readonly memberships: MembershipsService,
-    private readonly wallets: WalletsService,
     private readonly auth: AuthService,
     private readonly mfa: MfaService,
   ) {}
@@ -496,11 +493,8 @@ export class InvitationsService {
             },
           });
           uid = created.id;
-          await this.wallets.provisionUserWallet(
-            uid,
-            WalletPurposeEnum.CONSUMER_NFT,
-            tx,
-          );
+          // Sin billetera simulada (SE-02): el personal no tiene billetera;
+          // la cuenta de la bodega en la red es de la bodega (contrato O3 §3)
           await this.audit.record(tx, {
             action: AuditAction.USER_CREATED,
             resource: { type: 'user', id: uid },

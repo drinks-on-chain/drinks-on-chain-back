@@ -26,7 +26,14 @@ export type LotEventType =
   | 'FILE_ATTACHED'
   | 'DOSSIER_CLOSED'
   | 'LOT_REJECTED'
-  | 'LOT_DISCARDED';
+  | 'LOT_DISCARDED'
+  // Ola 3 (contrato O3 §11): tokenización y anclaje
+  | 'TOKENIZATION_AUTHORIZED'
+  | 'NFT_MINTED'
+  | 'COLLECTION_PUBLISHED'
+  | 'DOSSIER_ANCHORED'
+  | 'TOKENS_REDEEMABLE'
+  | 'SHORTFALL_DETECTED';
 
 export const LOT_EVENT_TYPES: readonly LotEventType[] = [
   'LOT_CREATED',
@@ -53,6 +60,13 @@ export const LOT_EVENT_TYPES: readonly LotEventType[] = [
   'DOSSIER_CLOSED',
   'LOT_REJECTED',
   'LOT_DISCARDED',
+  // Ola 3 (contrato O3 §11): tokenización y anclaje
+  'TOKENIZATION_AUTHORIZED',
+  'NFT_MINTED',
+  'COLLECTION_PUBLISHED',
+  'DOSSIER_ANCHORED',
+  'TOKENS_REDEEMABLE',
+  'SHORTFALL_DETECTED',
 ];
 
 /** Eventos que ve el pasaporte público (§12). */
@@ -71,6 +85,11 @@ const PUBLIC_TYPES = new Set<LotEventType>([
   'LAB_REGISTERED',
   'DOSSIER_CLOSED',
   'LOT_DISCARDED',
+  // Ola 3: `TOKENIZATION_AUTHORIZED` y `SHORTFALL_DETECTED` son internos
+  'NFT_MINTED',
+  'COLLECTION_PUBLISHED',
+  'DOSSIER_ANCHORED',
+  'TOKENS_REDEEMABLE',
 ]);
 
 export interface LotEventInput {

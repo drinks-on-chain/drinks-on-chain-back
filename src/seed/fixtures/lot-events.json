@@ -4665,9 +4665,7 @@
       },
       "targetType": "HARVEST_BATCH",
       "kind": "AMEND",
-      "fields": [
-        "temperatureAtIntakeC"
-      ],
+      "fields": ["temperatureAtIntakeC"],
       "reason": "Lectura del termómetro mal transcrita en la planilla de recepción",
       "openedIssueIds": [],
       "resolvedIssueIds": []

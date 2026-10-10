@@ -49,7 +49,9 @@ flowchart LR
 
 `createWinery` (bodega + membresía de dueño + billetera + claves de la bodega) y `createAndAddMember` (usuario + billetera + membresía) corren en `prisma.$transaction` y escriben en la misma transacción los eventos `winery.created` y `member.added` (cola `chain`). Sus procesadores (`src/modules/wineries/jobs/`) hacen el efecto externo del alta de la bóveda (`IWalletProvider.activateCustodialVault`, simulado hasta la Ola 3). Las respuestas de la API no cambian: la dirección se genera en local dentro de la transacción, como hará la derivación de direcciones de la Ola 3.
 
-Los repositorios y `WalletsService` aceptan un `tx` opcional para participar en la transacción de quien los llama.
+Los repositorios aceptan un `tx` opcional para participar en la transacción de quien los llama.
+
+> **Ola 3 (SE-02)**: lo anterior describe la Ola 0. Las bóvedas simuladas se retiraron en la apertura de la Ola 3: ya no existen `IWalletProvider`, los eventos `winery.created` y `member.added` ni sus procesadores (nadie los emitía desde H1), y aceptar una invitación no crea ninguna billetera. El evento de la cola `chain` del módulo de bodegas es `winery.activated`, que desde el paso 3.2 crea la cuenta y el contrato de la bodega en la red.
 
 ## Eventos y tareas de los lotes (Ola 2)
 

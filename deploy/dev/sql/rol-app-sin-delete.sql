@@ -87,6 +87,30 @@ REVOKE DELETE, TRUNCATE ON
   "trace_corrections"
 FROM :"app_role";
 
+-- Cadena y tokenización (Ola 3, contrato O3 §1): lo que registra hechos es de
+-- solo inserción y el estado vigente se actualiza con historial; nada se borra
+REVOKE DELETE, TRUNCATE ON
+  "chain_accounts",
+  "nft_contracts",
+  "chain_transactions",
+  "chain_tx_attempts",
+  "chain_events",
+  "chain_cursors",
+  "chain_alerts",
+  "reconciliation_runs",
+  "tokenization_requests",
+  "tokenization_request_changes",
+  "collections",
+  "collection_images",
+  "collection_status_history",
+  "mints",
+  "tokens",
+  "lot_closures",
+  "lot_closure_items",
+  "dossier_anchors",
+  "consumer_addresses"
+FROM :"app_role";
+
 -- Bitácora: inmutable también por permisos (además del trigger)
 REVOKE UPDATE, DELETE, TRUNCATE ON "audit_events" FROM :"app_role";
 

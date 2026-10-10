@@ -1,9 +1,5 @@
 {
-  "moduleFileExtensions": [
-    "js",
-    "json",
-    "ts"
-  ],
+  "moduleFileExtensions": ["js", "json", "ts"],
   "rootDir": ".",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
@@ -22,6 +18,6 @@
   },
   "testTimeout": 30000,
   "transformIgnorePatterns": [
-    "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib)"
+    "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib|uint8array-extras|@exodus|eventsource|eventsource-parser|smol-toml|feaxios|is-retry-allowed)"
   ]
 }

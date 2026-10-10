@@ -207,8 +207,8 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
       wineries: fx.wineries.length,
       wineryMembers: demo.wineryMemberships,
       memberships: demo.wineryMemberships + demo.platformMemberships + 1,
-      // superusuario + billeteras de las personas de demostración
-      wallets: demo.wallets + 1,
+      // SE-02: la semilla ya no crea billeteras simuladas
+      wallets: 0,
       terroirs: fx.terroirs.length,
       harvestBatches: fx.harvestBatches.length,
       tanks: seeded.fermentationTanks.length,
@@ -486,6 +486,24 @@ describe('Semilla de demostración (e2e, 0.10 OPS-09)', () => {
       prisma.bottleUnit.count({
         where: { lotId: discarded.id, status: 'ACTIVE' },
       }),
+    ).resolves.toBe(0);
+  });
+
+  it('ningún embotellado sembrado figura como anclado: eso solo lo escribe el anclaje real (contrato O3 §7.2)', async () => {
+    await expect(
+      prisma.bottlingBatch.count({
+        where: {
+          OR: [
+            { isAnchoredOnChain: true },
+            { blockchainAnchorTxHash: { not: null } },
+            { anchoredAt: { not: null } },
+          ],
+        },
+      }),
+    ).resolves.toBe(0);
+    await expect(prisma.dossierAnchor.count()).resolves.toBe(0);
+    await expect(
+      prisma.lot.count({ where: { stage: 'ANCHORED' } }),
     ).resolves.toBe(0);
   });
 

@@ -46,11 +46,25 @@ export interface EnvironmentVariables {
   APP_URL_POS?: string;
   APP_URL_MARKETPLACE?: string;
 
-  // Stellar / Soroban (opcional hasta la Ola 3)
-  STELLAR_NETWORK: 'testnet' | 'mainnet' | 'futurenet' | 'standalone';
-  STELLAR_HORIZON_URL: string;
-  STELLAR_SOROBAN_RPC_URL: string;
-  STELLAR_RELAYER_SECRET_KEY?: string;
+  // Cadena (Ola 3, contrato O3 §2.1): todas opcionales. Los secretos
+  // (CHAIN_SECRET_*, CHAIN_DEV_WINERY_SEED, CHAIN_CONSUMER_MASTER_SEED) solo
+  // los lee el custodio ENV, en el worker
+  STELLAR_NETWORK: 'TESTNET' | 'PUBLIC' | 'LOCAL';
+  STELLAR_NETWORK_PASSPHRASE?: string;
+  STELLAR_RPC_URL?: string;
+  STELLAR_EXPLORER_BASE_URL?: string;
+  STELLAR_HOME_DOMAIN?: string;
+  WINERY_NFT_WASM_HASH?: string;
+  CHAIN_CUSTODY_DRIVER?: 'ENV' | 'LOCAL' | '';
+  CHAIN_MINT_ENABLED?: boolean | '';
+  CHAIN_TX_MAX_FEE_STROOPS?: string;
+  CHAIN_OPERATIONS_MIN_BALANCE_XLM?: string;
+  CHAIN_ANCHOR_MIN_BALANCE_XLM?: string;
+  CHAIN_WINERY_STARTING_BALANCE_XLM?: string;
+  CHAIN_TTL_EXTEND_BELOW_DAYS?: number | '';
+  CHAIN_CONSUMER_SEED_CHECK_ADDRESS?: string;
+  PASSPORT_BASE_URL?: string;
+  API_PUBLIC_URL?: string;
 
   // Almacenamiento de objetos privado
   STORAGE_DRIVER: 'local' | 's3';
@@ -68,10 +82,6 @@ export interface EnvironmentVariables {
 
   // Logs
   LOG_FORMAT: 'json' | 'text';
-
-  // Indexador (opcional hasta la Ola 3)
-  STELLAR_INDEXER_POLL_INTERVAL_MS: number;
-  STELLAR_INDEXER_START_LEDGER: number;
 
   // Swagger UI (/docs) y documento (/docs-json)
   SWAGGER_ENABLED?: boolean;

@@ -18,6 +18,10 @@ import {
 import { ErrorDetailDto } from '@shared/dto/api-error-response.dto';
 import { JSON_VALUE_NOT_NULL_SCHEMA } from '@shared/dto/json-value.schema';
 import { WineryScopedPaginationQueryDto } from '@shared/dto/pagination-query.dto';
+import {
+  LOT_TOKENIZATION_STATES,
+  type LotTokenizationState,
+} from '@modules/tokenization/tokenization.constants';
 
 export const LOT_STAGES = [
   'ORIGIN',
@@ -272,6 +276,32 @@ class LotPhytoCountsDto {
   @ApiProperty({ minimum: 0 }) rejected!: number;
 }
 
+export class LotTokenizationMarkDto {
+  @ApiProperty({
+    enum: LOT_TOKENIZATION_STATES,
+    enumName: 'LotTokenizationState',
+    example: 'NONE',
+  })
+  state!: LotTokenizationState;
+
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'Cuota autorizada vigente (0 sin colección)',
+  })
+  quota!: number;
+
+  @ApiProperty({
+    type: 'integer',
+    minimum: 0,
+    description: 'NFT emitidos confirmados',
+  })
+  minted!: number;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  collectionId!: string | null;
+}
+
 export class LotSummaryDto {
   @ApiProperty({ format: 'uuid' })
   id!: string;
@@ -346,6 +376,14 @@ export class LotSummaryDto {
 
   @ApiProperty({ minimum: 0 })
   complianceIssuesOpen!: number;
+
+  @ApiProperty({
+    type: () => LotTokenizationMarkDto,
+    description:
+      'Marca de tokenización (contrato O3 §5.3); no es una etapa. Sin solicitud ni colección: ' +
+      '`{ state: NONE, quota: 0, minted: 0, collectionId: null }`',
+  })
+  tokenization!: LotTokenizationMarkDto;
 
   @ApiProperty({ example: '2026-09-27T12:00:00.000Z' })
   createdAt!: string;

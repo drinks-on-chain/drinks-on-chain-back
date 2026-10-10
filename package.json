@@ -1,6 +1,6 @@
 {
   "name": "drinks-on-chain-backend",
-  "version": "0.2.0",
+  "version": "0.3.0-rc.0",
   "description": "Backend API para Trazabilidad B2B y Tokenización NFT de Bebidas en Stellar Soroban",
   "author": "Drinks on Chain Team",
   "private": true,
@@ -52,12 +52,12 @@
     "@nestjs/swagger": "^11.0.6",
     "@nestjs/throttler": "^6.4.0",
     "@prisma/client": "^6.4.1",
-    "@stellar/stellar-sdk": "^13.3.0",
+    "@stellar/stellar-sdk": "17.2.1",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.41.6",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
-    "handlebars": "^4.7.9",
+    "handlebars": "^4.7.10",
     "helmet": "^8.0.0",
     "ioredis": "^5.6.0",
     "joi": "^17.13.8",
@@ -153,7 +153,7 @@
       "^@config/(.*)$": "<rootDir>/config/$1"
     },
     "transformIgnorePatterns": [
-      "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib)"
+      "[/\\\\]node_modules[/\\\\](?!\\.pnpm|@scure|@noble|otplib|@otplib|uint8array-extras|@exodus|eventsource|eventsource-parser|smol-toml|feaxios|is-retry-allowed)"
     ]
   }
 }

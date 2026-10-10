@@ -493,60 +493,73 @@ model User {
   mfaChallenges            MfaChallenge[]
   invitationsSent          Invitation[]        @relation("InvitationInvitedBy")
   assignedApplications     WineryApplication[] @relation("WineryApplicationAssignee")
+  consumerAddress          ConsumerAddress?
 
   @@map("users")
 }
 
 model Winery {
-  id                    String             @id @default(uuid()) @db.Uuid
-  legalName             String             @map("legal_name") @db.VarChar(300)
-  commercialName        String             @map("commercial_name") @db.VarChar(300)
-  beverageCategory      WineryCategoryEnum @map("beverage_category")
-  taxIdNit              String             @unique @map("tax_id_nit") @db.VarChar(20)
-  senasagSanitaryReg    String?            @unique @map("senasag_sanitary_reg") @db.VarChar(50)
-  geographicRegion      String             @map("geographic_region") @db.VarChar(100)
-  countryCode           String             @default("BO") @map("country_code") @db.Char(2)
-  address               String?            @db.Text
-  contactEmail          String             @map("contact_email") @db.VarChar(255)
-  contactPhone          String?            @map("contact_phone") @db.VarChar(20)
-  logoUrl               String?            @map("logo_url") @db.VarChar(500)
-  stellarPublicKey      String?            @unique @map("stellar_public_key") @db.VarChar(60)
-  dynamicVaultId        String?            @unique @map("dynamic_vault_id") @db.VarChar(200)
-  onchainProducerId     String?            @unique @map("onchain_producer_id") @db.VarChar(100)
-  onchainRegisterTxHash String?            @map("onchain_register_tx_hash") @db.VarChar(100)
-  isExportCertified     Boolean            @default(false) @map("is_export_certified")
-  certificationStatus   WineryStatusEnum   @default(INVITED) @map("certification_status")
-  approvedAt            DateTime?          @map("approved_at") @db.Timestamptz(6)
-  approvedByUserId      String?            @map("approved_by_user_id") @db.Uuid
+  id                     String             @id @default(uuid()) @db.Uuid
+  legalName              String             @map("legal_name") @db.VarChar(300)
+  commercialName         String             @map("commercial_name") @db.VarChar(300)
+  beverageCategory       WineryCategoryEnum @map("beverage_category")
+  taxIdNit               String             @unique @map("tax_id_nit") @db.VarChar(20)
+  senasagSanitaryReg     String?            @unique @map("senasag_sanitary_reg") @db.VarChar(50)
+  geographicRegion       String             @map("geographic_region") @db.VarChar(100)
+  countryCode            String             @default("BO") @map("country_code") @db.Char(2)
+  address                String?            @db.Text
+  contactEmail           String             @map("contact_email") @db.VarChar(255)
+  contactPhone           String?            @map("contact_phone") @db.VarChar(20)
+  logoUrl                String?            @map("logo_url") @db.VarChar(500)
+  stellarPublicKey       String?            @unique @map("stellar_public_key") @db.VarChar(60)
+  dynamicVaultId         String?            @unique @map("dynamic_vault_id") @db.VarChar(200)
+  onchainProducerId      String?            @unique @map("onchain_producer_id") @db.VarChar(100)
+  onchainRegisterTxHash  String?            @map("onchain_register_tx_hash") @db.VarChar(100)
+  /// Cuenta vigente de la bodega en la red (Ola 3, contrato O3 §3).
+  chainAccountId         String?            @unique @map("chain_account_id") @db.Uuid
+  /// SE-02: dirección simulada (sin clave) que tenía `stellar_public_key` antes de la Ola 3.
+  legacySimulatedAddress String?            @map("legacy_simulated_address") @db.VarChar(60)
+  /// SE-02: los cuatro valores simulados originales (`stellarPublicKey`, `dynamicVaultId`, `onchainProducerId`, `onchainRegisterTxHash`).
+  legacySimulatedData    Json?              @map("legacy_simulated_data") @db.JsonB
+  isExportCertified      Boolean            @default(false) @map("is_export_certified")
+  certificationStatus    WineryStatusEnum   @default(INVITED) @map("certification_status")
+  approvedAt             DateTime?          @map("approved_at") @db.Timestamptz(6)
+  approvedByUserId       String?            @map("approved_by_user_id") @db.Uuid
   /// Ruta pública (`/v1/public/wineries/{slug}`): única y estable (no cambia al renombrar).
-  slug                  String?            @unique @db.VarChar(120)
+  slug                   String?            @unique @db.VarChar(120)
   /// Prefijo del código de lote (ORG-05): 3–5 letras, único y definitivo; se asigna al activarse.
-  lotPrefix             String?            @unique @map("lot_prefix") @db.VarChar(5)
+  lotPrefix              String?            @unique @map("lot_prefix") @db.VarChar(5)
   /// Primera activación (el dueño aceptó su invitación).
-  activatedAt           DateTime?          @map("activated_at") @db.Timestamptz(6)
-  publicStory           String?            @map("public_story") @db.Text
-  website               String?            @db.VarChar(500)
-  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  activatedAt            DateTime?          @map("activated_at") @db.Timestamptz(6)
+  publicStory            String?            @map("public_story") @db.Text
+  website                String?            @db.VarChar(500)
+  createdAt              DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   // Relaciones
-  approvedByUser    User?                @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
+  approvedByUser       User?                 @relation("ApprovedByUser", fields: [approvedByUserId], references: [id])
   /// Solicitud de alta aprobada que la creó (camino A).
-  application       WineryApplication?
-  statusChanges     WineryStatusChange[]
+  application          WineryApplication?
+  statusChanges        WineryStatusChange[]
   /// Organización de la bodega (enlace 1:1, mismo id).
-  organization      Organization?
-  members           WineryMember[]
-  wallets           UserWallet[]
-  terroirs          Terroir[]
-  harvestBatches    HarvestBatch[]
-  fermentationTanks FermentationTank[]
-  wineAgingBatches  WineAgingBatch[]
-  productionBatches ProductionBatch[]
-  bottlingBatches   BottlingBatch[]
-  settingOverrides  SettingOverride[]
-  lots              Lot[]
-  lotSequences      LotSequence[]
+  organization         Organization?
+  members              WineryMember[]
+  wallets              UserWallet[]
+  terroirs             Terroir[]
+  harvestBatches       HarvestBatch[]
+  fermentationTanks    FermentationTank[]
+  wineAgingBatches     WineAgingBatch[]
+  productionBatches    ProductionBatch[]
+  bottlingBatches      BottlingBatch[]
+  settingOverrides     SettingOverride[]
+  lots                 Lot[]
+  lotSequences         LotSequence[]
+  chainAccount         ChainAccount?         @relation("WineryCurrentChainAccount", fields: [chainAccountId], references: [id], onDelete: SetNull)
+  chainAccounts        ChainAccount[]        @relation("WineryChainAccounts")
+  nftContracts         NftContract[]
+  chainTransactions    ChainTransaction[]
+  tokenizationRequests TokenizationRequest[]
+  collections          Collection[]
 
   @@map("wineries")
 }
@@ -980,6 +993,10 @@ model UserWallet {
   walletType           WalletTypeEnum    @default(CUSTODIAL) @map("wallet_type")
   walletPurpose        WalletPurposeEnum @map("wallet_purpose")
   isPrimary            Boolean           @default(true) @map("is_primary")
+  /// SE-02 (contrato O3 §3.3): toda la tabla son direcciones simuladas sin
+  /// clave; quedan marcadas `INVALID_SIMULATED`, nadie las lee y la tabla se
+  /// borra en la contracción de H3.
+  status               String            @default("INVALID_SIMULATED") @db.VarChar(20)
   createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
 
   // Relaciones
@@ -1221,34 +1238,36 @@ model ProductionBatch {
 }
 
 model BottlingBatch {
-  id                     String           @id @default(uuid()) @db.Uuid
-  wineryId               String           @map("winery_id") @db.Uuid
-  wineAgingBatchId       String?          @map("wine_aging_batch_id") @db.Uuid
-  productionBatchId      String?          @map("production_batch_id") @db.Uuid
-  productType            BeverageTypeEnum @map("product_type")
-  internationalLotCode   String           @unique @map("international_lot_code") @db.VarChar(100)
-  finalAlcoholAbv        Decimal          @map("final_alcohol_abv") @db.Decimal(5, 2)
-  waterDilutionLiters    Decimal?         @map("water_dilution_liters") @db.Decimal(10, 3)
-  totalBottlesPackaged   Int              @map("total_bottles_packaged")
-  packagingFormatCl      Int              @map("packaging_format_cl")
-  bottleType             String?          @map("bottle_type") @db.VarChar(100)
-  labelDesignUrl         String?          @map("label_design_url") @db.VarChar(500)
-  bottlingDate           DateTime         @map("bottling_date") @db.Date
-  releasedByMemberId     String?          @map("released_by_member_id") @db.Uuid
-  blockchainAnchorTxHash String?          @map("blockchain_anchor_tx_hash") @db.VarChar(100)
-  blockchainDataHash     String?          @map("blockchain_data_hash") @db.Char(64)
-  isAnchoredOnChain      Boolean          @default(false) @map("is_anchored_on_chain")
-  anchoredAt             DateTime?        @map("anchored_at") @db.Timestamptz(6)
-  qrBatchUrl             String?          @map("qr_batch_url") @db.VarChar(500)
-  createdAt              DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  id                          String           @id @default(uuid()) @db.Uuid
+  wineryId                    String           @map("winery_id") @db.Uuid
+  wineAgingBatchId            String?          @map("wine_aging_batch_id") @db.Uuid
+  productionBatchId           String?          @map("production_batch_id") @db.Uuid
+  productType                 BeverageTypeEnum @map("product_type")
+  internationalLotCode        String           @unique @map("international_lot_code") @db.VarChar(100)
+  finalAlcoholAbv             Decimal          @map("final_alcohol_abv") @db.Decimal(5, 2)
+  waterDilutionLiters         Decimal?         @map("water_dilution_liters") @db.Decimal(10, 3)
+  totalBottlesPackaged        Int              @map("total_bottles_packaged")
+  packagingFormatCl           Int              @map("packaging_format_cl")
+  bottleType                  String?          @map("bottle_type") @db.VarChar(100)
+  labelDesignUrl              String?          @map("label_design_url") @db.VarChar(500)
+  bottlingDate                DateTime         @map("bottling_date") @db.Date
+  releasedByMemberId          String?          @map("released_by_member_id") @db.Uuid
+  blockchainAnchorTxHash      String?          @map("blockchain_anchor_tx_hash") @db.VarChar(100)
+  blockchainDataHash          String?          @map("blockchain_data_hash") @db.Char(64)
+  isAnchoredOnChain           Boolean          @default(false) @map("is_anchored_on_chain")
+  anchoredAt                  DateTime?        @map("anchored_at") @db.Timestamptz(6)
+  /// Hash de anclaje **simulado** anterior al paso 3.5 (nunca estuvo en la red)
+  legacySimulatedAnchorTxHash String?          @map("legacy_simulated_anchor_tx_hash") @db.VarChar(100)
+  qrBatchUrl                  String?          @map("qr_batch_url") @db.VarChar(500)
+  createdAt                   DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
   /// Un embotellado por lote (S-10): restricción única
-  lotId                  String           @unique @map("lot_id") @db.Uuid
-  availableLiters        Decimal?         @map("available_liters") @db.Decimal(12, 3)
-  leftoverLiters         Decimal?         @map("leftover_liters") @db.Decimal(12, 3)
-  leftoverDisposition    String?          @map("leftover_disposition") @db.VarChar(20)
-  leftoverNotes          String?          @map("leftover_notes") @db.Text
-  labelDesignKey         String?          @map("label_design_key") @db.VarChar(500)
-  createdByMembershipId  String?          @map("created_by_membership_id") @db.Uuid
+  lotId                       String           @unique @map("lot_id") @db.Uuid
+  availableLiters             Decimal?         @map("available_liters") @db.Decimal(12, 3)
+  leftoverLiters              Decimal?         @map("leftover_liters") @db.Decimal(12, 3)
+  leftoverDisposition         String?          @map("leftover_disposition") @db.VarChar(20)
+  leftoverNotes               String?          @map("leftover_notes") @db.Text
+  labelDesignKey              String?          @map("label_design_key") @db.VarChar(500)
+  createdByMembershipId       String?          @map("created_by_membership_id") @db.Uuid
 
   // Relaciones
   winery           Winery             @relation(fields: [wineryId], references: [id], onDelete: Restrict)
@@ -1382,20 +1401,23 @@ model Lot {
   createdAt               DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt               DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  winery            Winery               @relation(fields: [wineryId], references: [id], onDelete: Restrict)
-  harvestBatches    HarvestBatch[]
-  fermentationTanks FermentationTank[]
-  wineAgingBatches  WineAgingBatch[]
-  productionBatches ProductionBatch[]
-  bottlingBatch     BottlingBatch?
-  labAnalyses       BatchLabAnalysis[]
-  events            LotEvent[]
-  bottleUnits       BottleUnit[]
-  bottleCodeExports BottleCodeExport[]
-  corrections       TraceCorrection[]
-  complianceIssues  LotComplianceIssue[]
-  attachments       LotAttachment[]
-  dossier           LotDossier?
+  winery               Winery                @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  harvestBatches       HarvestBatch[]
+  fermentationTanks    FermentationTank[]
+  wineAgingBatches     WineAgingBatch[]
+  productionBatches    ProductionBatch[]
+  bottlingBatch        BottlingBatch?
+  labAnalyses          BatchLabAnalysis[]
+  events               LotEvent[]
+  bottleUnits          BottleUnit[]
+  bottleCodeExports    BottleCodeExport[]
+  corrections          TraceCorrection[]
+  complianceIssues     LotComplianceIssue[]
+  attachments          LotAttachment[]
+  dossier              LotDossier?
+  tokenizationRequests TokenizationRequest[]
+  collection           Collection?
+  lotClosure           LotClosure?
 
   @@index([wineryId, stage])
   @@index([wineryId, updatedAt])
@@ -1626,7 +1648,8 @@ model LotDossier {
   closedAt             DateTime? @map("closed_at") @db.Timestamptz(6)
   closedByMembershipId String?   @map("closed_by_membership_id") @db.Uuid
 
-  lot Lot @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  lot    Lot            @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  anchor DossierAnchor?
 
   @@map("lot_dossiers")
 }
@@ -1640,4 +1663,599 @@ model LotBackfillPending {
   lastError      String?  @map("last_error") @db.Text
 
   @@map("lot_backfill_pending")
+}
+
+// -----------------------------------------------------------------------------
+// CADENA Y TOKENIZACIÓN (Ola 3; plan/contratos/o3-tokenizacion.md §1)
+// Estados y tipos como texto (los valores viven en `src/modules/chain` y
+// `src/modules/tokenization`). Lo que registra hechos (transacciones,
+// intentos, eventos, historiales) es de solo inserción. Los actores se guardan
+// por su id, sin clave foránea, como en la bitácora. Los índices parciales y
+// las restricciones `CHECK` están en la migración `o3_cadena_expand`
+// (Prisma no los expresa).
+// -----------------------------------------------------------------------------
+
+/// Cuenta en la red (§2.1): de la plataforma (`OPERATIONS`, `ANCHOR`,
+/// `CONSUMER_SEED`) o de una bodega (`WINERY`, una por bodega y red). La clave
+/// nunca está aquí: `custodyKeyRef` la nombra en el custodio.
+model ChainAccount {
+  id              String    @id @default(uuid()) @db.Uuid
+  /// `OPERATIONS` | `ANCHOR` | `WINERY` | `CONSUMER_SEED`
+  role            String    @db.VarChar(20)
+  /// `TESTNET` | `PUBLIC` | `LOCAL`
+  network         String    @db.VarChar(10)
+  wineryId        String?   @map("winery_id") @db.Uuid
+  /// StrKey `G…`; `null` hasta que el custodio crea la clave
+  address         String?   @db.VarChar(56)
+  /// `platform-operations` | `platform-anchor` | `winery-{wineryId}` | `consumer-master-seed`
+  custodyKeyRef   String    @map("custody_key_ref") @db.VarChar(100)
+  /// Driver `ENV`: índice SEP-0005 de la clave de la bodega (S-1); nunca se reutiliza
+  derivationIndex Int?      @map("derivation_index")
+  homeDomain      String?   @map("home_domain") @db.VarChar(255)
+  /// Identidad (§3.1): `NOT_PROVISIONED` | `PROVISIONING` | `ACTIVE` | `FAILED` | `PAUSED`
+  status          String    @default("NOT_PROVISIONED") @db.VarChar(20)
+  lastError       Json?     @map("last_error") @db.JsonB
+  /// `chain_transactions.id` de `CREATE_WINERY_ACCOUNT`
+  createdTxId     String?   @map("created_tx_id") @db.Uuid
+  confirmedAt     DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery    Winery?       @relation("WineryChainAccounts", fields: [wineryId], references: [id], onDelete: Restrict)
+  currentOf Winery?       @relation("WineryCurrentChainAccount")
+  contracts NftContract[]
+
+  @@unique([network, address])
+  @@unique([network, custodyKeyRef])
+  @@unique([network, derivationIndex])
+  @@unique([wineryId, network])
+  @@index([role, network])
+  @@map("chain_accounts")
+}
+
+/// Contrato NFT de una bodega (§3.1): uno vigente por bodega y red.
+model NftContract {
+  id              String    @id @default(uuid()) @db.Uuid
+  wineryId        String    @map("winery_id") @db.Uuid
+  chainAccountId  String    @map("chain_account_id") @db.Uuid
+  network         String    @db.VarChar(10)
+  /// StrKey `C…`; `null` hasta desplegarse
+  address         String?   @db.VarChar(56)
+  wasmHash        String    @map("wasm_hash") @db.Char(64)
+  name            String    @db.VarChar(40)
+  symbol          String    @db.VarChar(10)
+  baseUri         String    @map("base_uri") @db.VarChar(200)
+  operatorAddress String    @map("operator_address") @db.VarChar(56)
+  paused          Boolean   @default(false)
+  /// `PENDING` | `ACTIVE` | `FAILED` | `RETIRED`
+  status          String    @default("PENDING") @db.VarChar(12)
+  /// `chain_transactions.id` de `DEPLOY_WINERY_CONTRACT`
+  deployedTxId    String?   @map("deployed_tx_id") @db.Uuid
+  deployedAt      DateTime? @map("deployed_at") @db.Timestamptz(6)
+  /// Leído de vuelta: `get_admin`, `has_role(operator)`, `name`, `symbol`
+  verifiedAt      DateTime? @map("verified_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery       Winery       @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  chainAccount ChainAccount @relation(fields: [chainAccountId], references: [id], onDelete: Restrict)
+  collections  Collection[]
+  tokens       Token[]
+
+  @@unique([network, address])
+  @@index([wineryId, network])
+  @@map("nft_contracts")
+}
+
+/// Intención de dominio y su transacción en la red (§2.2, §2.3).
+model ChainTransaction {
+  id                String    @id @default(uuid()) @db.Uuid
+  /// `ChainTxKind` (§2.2)
+  kind              String    @db.VarChar(30)
+  /// `PENDING` | `BUILDING` | `SUBMITTED` | `CONFIRMED` | `RETRYING` | `FAILED`
+  status            String    @default("PENDING") @db.VarChar(12)
+  network           String    @db.VarChar(10)
+  /// Idempotencia de la intención: `mint:{mintId}:{chunk}`, `anchor:{dossierId}`…
+  intentKey         String    @unique @map("intent_key") @db.VarChar(200)
+  /// `WINERY` | `CONTRACT` | `MINT` | `LOT` | `TOKEN` | `PLATFORM`
+  subjectType       String    @map("subject_type") @db.VarChar(12)
+  subjectId         String    @map("subject_id") @db.VarChar(100)
+  wineryId          String?   @map("winery_id") @db.Uuid
+  /// Parámetros validados (solo identificadores de dominio; sin secretos ni XDR)
+  intent            Json      @default("{}") @db.JsonB
+  /// Quien paga
+  sourceAccount     String?   @map("source_account") @db.VarChar(56)
+  /// `[{ role, address, wineryId }]`
+  signers           Json      @default("[]") @db.JsonB
+  txHash            String?   @map("tx_hash") @db.Char(64)
+  ledger            Int?
+  confirmedAt       DateTime? @map("confirmed_at") @db.Timestamptz(6)
+  attempts          Int       @default(0)
+  /// `{ code, message, retryable }`
+  lastError         Json?     @map("last_error") @db.JsonB
+  feeChargedStroops BigInt?   @map("fee_charged_stroops")
+  rentFeeStroops    BigInt?   @map("rent_fee_stroops")
+  maxFeeStroops     BigInt?   @map("max_fee_stroops")
+  /// `{ returnValue, contractEvents }`
+  result            Json?     @db.JsonB
+  nextAttemptAt     DateTime? @map("next_attempt_at") @db.Timestamptz(6)
+  /// `timeBounds.maxTime` de la última construcción (idempotencia en la red, §2.3)
+  maxTime           DateTime? @map("max_time") @db.Timestamptz(6)
+  requestedByUserId String?   @map("requested_by_user_id") @db.Uuid
+  requestedByName   String?   @map("requested_by_name") @db.VarChar(200)
+  /// `API` | `WORKER`
+  requestedSource   String    @default("WORKER") @map("requested_source") @db.VarChar(6)
+  abandonedAt       DateTime? @map("abandoned_at") @db.Timestamptz(6)
+  abandonedBy       String?   @map("abandoned_by") @db.VarChar(200)
+  abandonReason     String?   @map("abandon_reason") @db.Text
+  correlationId     String?   @map("correlation_id") @db.VarChar(100)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery        Winery?          @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  attemptsLog   ChainTxAttempt[]
+  events        ChainEvent[]
+  dossierAnchor DossierAnchor?
+
+  @@index([status, nextAttemptAt])
+  @@index([kind, status])
+  @@index([wineryId, createdAt])
+  @@index([subjectType, subjectId])
+  @@index([txHash])
+  @@index([createdAt])
+  @@map("chain_transactions")
+}
+
+/// Historial de intentos de una transacción (§2.3 `history`): solo inserción.
+model ChainTxAttempt {
+  id            String   @id @default(uuid()) @db.Uuid
+  transactionId String   @map("transaction_id") @db.Uuid
+  attempt       Int
+  status        String   @db.VarChar(12)
+  at            DateTime @default(now()) @db.Timestamptz(6)
+  txHash        String?  @map("tx_hash") @db.Char(64)
+  sequence      String?  @db.VarChar(20)
+  errorCode     String?  @map("error_code") @db.VarChar(60)
+  /// Código de resultado de la red o del contrato
+  detail        String?  @db.Text
+
+  transaction ChainTransaction @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([transactionId, attempt])
+  @@map("chain_tx_attempts")
+}
+
+/// Evento de un contrato leído por el indexador (§8.1): solo inserción.
+model ChainEvent {
+  id                   String   @id @default(uuid()) @db.Uuid
+  rpcEventId           String   @unique @map("rpc_event_id") @db.VarChar(100)
+  network              String   @db.VarChar(10)
+  contractAddress      String   @map("contract_address") @db.VarChar(56)
+  wineryId             String?  @map("winery_id") @db.Uuid
+  ledger               Int
+  ledgerClosedAt       DateTime @map("ledger_closed_at") @db.Timestamptz(6)
+  txHash               String   @map("tx_hash") @db.Char(64)
+  /// Primer topic: `lot_minted`, `transfer`…
+  type                 String   @db.VarChar(40)
+  topics               Json     @default("[]") @db.JsonB
+  data                 Json     @default("{}") @db.JsonB
+  matchedTransactionId String?  @map("matched_transaction_id") @db.Uuid
+  originatedBySystem   Boolean  @default(false) @map("originated_by_system")
+  processedAt          DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  matchedTransaction ChainTransaction? @relation(fields: [matchedTransactionId], references: [id], onDelete: Restrict)
+
+  @@index([contractAddress, ledger])
+  @@index([txHash])
+  @@index([type, ledger])
+  @@index([originatedBySystem, ledger])
+  @@map("chain_events")
+}
+
+/// Cursor del indexador por red (§8.1).
+model ChainCursor {
+  network    String   @db.VarChar(10)
+  /// `events`
+  name       String   @db.VarChar(40)
+  cursor     String?  @db.VarChar(200)
+  lastLedger Int?     @map("last_ledger")
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@id([network, name])
+  @@map("chain_cursors")
+}
+
+/// Ejecución de la conciliación (§8.2).
+model ReconciliationRun {
+  id                 String    @id @default(uuid()) @db.Uuid
+  /// `ALL` | `CONTRACT` | `COLLECTION`
+  scope              String    @db.VarChar(12)
+  subjectId          String?   @map("subject_id") @db.VarChar(100)
+  /// `SCHEDULED` | `MANUAL` | `INDEXER_GAP`
+  trigger            String    @db.VarChar(12)
+  /// `LIGHT` | `FULL`
+  depth              String    @db.VarChar(6)
+  /// `RUNNING` | `OK` | `DIFFERENCES` | `ERROR`
+  status             String    @default("RUNNING") @db.VarChar(12)
+  startedAt          DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt         DateTime? @map("finished_at") @db.Timestamptz(6)
+  checks             Int       @default(0)
+  issuesOpened       Int       @default(0) @map("issues_opened")
+  issuesAutoResolved Int       @default(0) @map("issues_auto_resolved")
+  requestedByUserId  String?   @map("requested_by_user_id") @db.Uuid
+
+  alerts ChainAlert[]
+
+  @@index([status, startedAt])
+  @@map("reconciliation_runs")
+}
+
+/// Alerta de la cadena (§8.2): nunca se corrige sola; se resuelve a mano o al
+/// desaparecer su condición (`resolvedAuto`).
+model ChainAlert {
+  id             String    @id @default(uuid()) @db.Uuid
+  code           String    @db.VarChar(40)
+  /// `INFO` | `WARNING` | `CRITICAL`
+  level          String    @db.VarChar(10)
+  subjectType    String    @map("subject_type") @db.VarChar(20)
+  subjectId      String    @map("subject_id") @db.VarChar(100)
+  wineryId       String?   @map("winery_id") @db.Uuid
+  expected       Json?     @db.JsonB
+  actual         Json?     @db.JsonB
+  message        String    @db.Text
+  runId          String?   @map("run_id") @db.Uuid
+  detectedAt     DateTime  @default(now()) @map("detected_at") @db.Timestamptz(6)
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz(6)
+  resolvedBy     String?   @map("resolved_by") @db.VarChar(200)
+  resolutionNote String?   @map("resolution_note") @db.Text
+  resolvedAuto   Boolean   @default(false) @map("resolved_auto")
+
+  run ReconciliationRun? @relation(fields: [runId], references: [id], onDelete: Restrict)
+
+  @@index([resolvedAt, level])
+  @@index([code, detectedAt])
+  @@index([wineryId, detectedAt])
+  @@map("chain_alerts")
+}
+
+/// Solicitud de tokenización de un lote (§5): una abierta por lote.
+model TokenizationRequest {
+  id                      String    @id @default(uuid()) @db.Uuid
+  wineryId                String    @map("winery_id") @db.Uuid
+  lotId                   String    @map("lot_id") @db.Uuid
+  /// `INITIAL` | `QUOTA_INCREASE`
+  kind                    String    @db.VarChar(16)
+  /// `SUBMITTED` | `IN_REVIEW` | `CHANGES_REQUESTED` | `APPROVED` | `REJECTED` | `WITHDRAWN`
+  status                  String    @default("SUBMITTED") @db.VarChar(20)
+  quantity                Int
+  resultingQuota          Int       @map("resulting_quota")
+  /// Valor de `tokenizacion.requiereAprobacion` al enviar (§5.6)
+  requiresApproval        Boolean   @default(true) @map("requires_approval")
+  assigneeUserId          String?   @map("assignee_user_id") @db.Uuid
+  /// `CollectionCommercialInput` (§5.5)
+  commercialDraft         Json      @default("{}") @map("commercial_draft") @db.JsonB
+  priceAmountMinor        Int?      @map("price_amount_minor")
+  priceCurrency           String?   @map("price_currency") @db.Char(3)
+  /// `POLICY_SUGGESTED` | `MANUAL`
+  priceSource             String?   @map("price_source") @db.VarChar(20)
+  priceSetAt              DateTime? @map("price_set_at") @db.Timestamptz(6)
+  priceSetByUserId        String?   @map("price_set_by_user_id") @db.Uuid
+  wineryNotes             String?   @map("winery_notes") @db.Text
+  /// `TokenizationLimits` al enviar
+  limitsAtSubmission      Json      @default("{}") @map("limits_at_submission") @db.JsonB
+  publishOnMint           Boolean   @default(false) @map("publish_on_mint")
+  /// `APPROVED` | `REJECTED`
+  decisionOutcome         String?   @map("decision_outcome") @db.VarChar(10)
+  decisionAt              DateTime? @map("decision_at") @db.Timestamptz(6)
+  decisionReason          String?   @map("decision_reason") @db.Text
+  decisionByUserId        String?   @map("decision_by_user_id") @db.Uuid
+  decisionBySystem        Boolean   @default(false) @map("decision_by_system")
+  withdrawnAt             DateTime? @map("withdrawn_at") @db.Timestamptz(6)
+  withdrawnByMembershipId String?   @map("withdrawn_by_membership_id") @db.Uuid
+  withdrawReason          String?   @map("withdraw_reason") @db.Text
+  collectionId            String?   @map("collection_id") @db.Uuid
+  submittedAt             DateTime  @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  submittedByMembershipId String?   @map("submitted_by_membership_id") @db.Uuid
+  createdAt               DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery     Winery                      @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  lot        Lot                         @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  collection Collection?                 @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  changes    TokenizationRequestChange[]
+  mint       Mint?
+
+  @@index([wineryId, status])
+  @@index([status, submittedAt])
+  @@index([lotId, submittedAt])
+  @@index([assigneeUserId, status])
+  @@map("tokenization_requests")
+}
+
+/// Historial de la solicitud: cambios de estado, peticiones de cambio, notas
+/// internas y ediciones. Solo inserción (salvo `resolvedAt` de una petición).
+model TokenizationRequestChange {
+  id                String    @id @default(uuid()) @db.Uuid
+  requestId         String    @map("request_id") @db.Uuid
+  /// `STATUS` | `CHANGE_REQUEST` | `NOTE` | `EDIT`
+  type              String    @db.VarChar(16)
+  status            String?   @db.VarChar(20)
+  message           String?   @db.Text
+  fields            String[]  @default([])
+  resolvedAt        DateTime? @map("resolved_at") @db.Timestamptz(6)
+  actorUserId       String?   @map("actor_user_id") @db.Uuid
+  actorMembershipId String?   @map("actor_membership_id") @db.Uuid
+  actorName         String?   @map("actor_name") @db.VarChar(200)
+  actorSystem       Boolean   @default(false) @map("actor_system")
+  data              Json?     @db.JsonB
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  request TokenizationRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+
+  @@index([requestId, createdAt])
+  @@map("tokenization_request_changes")
+}
+
+/// Colección de un lote (§6.2): una por lote; `minted ≤ quota` (R6) en la base.
+model Collection {
+  id                  String    @id @default(uuid()) @db.Uuid
+  /// Generado desde `name`; único por bodega; no cambia una vez publicada
+  slug                String    @db.VarChar(140)
+  wineryId            String    @map("winery_id") @db.Uuid
+  lotId               String    @unique @map("lot_id") @db.Uuid
+  contractId          String    @map("contract_id") @db.Uuid
+  /// `MINTING` | `READY` | `PUBLISHED` | `PAUSED` | `CLOSED`
+  status              String    @default("MINTING") @db.VarChar(12)
+  /// De la última emisión: `PENDING` | `IN_PROGRESS` | `CONFIRMED` | `FAILED`
+  mintStatus          String    @default("PENDING") @map("mint_status") @db.VarChar(12)
+  quota               Int
+  minted              Int       @default(0)
+  pendingMintQuantity Int       @default(0) @map("pending_mint_quantity")
+  name                String    @db.VarChar(120)
+  description         String    @db.Text
+  tastingNotes        String?   @map("tasting_notes") @db.Text
+  pairing             String?   @db.Text
+  estimatedRedeemDate DateTime? @map("estimated_redeem_date") @db.Date
+  priceAmountMinor    Int?      @map("price_amount_minor")
+  priceCurrency       String?   @map("price_currency") @db.Char(3)
+  priceSource         String?   @map("price_source") @db.VarChar(20)
+  priceSetAt          DateTime? @map("price_set_at") @db.Timestamptz(6)
+  priceSetByUserId    String?   @map("price_set_by_user_id") @db.Uuid
+  /// Copia de `precio.politica` al aprobar
+  pricePolicySnapshot Json?     @map("price_policy_snapshot") @db.JsonB
+  /// `CollectionPrice[]`: solo se añade
+  priceHistory        Json      @default("[]") @map("price_history") @db.JsonB
+  redeemable          Boolean   @default(false)
+  redeemableSince     DateTime? @map("redeemable_since") @db.Timestamptz(6)
+  publishedAt         DateTime? @map("published_at") @db.Timestamptz(6)
+  closedAt            DateTime? @map("closed_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  winery        Winery                    @relation(fields: [wineryId], references: [id], onDelete: Restrict)
+  lot           Lot                       @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  contract      NftContract               @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  requests      TokenizationRequest[]
+  images        CollectionImage[]
+  statusHistory CollectionStatusHistory[]
+  mints         Mint[]
+  tokens        Token[]
+  closure       LotClosure?
+
+  @@unique([wineryId, slug])
+  @@index([wineryId, status])
+  @@index([status, publishedAt])
+  @@map("collections")
+}
+
+/// Imagen de una colección (§5.5): privada hasta publicar; después la sirve la
+/// API en `GET /v1/public/collections/images/{id}` (U-5).
+model CollectionImage {
+  id           String   @id @default(uuid()) @db.Uuid
+  collectionId String   @map("collection_id") @db.Uuid
+  /// `key` de `POST /v1/uploads`
+  key          String   @db.VarChar(500)
+  sha256       String   @db.Char(64)
+  alt          String   @db.VarChar(300)
+  isCover      Boolean  @default(false) @map("is_cover")
+  position     Int      @default(0)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+
+  @@unique([collectionId, key])
+  @@index([collectionId, position])
+  @@map("collection_images")
+}
+
+/// Historial de estados de la colección: solo inserción.
+model CollectionStatusHistory {
+  id           String   @id @default(uuid()) @db.Uuid
+  collectionId String   @map("collection_id") @db.Uuid
+  status       String   @db.VarChar(12)
+  reason       String?  @db.Text
+  actorUserId  String?  @map("actor_user_id") @db.Uuid
+  actorName    String?  @map("actor_name") @db.VarChar(200)
+  actorSystem  Boolean  @default(false) @map("actor_system")
+  at           DateTime @default(now()) @db.Timestamptz(6)
+
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+
+  @@index([collectionId, at])
+  @@map("collection_status_history")
+}
+
+/// Emisión (§6.1): una por solicitud aprobada; sus trozos son transacciones
+/// `MINT_BATCH` con `intentKey = mint:{id}:{trozo}`.
+model Mint {
+  id           String    @id @default(uuid()) @db.Uuid
+  collectionId String    @map("collection_id") @db.Uuid
+  requestId    String    @unique @map("request_id") @db.Uuid
+  /// 1 = inicial, 2… = ampliaciones
+  sequence     Int
+  quantity     Int
+  /// `PENDING` | `IN_PROGRESS` | `CONFIRMED` | `FAILED`
+  status       String    @default("PENDING") @db.VarChar(12)
+  /// Lo enviado como `lot` a `mint_batch` (la referencia del lote, S-12)
+  lotArg       String    @map("lot_arg") @db.VarChar(64)
+  /// `[{ firstTokenId, lastTokenId, firstBottleNumber, lastBottleNumber }]`
+  ranges       Json      @default("[]") @db.JsonB
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  confirmedAt  DateTime? @map("confirmed_at") @db.Timestamptz(6)
+
+  collection Collection          @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  request    TokenizationRequest @relation(fields: [requestId], references: [id], onDelete: Restrict)
+  tokens     Token[]
+
+  @@unique([collectionId, sequence])
+  @@map("mints")
+}
+
+/// NFT de una botella (§6.3). El estado de negocio vive aquí; la red solo dice
+/// de quién es y si está quemado (`onchain*`).
+model Token {
+  id                 String    @id @default(uuid()) @db.Uuid
+  collectionId       String    @map("collection_id") @db.Uuid
+  wineryId           String    @map("winery_id") @db.Uuid
+  lotId              String    @map("lot_id") @db.Uuid
+  contractId         String    @map("contract_id") @db.Uuid
+  /// Id en la red (u32, continuo entre lotes del mismo contrato, DS-08)
+  tokenId            Int       @map("token_id")
+  /// 1…quota dentro de la colección (S-13)
+  bottleNumber       Int       @map("bottle_number")
+  /// `MINTED` | `RESERVED` | `SOLD` | `REDEEMABLE` | `PASS_ACTIVE` | `REDEEMED` | `BURNED` | `EXPIRED`
+  status             String    @default("MINTED") @db.VarChar(12)
+  /// `WINERY` | `CONSUMER`
+  ownerKind          String    @default("WINERY") @map("owner_kind") @db.VarChar(10)
+  ownerAddress       String    @map("owner_address") @db.VarChar(56)
+  mintId             String    @map("mint_id") @db.Uuid
+  /// `chain_transactions.id` del trozo que lo emitió
+  mintTxId           String?   @map("mint_tx_id") @db.Uuid
+  soldAt             DateTime? @map("sold_at") @db.Timestamptz(6)
+  redeemableAt       DateTime? @map("redeemable_at") @db.Timestamptz(6)
+  redeemWindowEndsAt DateTime? @map("redeem_window_ends_at") @db.Timestamptz(6)
+  burnedAt           DateTime? @map("burned_at") @db.Timestamptz(6)
+  burnTxId           String?   @map("burn_tx_id") @db.Uuid
+  /// `REDEMPTION` | `SHORTFALL` | `WINDOW_EXPIRED`
+  burnReason         String?   @map("burn_reason") @db.VarChar(16)
+  onchainOwner       String?   @map("onchain_owner") @db.VarChar(56)
+  onchainBurned      Boolean   @default(false) @map("onchain_burned")
+  onchainCheckedAt   DateTime? @map("onchain_checked_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  collection   Collection       @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  contract     NftContract      @relation(fields: [contractId], references: [id], onDelete: Restrict)
+  mint         Mint             @relation(fields: [mintId], references: [id], onDelete: Restrict)
+  closureItems LotClosureItem[]
+
+  @@unique([contractId, tokenId])
+  @@unique([collectionId, bottleNumber])
+  @@index([collectionId, status])
+  @@index([ownerAddress])
+  @@map("tokens")
+}
+
+/// Cierre del lote con faltante (§8.4): uno por colección.
+model LotClosure {
+  id                String    @id @default(uuid()) @db.Uuid
+  lotId             String    @unique @map("lot_id") @db.Uuid
+  collectionId      String    @unique @map("collection_id") @db.Uuid
+  /// `NO_SHORTFALL` | `SHORTFALL_OPEN` | `DECIDED` | `RESOLVED`
+  status            String    @db.VarChar(16)
+  computedAt        DateTime  @default(now()) @map("computed_at") @db.Timestamptz(6)
+  bottles           Int
+  minted            Int
+  sold              Int       @default(0)
+  reserved          Int       @default(0)
+  unsold            Int       @default(0)
+  shortfall         Int       @default(0)
+  unsoldToBurn      Int       @default(0) @map("unsold_to_burn")
+  soldWithoutBottle Int       @default(0) @map("sold_without_bottle")
+  /// `KEEP_ON_SALE` | `BURN`
+  unsoldPolicy      String?   @map("unsold_policy") @db.VarChar(12)
+  decisionByUserId  String?   @map("decision_by_user_id") @db.Uuid
+  decisionByName    String?   @map("decision_by_name") @db.VarChar(200)
+  decisionAt        DateTime? @map("decision_at") @db.Timestamptz(6)
+  decisionReason    String?   @map("decision_reason") @db.Text
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  lot        Lot              @relation(fields: [lotId], references: [id], onDelete: Restrict)
+  collection Collection       @relation(fields: [collectionId], references: [id], onDelete: Restrict)
+  items      LotClosureItem[]
+
+  @@index([status, computedAt])
+  @@map("lot_closures")
+}
+
+/// NFT afectado por un cierre con faltante.
+model LotClosureItem {
+  id           String    @id @default(uuid()) @db.Uuid
+  closureId    String    @map("closure_id") @db.Uuid
+  tokenRowId   String    @map("token_row_id") @db.Uuid
+  tokenId      Int       @map("token_id")
+  bottleNumber Int       @map("bottle_number")
+  tokenStatus  String    @map("token_status") @db.VarChar(12)
+  /// Ola 4
+  orderId      String?   @map("order_id") @db.Uuid
+  paidAt       DateTime? @map("paid_at") @db.Timestamptz(6)
+  /// `BURN_UNSOLD` | `MANUAL_REFUND` | `MANUAL_SUBSTITUTE` | `PENDING`
+  outcome      String    @default("PENDING") @db.VarChar(20)
+  burnTxId     String?   @map("burn_tx_id") @db.Uuid
+  note         String?   @db.Text
+  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz(6)
+
+  closure LotClosure @relation(fields: [closureId], references: [id], onDelete: Restrict)
+  token   Token      @relation(fields: [tokenRowId], references: [id], onDelete: Restrict)
+
+  @@unique([closureId, tokenId])
+  @@map("lot_closure_items")
+}
+
+/// Anclaje del expediente (§7): uno por expediente (la clave del expediente es
+/// su lote).
+model DossierAnchor {
+  id            String    @id @default(uuid()) @db.Uuid
+  lotId         String    @unique @map("lot_id") @db.Uuid
+  /// `PENDING` | `SUBMITTED` | `ANCHORED` | `FAILED`
+  status        String    @default("PENDING") @db.VarChar(10)
+  network       String    @db.VarChar(10)
+  /// Cuenta de anclaje
+  account       String    @db.VarChar(56)
+  /// SHA-256 del expediente (= `lot_dossiers.hash`)
+  memoHashHex   String    @map("memo_hash_hex") @db.Char(64)
+  txHash        String?   @map("tx_hash") @db.Char(64)
+  ledger        Int?
+  anchoredAt    DateTime? @map("anchored_at") @db.Timestamptz(6)
+  /// El servidor leyó la transacción y comprobó memo y origen
+  verifiedAt    DateTime? @map("verified_at") @db.Timestamptz(6)
+  transactionId String?   @unique @map("transaction_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dossier     LotDossier        @relation(fields: [lotId], references: [lotId], onDelete: Restrict)
+  transaction ChainTransaction? @relation(fields: [transactionId], references: [id], onDelete: Restrict)
+
+  @@index([status])
+  @@map("dossier_anchors")
+}
+
+/// Dirección custodial de un consumidor (§4, preparación de la Ola 4): solo la
+/// dirección y el índice; ninguna clave. El índice 0 queda reservado (S-9).
+model ConsumerAddress {
+  userId         String   @id @map("user_id") @db.Uuid
+  /// Creciente y nunca reutilizado
+  index          Int      @unique @default(autoincrement())
+  address        String   @unique @db.VarChar(56)
+  /// `m/44'/148'/{index}'` (SEP-0005)
+  derivationPath String   @map("derivation_path") @db.VarChar(40)
+  network        String   @db.VarChar(10)
+  /// `ACTIVE` | `MIGRATED`
+  status         String   @default("ACTIVE") @db.VarChar(10)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@map("consumer_addresses")
 }

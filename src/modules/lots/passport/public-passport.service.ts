@@ -21,6 +21,13 @@ import { merkleProof, MerkleStep } from '../domain/merkle';
 import { closedDossierLeaves, ClosedDossierLeaves } from '../lot-dossier';
 import { dbClock } from '../trace-db';
 import { publicLotAttachments } from '../views/lot-attachments.service';
+import {
+  toPublicDossierAnchor,
+  verificationChecks,
+} from '@modules/chain/anchor/anchor-view';
+import { chainSettingsFromConfig } from '@modules/chain/chain.config';
+import type { PublicDossierVerificationDto } from '@modules/chain/dto/chain.dto';
+import { DOSSIER_HASH_ALGORITHM } from '../domain/dossier';
 import { PassportLookupLimiter } from './passport-lookup-limiter';
 import {
   buildLotPassport,
@@ -188,6 +195,96 @@ export class PublicPassportService {
     return { canonical: dossier.canonical, hash: dossier.hash };
   }
 
+  /**
+   * `GET /v1/public/lots/{lotCode}/verification` (contrato O3 §7.3, PUB-03):
+   * huella del expediente, anclaje y las cuatro comprobaciones. Lo que el
+   * servidor comprobó en la red al confirmar queda en `verifiedOnChainAt`; el
+   * visor recalcula la huella con los bytes de `…/dossier`.
+   */
+  async verification(
+    input: string,
+    ip: string | null,
+  ): Promise<PassportResponse<PublicDossierVerificationDto>> {
+    await this.limiter.assertAllowed(ip);
+    const code = normalizeLotCode(input);
+    if (!code) throw this.malformed();
+    const key = `lot:${code}`;
+    if (await this.knownMissing(key)) throw await this.miss(key, ip, false);
+    const lot = await this.prisma.lot.findUnique({
+      where: { lotCode: code },
+      select: {
+        id: true,
+        stage: true,
+        dossier: {
+          select: {
+            status: true,
+            hash: true,
+            closedAt: true,
+            anchor: true,
+          },
+        },
+      },
+    });
+    if (!lot) throw await this.miss(key, ip);
+    const chain = chainSettingsFromConfig(this.config);
+    const official = await this.prisma.chainAccount.findFirst({
+      where: {
+        role: 'ANCHOR',
+        network: chain.network,
+        address: { not: null },
+      },
+      select: { address: true },
+    });
+    const closed = lot.dossier?.status === 'CLOSED' && !!lot.dossier.hash;
+    const hash = closed ? (lot.dossier?.hash ?? null) : null;
+    const anchorRow = closed ? (lot.dossier?.anchor ?? null) : null;
+    const anchor = toPublicDossierAnchor(anchorRow, chain.explorerBaseUrl);
+    const base = (this.config.get<string>('API_PUBLIC_URL') ?? '')
+      .trim()
+      .replace(/\/+$/, '');
+    const body: PublicDossierVerificationDto = {
+      lotCode: code,
+      dossier: {
+        status: closed ? 'CLOSED' : 'OPEN',
+        hash,
+        algorithm: DOSSIER_HASH_ALGORITHM,
+        closedAt: closed
+          ? (lot.dossier?.closedAt?.toISOString() ?? null)
+          : null,
+        canonicalUrl: closed
+          ? `${base}/v1/public/lots/${encodeURIComponent(code)}/dossier`
+          : null,
+      },
+      anchor,
+      officialAnchorAccount: official?.address ?? null,
+      checks: verificationChecks({
+        dossierHash: hash,
+        anchor: anchorRow,
+        officialAnchorAccount: official?.address ?? null,
+      }),
+      verifiedOnChainAt:
+        anchor?.status === 'ANCHORED'
+          ? (anchorRow?.verifiedAt?.toISOString() ?? null)
+          : null,
+      checkedAt: new Date().toISOString(),
+    };
+    return {
+      body,
+      etag: this.etag(
+        `verification|${lot.id}|${hash ?? ''}|${anchorRow?.status ?? ''}|${anchorRow?.txHash ?? ''}|${official?.address ?? ''}`,
+      ),
+      // Anclado y verificado ya no cambia (§7.3)
+      cacheControl:
+        anchor?.status === 'ANCHORED'
+          ? PASSPORT_CACHE_CONTROL_CERTIFIED
+          : PASSPORT_CACHE_CONTROL,
+    };
+  }
+
+  private explorerBaseUrl(): string | null {
+    return chainSettingsFromConfig(this.config).explorerBaseUrl;
+  }
+
   /** URL firmada de un adjunto público (`GET …/lots/{lotCode}/attachments/{id}`). */
   async attachmentUrl(
     input: string,
@@ -248,7 +345,13 @@ export class PublicPassportService {
         stage: true,
         updatedAt: true,
         winery: { select: { certificationStatus: true, updatedAt: true } },
-        dossier: { select: { status: true, hash: true } },
+        dossier: {
+          select: {
+            status: true,
+            hash: true,
+            anchor: { select: { status: true, txHash: true } },
+          },
+        },
         events: { orderBy: { seq: 'desc' }, take: 1, select: { seq: true } },
       },
     });
@@ -267,6 +370,8 @@ export class PublicPassportService {
         lot.winery.updatedAt.getTime(),
         lot.dossier?.status ?? 'OPEN',
         lot.dossier?.hash ?? '',
+        lot.dossier?.anchor?.status ?? '',
+        lot.dossier?.anchor?.txHash ?? '',
       ].join(':'),
     };
   }
@@ -343,6 +448,7 @@ export class PublicPassportService {
       voidedRecordIds: new Set(voids.map((v) => v.targetId)),
       attachments,
       publicUrl: (path) => `${base}${path}`,
+      explorerBaseUrl: this.explorerBaseUrl(),
     });
   }
 

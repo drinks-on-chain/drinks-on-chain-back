@@ -33,6 +33,13 @@ export const LOT_EVENT_TYPES = [
   'DOSSIER_CLOSED',
   'LOT_REJECTED',
   'LOT_DISCARDED',
+  // Ola 3 (contrato O3 §11): tokenización y anclaje
+  'TOKENIZATION_AUTHORIZED',
+  'NFT_MINTED',
+  'COLLECTION_PUBLISHED',
+  'DOSSIER_ANCHORED',
+  'TOKENS_REDEEMABLE',
+  'SHORTFALL_DETECTED',
 ] as const;
 export type LotEventType = (typeof LOT_EVENT_TYPES)[number];
 

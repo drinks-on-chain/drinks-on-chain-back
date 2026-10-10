@@ -89,6 +89,11 @@ jobs:
       S3_BUCKET: doc-ci-uploads
       S3_ACCESS_KEY: ci-minio
       S3_SECRET_KEY: ci-only-minio-password
+      # Cadena (contrato O3 §14): solo test/chain-o3.e2e-spec.ts usa la red
+      # local; el resto de e2e corre con la cadena deshabilitada
+      CHAIN_E2E_REQUIRED: 'true'
+      CHAIN_E2E_RPC_URL: http://localhost:8000/rpc
+      CHAIN_E2E_FRIENDBOT_URL: http://localhost:8000/friendbot
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -106,6 +111,23 @@ jobs:
           done
           docker logs minio
           exit 1
+      # Red local de Stellar: imagen fijada por digest (canal «testing» = lo
+      # que corre testnet) y protocolo pedido a mano (sin la opción arranca en
+      # el 28). Efímera: sin Horizon, con RPC y Friendbot. Necesita argumentos:
+      # no cabe en `services`
+      - name: Red local de Stellar (quickstart, protocolo 29)
+        run: |
+          docker run -d --name stellar -p 8000:8000 \
+            stellar/quickstart:v676-b1505.1-testing@sha256:66a19476f2ce2ed09c4dccf3f1af4d438209eee9ee05eb113a02dd926e2b03f5 \
+            --local --enable core,rpc --protocol-version 29
+      # Código del contrato NFT: artefacto de la pista SC, por commit y con su
+      # SHA-256 comprobado (el `wasm.hash` de deployments/testnet.json)
+      - name: Código del contrato NFT (winery_nft.wasm)
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/winery_nft.wasm" \
+            https://raw.githubusercontent.com/drinks-on-chain/drinks-on-chain-contracts/3eb9ece/artefactos/winery_nft.wasm
+          echo "eb9f75b2a17117cab0c44d318ffd2f0f7642c488f56b31167998795ce22089d8  $RUNNER_TEMP/winery_nft.wasm" | sha256sum -c -
+          echo "CHAIN_E2E_WASM_PATH=$RUNNER_TEMP/winery_nft.wasm" >> "$GITHUB_ENV"
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec prisma generate
       - name: Migraciones aplicables desde cero
@@ -125,7 +147,28 @@ jobs:
             exit 1
           fi
           exit "$code"
+      - name: La red local responde (RPC en el protocolo 29 y Friendbot)
+        run: |
+          rpc() {
+            curl -fsS -m 5 -X POST http://localhost:8000/rpc -H 'content-type: application/json' \
+              -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"$1\"}" 2>/dev/null
+          }
+          for i in $(seq 1 120); do
+            if rpc getHealth | grep -q '"healthy"'; then break; fi
+            sleep 1
+          done
+          rpc getHealth | grep -q '"healthy"' || { docker logs --tail 60 stellar; exit 1; }
+          for i in $(seq 1 120); do
+            code=$(curl -s -m 5 -o /dev/null -w '%{http_code}' http://localhost:8000/friendbot || true)
+            # Sin ?addr responde 400 cuando ya atiende; 502 mientras arranca
+            if [ "$code" = "400" ] || [ "$code" = "200" ]; then break; fi
+            sleep 1
+          done
+          rpc getNetwork | tee /dev/stderr | grep -q '"protocolVersion":29'
       - run: pnpm test:e2e
+      - name: Logs de la red local (si algo falló)
+        if: failure()
+        run: docker logs --tail 80 stellar || true
 
   docker:
     name: docker build
@@ -142,6 +185,39 @@ jobs:
             'test -f dist/main.js && test -f dist/worker.js && test -f dist/worker-healthcheck.js && test -f dist/seed.js && test -f dist/seed/fixtures/terroirs.json'
           # Sin latido, el healthcheck del worker debe fallar
           ! docker run --rm --entrypoint node drinks-on-chain-back:ci dist/worker-healthcheck.js
+      # Claves de la cadena (contrato O3 §2.1): el script del servidor las
+      # genera en el .env sin imprimirlas, con copia previa, y es idempotente
+      - name: generar-claves-cadena.sh no imprime secretos y es idempotente
+        run: |
+          home="$(mktemp -d)"
+          printf 'STELLAR_NETWORK=TESTNET\nCHAIN_SECRET_ANCHOR=change-me\nOTRA=1' > "$home/.env"
+          export DOC_DEV_HOME="$home" CHAIN_KEYS_IMAGE=drinks-on-chain-back:ci
+          bash deploy/dev/generar-claves-cadena.sh > "$home/salida-1.txt" 2>&1
+          cat "$home/salida-1.txt"
+          for name in CHAIN_SECRET_OPERATIONS CHAIN_SECRET_ANCHOR CHAIN_DEV_WINERY_SEED CHAIN_CONSUMER_MASTER_SEED CHAIN_CONSUMER_SEED_CHECK_ADDRESS; do
+            test "$(grep -c "^$name=" "$home/.env")" = 1
+          done
+          grep -q '^OTRA=1$' "$home/.env"
+          grep -Eq '^CHAIN_SECRET_OPERATIONS=S[A-Z2-7]{55}$' "$home/.env"
+          grep -Eq '^CHAIN_SECRET_ANCHOR=S[A-Z2-7]{55}$' "$home/.env"
+          grep -Eq '^CHAIN_DEV_WINERY_SEED=[0-9a-f]{64}$' "$home/.env"
+          test "$(stat -c %a "$home/.env")" = 600
+          test "$(ls "$home"/.env.bak-* | wc -l)" = 1
+          # Ningún secreto en la salida: solo direcciones públicas
+          for name in CHAIN_SECRET_OPERATIONS CHAIN_SECRET_ANCHOR CHAIN_DEV_WINERY_SEED CHAIN_CONSUMER_MASTER_SEED; do
+            ! grep -qF "$(grep "^$name=" "$home/.env" | cut -d= -f2-)" "$home/salida-1.txt"
+          done
+          test "$(grep -Ec ' G[A-Z2-7]{55}$' "$home/salida-1.txt")" = 4
+          # Repetirlo no cambia nada ni hace otra copia
+          before="$(sha256sum < "$home/.env")"
+          bash deploy/dev/generar-claves-cadena.sh > "$home/salida-2.txt" 2>&1
+          test "$before" = "$(sha256sum < "$home/.env")"
+          test "$(ls "$home"/.env.bak-* | wc -l)" = 1
+          diff <(grep ' G' "$home/salida-1.txt") <(grep ' G' "$home/salida-2.txt")
+          # Nunca en la red pública
+          sed -i 's/^STELLAR_NETWORK=.*/STELLAR_NETWORK=PUBLIC/' "$home/.env"
+          ! bash deploy/dev/generar-claves-cadena.sh
+          rm -rf "$home"
 
   audit:
     name: Auditoría de dependencias

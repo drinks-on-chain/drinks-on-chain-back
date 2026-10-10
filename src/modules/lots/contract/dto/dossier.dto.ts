@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Equals } from 'class-validator';
 import { TraceActorDto } from '@modules/lots/dto/lot.dto';
+import { DossierAnchorDto } from '@modules/chain/dto/chain-common.dto';
 
 /** Requisitos del cierre del expediente (contrato O2 §10). */
 export const DOSSIER_REQUIREMENT_KEYS = [
@@ -89,14 +90,13 @@ export class LotDossierDto {
   bottleCodes!: DossierBottleCodesDto | null;
 
   @ApiProperty({
-    type: 'object',
+    type: () => DossierAnchorDto,
     nullable: true,
-    properties: {},
-    additionalProperties: false,
     description:
-      'Siempre `null` en esta ola; Ola 3: `{ network, txHash, anchoredAt, explorerUrl }`',
+      'Anclaje del hash en la red (contrato O3 §7.1). `null` hasta que el lote certificado tenga su ' +
+      'transacción de anclaje (paso 3.5)',
   })
-  anchor!: null;
+  anchor!: DossierAnchorDto | null;
 }
 
 /** Esquema del contenido canónico `doc-dossier/1` (objeto JSON libre). */

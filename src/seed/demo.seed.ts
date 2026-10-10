@@ -30,7 +30,6 @@ export interface DemoSeedSummary {
   platformMemberships: number;
   wineries: number;
   wineryMemberships: number;
-  wallets: number;
   terroirs: number;
 }
 
@@ -189,11 +188,9 @@ export async function seedDemo(
       contactEmail: w.contactEmail,
       contactPhone: w.contactPhone,
       logoUrl: w.logoUrl,
-      stellarPublicKey: w.stellarPublicKey,
-      // Bóveda simulada (como la del worker) solo si la bodega tiene cuenta
-      dynamicVaultId: w.stellarPublicKey ? `demo-vault-${w.id}` : null,
-      onchainProducerId: w.onchainProducerId,
-      onchainRegisterTxHash: w.onchainRegisterTxHash,
+      // SE-02 (contrato O3 §3.3): la semilla no escribe direcciones de
+      // relleno. La cuenta y el contrato de cada bodega los crea el
+      // aprovisionamiento de la identidad en la red (Ola 3)
       isExportCertified: w.isExportCertified,
       certificationStatus: w.certificationStatus,
       approvedAt: optionalDate(w.approvedAt),
@@ -275,30 +272,8 @@ export async function seedDemo(
     }
   }
 
-  // ---------------------------------------------------------------------------
-  // Billeteras de las personas creadas
-  // ---------------------------------------------------------------------------
-  let wallets = 0;
-  for (const wallet of fx.wallets) {
-    const userId = userIds.get(wallet.userId);
-    if (!userId) continue;
-    await tx.userWallet.upsert({
-      where: { id: wallet.id },
-      update: { wineryId: wallet.wineryId, isPrimary: wallet.isPrimary },
-      create: {
-        id: wallet.id,
-        userId,
-        wineryId: wallet.wineryId,
-        stellarPublicAddress: wallet.stellarPublicAddress,
-        dynamicVaultId: `demo-vault-${wallet.id}`,
-        walletType: wallet.walletType,
-        walletPurpose: wallet.walletPurpose,
-        isPrimary: wallet.isPrimary,
-        createdAt: date(wallet.createdAt),
-      },
-    });
-    wallets++;
-  }
+  // Sin billeteras (SE-02, contrato O3 §3.3): `wallets.json` de los mocks
+  // eran direcciones simuladas y ya no se siembran
 
   // ---------------------------------------------------------------------------
   // Parcelas (datos maestros editables: se devuelven a su estado inicial). La
@@ -347,7 +322,6 @@ export async function seedDemo(
       platformMemberships,
       wineries: fx.wineries.length,
       wineryMemberships,
-      wallets,
       terroirs: fx.terroirs.length,
     },
     people: { memberIds, memberUsers, authorizerByWinery },

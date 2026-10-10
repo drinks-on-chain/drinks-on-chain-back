@@ -190,7 +190,9 @@ export async function refreshLotStage(
       stage: true,
       productType: true,
       discardedAt: true,
-      dossier: { select: { status: true } },
+      dossier: {
+        select: { status: true, anchor: { select: { status: true } } },
+      },
       bottlingBatch: { select: { id: true } },
       harvestBatches: { select: { phytosanitaryStatus: true } },
       fermentationTanks: { select: { status: true } },
@@ -203,6 +205,7 @@ export async function refreshLotStage(
   const stage = deriveLotStage({
     discarded: lot.discardedAt !== null,
     dossierClosed: lot.dossier?.status === 'CLOSED',
+    anchored: lot.dossier?.anchor?.status === 'ANCHORED',
     productType: lot.productType as LotProductType | null,
     harvestStatuses: lot.harvestBatches.map((h) => h.phytosanitaryStatus),
     tanks: lot.fermentationTanks,

@@ -5,6 +5,10 @@ import { AuditAction } from '@shared/audit/audit.actions';
 import { OutboxService } from '@shared/outbox/outbox.service';
 import { QUEUE_CHAIN } from '@shared/queue/queue.constants';
 import { ErrorCode } from '@shared/exceptions/error-codes';
+import { ConfigService } from '@nestjs/config';
+import { toDossierAnchor } from '@modules/chain/anchor/anchor-view';
+import { chainSettingsFromConfig } from '@modules/chain/chain.config';
+import type { DossierAnchorDto } from '@modules/chain/dto/chain-common.dto';
 import {
   DOSSIER_HASH_ALGORITHM,
   DOSSIER_SCHEMA,
@@ -41,7 +45,8 @@ export interface LotDossierView {
     merkleRoot: string;
     algorithm: typeof BOTTLE_MERKLE_ALGORITHM;
   } | null;
-  anchor: null;
+  /** `DossierAnchor` (contrato O3 §7.1); `null` mientras no se haya pedido. */
+  anchor: DossierAnchorDto | null;
 }
 
 export interface DossierPreviewView {
@@ -72,6 +77,7 @@ export class DossierService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly outbox: OutboxService,
+    private readonly config: ConfigService,
   ) {}
 
   private async load(
@@ -130,6 +136,10 @@ export class DossierService {
         anchor: null,
       };
     }
+    const anchor = await this.prisma.dossierAnchor.findUnique({
+      where: { lotId: lot.id },
+      include: { transaction: true },
+    });
     const actors = await resolveTraceActors(this.prisma, [
       dossier.closedByMembershipId,
     ]);
@@ -149,7 +159,10 @@ export class DossierService {
               algorithm: BOTTLE_MERKLE_ALGORITHM,
             }
           : null,
-      anchor: null,
+      anchor: toDossierAnchor(
+        anchor,
+        chainSettingsFromConfig(this.config).explorerBaseUrl,
+      ),
     };
   }
 

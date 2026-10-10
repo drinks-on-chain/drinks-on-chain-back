@@ -1,7 +1,5 @@
 import { Module } from '@nestjs/common';
-import { WalletsModule } from '@modules/wallets/wallets.module';
-import { WineryCreatedHandler } from './winery-created.handler';
-import { MemberAddedHandler } from './member-added.handler';
+import { ChainJobsModule } from '@modules/chain/jobs/chain-jobs.module';
 import { WineryActivatedHandler } from './winery-activated.handler';
 
 /**
@@ -9,7 +7,7 @@ import { WineryActivatedHandler } from './winery-activated.handler';
  * (src/worker/worker.module.ts · JOB_MODULES); la API no los instancia.
  */
 @Module({
-  imports: [WalletsModule],
-  providers: [WineryCreatedHandler, MemberAddedHandler, WineryActivatedHandler],
+  imports: [ChainJobsModule],
+  providers: [WineryActivatedHandler],
 })
 export class WineriesJobsModule {}

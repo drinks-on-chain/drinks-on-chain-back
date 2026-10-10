@@ -117,7 +117,7 @@ describe('trabajos de los lotes en el worker (§15)', () => {
     expect(builder.removeExpired).toHaveBeenCalledTimes(1);
   });
 
-  it('lot.certified se procesa sin efectos hasta la Ola 3', async () => {
+  it('lot.certified pide el anclaje del expediente del lote (contrato O3 §7.1)', async () => {
     const certified: LotCertifiedPayload = {
       lotId: 'lot-1',
       wineryId: 'winery-1',
@@ -127,8 +127,16 @@ describe('trabajos de los lotes en el worker (§15)', () => {
       bottleCount: 2950,
       closedAt: '2026-10-01T15:04:05.123Z',
     };
+    const db = { tx: true };
+    const prisma = {
+      $transaction: jest.fn((work: (tx: unknown) => unknown) => work(db)),
+    };
+    const anchors = { request: jest.fn().mockResolvedValue('REQUESTED') };
     await expect(
-      new LotCertifiedHandler().handle(job(LOT_CERTIFIED, certified)),
+      new LotCertifiedHandler(prisma as never, anchors as never).handle(
+        job(LOT_CERTIFIED, certified),
+      ),
     ).resolves.toBeUndefined();
+    expect(anchors.request).toHaveBeenCalledWith(db, 'lot-1');
   });
 });

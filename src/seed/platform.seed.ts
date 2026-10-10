@@ -4,21 +4,14 @@ import {
   OrganizationStatusEnum,
   OrganizationTypeEnum,
   PrismaClient,
-  WalletPurposeEnum,
-  WalletTypeEnum,
 } from '@prisma/client';
-import { Keypair } from '@stellar/stellar-sdk';
-import { v4 as uuidv4 } from 'uuid';
 import {
   PLATFORM_ORGANIZATION_ID,
   PLATFORM_ORGANIZATION_NAME,
 } from '../modules/organizations/organization.constants';
 import { SeedSuperadmin } from './seed.options';
 
-type Db = Pick<
-  PrismaClient,
-  'organization' | 'user' | 'membership' | 'userWallet'
->;
+type Db = Pick<PrismaClient, 'organization' | 'user' | 'membership'>;
 
 /** Organización de plataforma (la crea también la migración). */
 export async function ensurePlatformOrganization(db: Db): Promise<void> {
@@ -80,20 +73,6 @@ export async function upsertSuperadmin(
       role: MembershipRoleEnum.SUPERADMIN,
     },
   });
-
-  const wallet = await db.userWallet.findFirst({ where: { userId: user.id } });
-  if (!wallet) {
-    await db.userWallet.create({
-      data: {
-        userId: user.id,
-        stellarPublicAddress: Keypair.random().publicKey(),
-        dynamicVaultId: `dyn_vault_${uuidv4()}`,
-        walletType: WalletTypeEnum.CUSTODIAL,
-        walletPurpose: WalletPurposeEnum.CONSUMER_NFT,
-        isPrimary: true,
-      },
-    });
-  }
 
   return { id: user.id, created: !existing };
 }
