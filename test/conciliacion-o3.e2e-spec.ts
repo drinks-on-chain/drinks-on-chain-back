@@ -1125,14 +1125,19 @@ describeChain(
             (entry.daysLeft as number) > (wasYoung ? 119 : 29),
           ]).toEqual([entry.name, true]);
         }
-        // Repetirla el mismo día no registra otra: ya no hay nada bajo el umbral
+        // Las entradas que nacen justo en el umbral (30 días) lo cruzan unos
+        // ledgers después: una segunda pasada las recoge. Después, repetirla
+        // ya no registra nada
+        const second = await ttl.run();
+        expect(second.requested.length).toBeLessThanOrEqual(1);
+        await idle();
         const again = await ttl.run();
         expect(again.requested).toEqual([]);
-        expect(
-          await prisma.chainTransaction.count({
-            where: { kind: 'EXTEND_TTL', subjectId: CONTRACT_ID },
-          }),
-        ).toBe(1);
+        const extensions = await prisma.chainTransaction.findMany({
+          where: { kind: 'EXTEND_TTL', subjectId: CONTRACT_ID },
+        });
+        expect(extensions.length).toBe(1 + second.requested.length);
+        expect(extensions.every((e) => e.status === 'CONFIRMED')).toBe(true);
       });
 
       it('el código se extiende aparte, con su propia transacción, y codeTtlDays deja de ser null', async () => {
