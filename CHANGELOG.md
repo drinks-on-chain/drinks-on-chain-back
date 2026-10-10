@@ -2,6 +2,31 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Ola 3 · paso 3.6: indexador, conciliación, TTL y cierre con faltante
+
+Contrato `o3-tokenizacion` §8 (con la corrección de §8.3 de las «Precisiones de la apertura»), §10, §11 y §14. **Ninguna de las 54 rutas de la ola responde ya `501`.** Detalle en el [README](README.md#indexador-conciliación-ttl-y-cierre-con-faltante-paso-36) y en [`deploy/README.md` §7](deploy/README.md#7-indexador-conciliación-ttl-y-cierre-con-faltante-paso-36).
+
+### Añadido
+
+- **11 rutas dejan de responder `501`** (lista en `O3_STEP_3_6_ROUTES`): `GET /v1/platform/chain/events`, `GET` y `POST /v1/platform/chain/reconciliation/runs`, `GET …/runs/{id}`, `GET /v1/platform/chain/alerts`, `POST …/alerts/{id}/resolve`, `GET /v1/platform/lot-closures`, `GET /v1/platform/collections/{id}/closure`, `POST …/closure/decide`, `POST …/closure/items/{tokenId}/resolve` y `GET /v1/collections/{id}/closure`.
+- **Indexador** (`chain.indexer.poll`, cada 60 s): lee con `getEvents` los eventos de los contratos desde el cursor guardado (`chain_cursors`), los guarda en `chain_events` (únicos por `rpcEventId`), los enlaza con la transacción propia que los originó y refleja lo que dice la red en `Token.onchain`. Un evento que el sistema no originó abre una alerta `CRITICAL` `UNEXPECTED_EVENT`. Nunca corrige el estado de negocio.
+- **Conciliación** (`chain.reconcile`, ligera cada hora; `chain.reconcile.full`, a las 02:30 de La Paz; y bajo demanda): `TOTAL_MINTED_MISMATCH`, `BALANCE_MISMATCH`, `OWNER_MISMATCH`, `BURN_MISMATCH`, `PAUSE_MISMATCH`, `ROLE_MISMATCH`, `QUOTA_EXCEEDED`, `BOTTLES_SHORTFALL`, `ANCHOR_MISMATCH`, `TX_STUCK`, `LOW_BALANCE`, `TTL_EXPIRING` y `NETWORK_RESET`. Una diferencia nunca se corrige sola; solo se cierra sola la alerta cuya condición desaparece (`resolution.auto`). Las `CRITICAL` se avisan por correo a administración y operaciones (`alerta-cadena`).
+- **TTL** (`chain.ttl.extend`, a las 03:00 de La Paz y tras cada emisión, quema o despliegue): `EXTEND_TTL` lleva a 120 días la instancia, `Owner(último id de cada emisión)`, sus `OwnershipBucket` y el `Balance` de la bodega cuando bajan de `CHAIN_TTL_EXTEND_BELOW_DAYS`; el **código** va en su propia transacción y con su tope de comisión (`CHAIN_CODE_TTL_MAX_FEE_STROOPS`, 100 XLM por defecto). `CHN_ARCHIVED_ENTRY` encadena `RESTORE_ENTRIES`. `GET /v1/platform/chain/accounts` devuelve `codeTtlDays` real.
+- **Cierre del lote con faltante**: se calcula al embotellar, al anular un código de botella sin sustituto y al descartar el lote. Con menos botellas que NFT vivos, cierre `SHORTFALL_OPEN` con los NFT afectados (primero los no vendidos, del número de botella más alto al más bajo; después los vendidos, desde el pedido más reciente), correo al dueño (`faltante-detectado`) y a operaciones (`faltante-operaciones`), evento `SHORTFALL_DETECTED` en la línea de tiempo y `LOT_SHORTFALL_DETECTED` en la bitácora. La decisión con quemas es solo de administración: encola un `BURN_UNSOLD` (`redeem_burn` del operador) por NFT, que queda `BURNED` con `burnReason: 'SHORTFALL'` cuando `owner_of` falla en la red. Los vendidos sin botella se resuelven a mano (`MANUAL_REFUND`, `MANUAL_SUBSTITUTE`). `close` de la colección se desbloquea con el cierre `NO_SHORTFALL` o `RESOLVED`.
+- Eventos del outbox: `lot.bottled`, `lot.bottle_code_voided`, `lot.discarded` (aditivos a la Ola 2), `lot.shortfall_detected` y `chain.reconciliation.requested`.
+- Bitácora: `LOT_SHORTFALL_DETECTED`, `LOT_CLOSURE_DECIDED`, `LOT_CLOSURE_ITEM_RESOLVED`, `UNSOLD_TOKENS_BURNED`, `CHAIN_ALERT_RESOLVED` y `RECONCILIATION_RUN_STARTED`.
+- Código interno `CHN_WINERY_NOT_ACTIVE` (`ChainTransaction.lastError`, en espera como `CHN_MINT_DISABLED`).
+- Variable opcional `CHAIN_CODE_TTL_MAX_FEE_STROOPS`.
+
+### Cambios de comportamiento
+
+- **Bodega suspendida o revocada**: una emisión aprobada que aún no ha salido a la red **no se envía ni se da por fallida**; queda `PENDING` con `lastError.code = CHN_WINERY_NOT_ACTIVE` y se reanuda sola al reactivarse la bodega (antes, con la bodega revocada, pasaba a `FAILED` por el contrato pausado).
+- `WineryChainAccountView` (`GET /v1/organizations/current/chain-account` y `GET /v1/platform/wineries/{id}/chain-account`): `totals` y `byLot` dejan de ser ceros; salen de las colecciones de la bodega, con el anclaje de cada lote.
+- `Collection.closure` deja de ser siempre `null` una vez embotellado o descartado el lote. Para la bodega (`GET /v1/collections/{id}`), sus ítems van sin `orderId`, `paidAt` ni `note`.
+- `Token.onchain` se rellena al emitirse (`owner` = cuenta de la bodega) y lo mantiene el indexador.
+- Tablero del back office: `chain.openAlerts`, `chain.lastReconciliation`, `chain.indexerLagSeconds` y `tokenization.shortfallsOpen` ya reflejan datos (antes, las tablas estaban vacías).
+- `POST /v1/platform/chain/reconciliation/runs` declara además `409 CHN_DISABLED` (cadena sin configurar) y `422` si `subjectId` no es un contrato o una colección existente; `POST …/closure/decide` declara `409 CHN_CONTRACT_PAUSED` (decisión con quemas y el contrato pausado). Ninguna forma de respuesta cambia respecto a la apertura.
+
 ## Sin publicar · Ola 3 · pasos 3.4 y 3.5: emisión, preventa y anclaje
 
 Contrato `o3-tokenizacion` §2.2, §2.3, §6.1, §7 y §14, sobre la integración de las ramas de la cadena (3.1 y 3.2) y de las solicitudes (3.3). Detalle en el [README](README.md#emisión-y-anclaje-pasos-34-y-35).

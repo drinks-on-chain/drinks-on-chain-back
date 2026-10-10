@@ -449,6 +449,19 @@ describeChain('Ola 3 · emisión y anclaje contra la red local (e2e)', () => {
         inject: [CHAIN_SETTINGS, ConfigService, PrismaService],
       })
       .compile();
+    // El mantenimiento (TTL tras cada emisión, conciliación al arrancar) tiene
+    // su propia suite (`conciliacion-o3`): aquí no mete transacciones por medio
+    const { ChainTtlService } =
+      await import('../src/modules/chain/jobs/ttl/chain-ttl.service');
+    const { ChainReconciler } =
+      await import('../src/modules/chain/jobs/reconcile/chain-reconciler.service');
+    jest.spyOn(worker.get(ChainTtlService), 'run').mockResolvedValue({
+      codeDays: null,
+      contracts: 0,
+      requested: [],
+      errors: 0,
+    });
+    jest.spyOn(worker.get(ChainReconciler), 'runNow').mockResolvedValue(null);
     await worker.init();
     await worker.get(ChainBootstrap).ready();
     chainSettings = worker.get(CHAIN_SETTINGS);

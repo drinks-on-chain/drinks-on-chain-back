@@ -118,11 +118,14 @@ export class ChainTxConfirmedHandler implements JobHandler<
   constructor(
     private readonly jobs: ChainJobsQueue,
     private readonly prisma: PrismaService,
+    private readonly accounts: PlatformAccountsSync,
   ) {}
 
   async handle(data: OutboxJobData<ChainTxEventPayload>): Promise<void> {
     const { kind, transactionId } = data.payload;
     if (kind === 'FUND_ACCOUNT') {
+      // Saldo nuevo: la alerta `LOW_BALANCE` de la cuenta se cierra ya
+      await this.accounts.checkBalances().catch(() => undefined);
       await this.jobs.backfill();
       await this.jobs.anchorBackfill();
     }
