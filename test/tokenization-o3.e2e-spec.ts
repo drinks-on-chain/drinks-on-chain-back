@@ -18,6 +18,7 @@ import { SimulatedWalletsAuditRunner } from '../src/modules/chain/simulated-wall
 import {
   O3_STEP_3_3_ROUTES,
   O3_STEP_3_5_ROUTES,
+  O3_STEP_3_6_ROUTES,
 } from '../src/modules/tokenization/o3-implemented-routes';
 import {
   addWineryMember,
@@ -555,10 +556,11 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
   ];
   const name = (route: Route) =>
     `${route.method.toUpperCase()} ${route.path().split('?')[0]}`;
-  /** Rutas que ya tienen lógica (dejaron de responder 501): paso 3.3. */
+  /** Rutas que ya tienen lógica (dejaron de responder 501): pasos 3.3, 3.5 y 3.6. */
   const IMPLEMENTED = new Set<string>([
     ...O3_STEP_3_3_ROUTES,
     ...O3_STEP_3_5_ROUTES,
+    ...O3_STEP_3_6_ROUTES,
   ]);
   const template = (route: Route) =>
     `${route.method.toUpperCase()} ${openapi.resolvePath(route.method, route.path())}`;
@@ -1101,10 +1103,12 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       }
     });
 
-    it('las de los pasos 3.3 y 3.5 (solicitudes, colecciones y verificación) ya no responden 501', async () => {
+    it('las de los pasos 3.3, 3.5 y 3.6 (solicitudes, colecciones, verificación, conciliación y cierre) ya no responden 501', async () => {
       const done = ROUTES.filter(implemented);
       expect(done).toHaveLength(
-        O3_STEP_3_3_ROUTES.length + O3_STEP_3_5_ROUTES.length,
+        O3_STEP_3_3_ROUTES.length +
+          O3_STEP_3_5_ROUTES.length +
+          O3_STEP_3_6_ROUTES.length,
       );
       for (const route of done) {
         const res = await call(route, route.allowed[0], {
@@ -1179,10 +1183,11 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
       expect(await count('chain_accounts')).toBe(0);
     });
 
-    it('con sesión y rol válidos, las pendientes responden 501 NOT_IMPLEMENTED con su paso', async () => {
-      for (const route of ROUTES.filter(
-        (r) => !r.implemented && !implemented(r),
-      )) {
+    it('paso 3.6: ya no queda ninguna ruta pendiente; con sesión y rol válidos, ninguna responde 501', async () => {
+      expect(
+        ROUTES.filter((r) => !r.implemented && !implemented(r)).map(name),
+      ).toEqual([]);
+      for (const route of ROUTES) {
         for (const who of route.allowed) {
           const res = await call(route, who, {
             body: route.body,
@@ -1191,18 +1196,109 @@ describe('Ola 3 · apertura: migración expand, SE-02 y rutas con 501 (e2e)', ()
           expect({
             route: name(route),
             who,
-            status: res.status,
-            code: res.body.error?.code,
-          }).toEqual({
-            route: name(route),
-            who,
-            status: 501,
-            code: 'NOT_IMPLEMENTED',
-          });
-          expect(res.body.error.details[0].meta.step).toMatch(/^3\.[3-6]$/);
-          openapi.expectResponse(route.method, route.path(), res);
+            notImplemented:
+              res.status === 501 || res.body?.error?.code === 'NOT_IMPLEMENTED',
+          }).toEqual({ route: name(route), who, notImplemented: false });
         }
       }
+    });
+
+    it('conciliación, alertas, eventos y cierres con la cadena sin configurar: listas vacías y sus 404 y 409', async () => {
+      const expectations: [
+        Method,
+        string,
+        Who,
+        object | undefined,
+        number,
+        string | undefined,
+      ][] = [
+        [
+          'get',
+          '/v1/platform/chain/events',
+          'support',
+          undefined,
+          200,
+          undefined,
+        ],
+        [
+          'get',
+          '/v1/platform/chain/alerts',
+          'support',
+          undefined,
+          200,
+          undefined,
+        ],
+        [
+          'get',
+          '/v1/platform/chain/reconciliation/runs',
+          'support',
+          undefined,
+          200,
+          undefined,
+        ],
+        [
+          'get',
+          '/v1/platform/lot-closures',
+          'support',
+          undefined,
+          200,
+          undefined,
+        ],
+        [
+          'get',
+          `/v1/platform/chain/reconciliation/runs/${ID}`,
+          'support',
+          undefined,
+          404,
+          'NOT_FOUND',
+        ],
+        [
+          'post',
+          `/v1/platform/chain/alerts/${ID}/resolve`,
+          'operations',
+          { note: 'Comprobado' },
+          404,
+          'NOT_FOUND',
+        ],
+        // Sin red no hay con qué conciliar
+        [
+          'post',
+          '/v1/platform/chain/reconciliation/runs',
+          'operations',
+          { scope: 'ALL' },
+          409,
+          'CHN_DISABLED',
+        ],
+        [
+          'get',
+          `/v1/platform/collections/${ID}/closure`,
+          'support',
+          undefined,
+          404,
+          'TOK_COLLECTION_NOT_FOUND',
+        ],
+        [
+          'get',
+          `/v1/collections/${ID}/closure`,
+          'owner',
+          undefined,
+          404,
+          'TOK_COLLECTION_NOT_FOUND',
+        ],
+      ];
+      for (const [method, path, who, body, status, code] of expectations) {
+        const res = await call({ method, path: () => path }, who, { body });
+        expect({
+          path,
+          status: res.status,
+          code: res.body.error?.code,
+        }).toEqual({ path, status, code });
+        openapi.expectResponse(method, path, res);
+        if (status === 200) {
+          expect(res.body.data).toMatchObject({ items: [], total: 0 });
+        }
+      }
+      expect(await count('reconciliation_runs')).toBe(0);
     });
 
     it('sin sesión responden 401 (salvo las públicas)', async () => {

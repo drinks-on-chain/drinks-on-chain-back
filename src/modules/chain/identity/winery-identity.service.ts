@@ -1,7 +1,15 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { ChainAccount, ChainTransaction, Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
-import { ZERO_TOKEN_COUNTS } from '@modules/tokenization/dto/token-counts.dto';
+import type { LotStage } from '@modules/lots/domain/lot-stage';
+import {
+  TOKEN_COUNT_KEYS,
+  ZERO_TOKEN_COUNTS,
+  sumTokenCounts,
+  type TokenCountsDto,
+} from '@modules/tokenization/dto/token-counts.dto';
+import type { CollectionStatus } from '@modules/tokenization/tokenization.constants';
+import { toDossierAnchor } from '../anchor/anchor-view';
 import { CHAIN_SETTINGS, type ChainSettings } from '../chain.config';
 import {
   IDENTITY_TX_KINDS,
@@ -11,6 +19,7 @@ import {
   type ChainNetwork,
 } from '../chain.constants';
 import type {
+  ChainAccountLotDto,
   WineryChainAccountViewDto,
   WineryChainIdentityDto,
 } from '../dto/chain.dto';
@@ -243,13 +252,76 @@ export class WineryIdentityService {
   }
 
   /**
-   * `WineryChainAccountView` (§3.4). Las colecciones, sus contadores y los
-   * anclajes llegan con los pasos 3.4–3.6; hasta entonces, ceros reales.
+   * NFT por lote de la bodega (§3.4): una fila por colección de esta red,
+   * con sus contadores por estado y el anclaje del expediente del lote.
+   */
+  private async byLot(wineryId: string): Promise<ChainAccountLotDto[]> {
+    const collections = await this.prisma.collection.findMany({
+      where: { wineryId, contract: { network: this.network } },
+      select: {
+        id: true,
+        status: true,
+        quota: true,
+        minted: true,
+        lot: {
+          select: {
+            id: true,
+            reference: true,
+            lotCode: true,
+            name: true,
+            stage: true,
+            dossier: {
+              select: { anchor: { include: { transaction: true } } },
+            },
+          },
+        },
+      },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+    if (collections.length === 0) return [];
+    const groups = await this.prisma.token.groupBy({
+      by: ['collectionId', 'status'],
+      where: { collectionId: { in: collections.map((c) => c.id) } },
+      _count: { _all: true },
+    });
+    const counts = new Map<string, TokenCountsDto>(
+      collections.map((c) => [
+        c.id,
+        { ...ZERO_TOKEN_COUNTS, minted: c.minted },
+      ]),
+    );
+    for (const group of groups) {
+      const key = TOKEN_COUNT_KEYS[group.status];
+      const entry = counts.get(group.collectionId);
+      if (entry && key) entry[key] = group._count._all;
+    }
+    return collections.map((collection) => ({
+      lotId: collection.lot.id,
+      reference: collection.lot.reference,
+      lotCode: collection.lot.lotCode,
+      name: collection.lot.name,
+      stage: collection.lot.stage as LotStage,
+      collectionId: collection.id,
+      collectionStatus: collection.status as CollectionStatus,
+      quota: collection.quota,
+      counts: counts.get(collection.id) as TokenCountsDto,
+      anchor: toDossierAnchor(
+        collection.lot.dossier?.anchor,
+        this.settings.explorerBaseUrl,
+      ),
+    }));
+  }
+
+  /**
+   * `WineryChainAccountView` (§3.4, ORG-12): identidad, NFT por lote (y su
+   * suma), últimas transacciones y lo que la plataforma ha pagado en la red
+   * por esta bodega (`feeChargedStroops` de todas sus transacciones).
    */
   async accountView(wineryId: string): Promise<WineryChainAccountViewDto> {
     const network = this.network;
-    const [identity, recent, costs, first] = await Promise.all([
+    const [identity, byLot, recent, costs, first] = await Promise.all([
       this.view(wineryId),
+      this.byLot(wineryId),
       this.prisma.chainTransaction.findMany({
         where: { wineryId, network },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
@@ -267,8 +339,8 @@ export class WineryIdentityService {
     ]);
     return {
       identity,
-      totals: { ...ZERO_TOKEN_COUNTS },
-      byLot: [],
+      totals: sumTokenCounts(byLot.map((lot) => lot.counts)),
+      byLot,
       recentTransactions: recent.map((t) =>
         toChainTxRef(t, this.settings.explorerBaseUrl),
       ),

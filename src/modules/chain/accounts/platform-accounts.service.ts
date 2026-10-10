@@ -7,6 +7,7 @@ import type {
   PlatformChainAccountsDto,
 } from '../dto/chain.dto';
 import { explorerAccountUrl } from '../explorer';
+import { CODE_TTL_CURSOR, codeTtlDays } from '../ttl/code-ttl';
 import { stroopsToXlm, xlmToStroops } from '../tx/chain-tx.mapper';
 import {
   ChainBalanceCache,
@@ -67,17 +68,22 @@ export class PlatformAccountsService {
   }
 
   async view(): Promise<PlatformChainAccountsDto> {
-    const [operations, anchor] = await Promise.all([
+    const { network } = this.settings;
+    const [operations, anchor, codeTtl] = await Promise.all([
       this.status('OPERATIONS'),
       this.status('ANCHOR'),
+      this.prisma.chainCursor.findUnique({
+        where: { network_name: { network, name: CODE_TTL_CURSOR } },
+      }),
     ]);
     return {
       network: this.settings.network,
       operations,
       anchor,
       wasmHash: this.settings.wasmHash,
-      // La vida del código la lee la tarea de TTL (paso 3.6, §8.3)
-      codeTtlDays: null,
+      // Última lectura del worker (tarea de TTL y conciliación, §8.3);
+      // `null` hasta la primera
+      codeTtlDays: this.settings.wasmHash ? codeTtlDays(codeTtl) : null,
     };
   }
 }

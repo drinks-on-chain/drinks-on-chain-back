@@ -218,7 +218,23 @@ export class CollectionsService {
 
   /** `GET /v1/collections/{id}` y `GET /v1/platform/collections/{id}`. */
   async get(wineryId: string | undefined, id: string): Promise<CollectionDto> {
-    return this.reader.collectionView(await this.load(id, wineryId));
+    const view = await this.reader.collectionView(
+      await this.load(id, wineryId),
+    );
+    if (!wineryId || !view.closure) return view;
+    // La bodega ve cifras y números de botella, sin datos de pedidos (§8.4)
+    return {
+      ...view,
+      closure: {
+        ...view.closure,
+        items: view.closure.items.map((item) => ({
+          ...item,
+          orderId: null,
+          paidAt: null,
+          note: null,
+        })),
+      },
+    };
   }
 
   private async load(

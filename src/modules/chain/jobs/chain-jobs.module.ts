@@ -16,6 +16,7 @@ import { ChainTxSweeper } from './chain-tx.sweeper';
 import { CHAIN_GATEWAY } from './gateway/chain-gateway';
 import { createChainGateway } from './gateway/stellar-chain-gateway';
 import { AnchorDossierHandler } from './handlers/anchor-dossier.handler';
+import { BurnUnsoldHandler } from './handlers/burn-unsold.handler';
 import {
   PauseContractHandler,
   UnpauseContractHandler,
@@ -23,6 +24,13 @@ import {
 import { FundAccountHandler } from './handlers/fund-account.handler';
 import { MintBatchHandler } from './handlers/mint-batch.handler';
 import { SetTokenUriBaseHandler } from './handlers/token-uri-base.handler';
+import {
+  ExtendTtlHandler,
+  RestoreEntriesHandler,
+} from './handlers/ttl.handlers';
+import { ChainIndexer } from './indexer/chain-indexer.service';
+import { ChainReconciler } from './reconcile/chain-reconciler.service';
+import { ChainTtlService } from './ttl/chain-ttl.service';
 import {
   CreateWineryAccountHandler,
   DeployWineryContractHandler,
@@ -34,10 +42,11 @@ import { WineryIdentityProvisioner } from './winery-identity.provisioner';
 
 /**
  * Intenciones que el firmante acepta (§2.2): identidad, pausa, emisión
- * (`MINT_BATCH`, `SET_TOKEN_URI_BASE`) y anclaje (`ANCHOR_DOSSIER`). Las de
- * mantenimiento y el cierre con faltante llegan con el paso 3.6: se añaden
- * aquí con su manejador. Una intención sin manejador se rechaza
- * (`CHN_INTENT_REJECTED`).
+ * (`MINT_BATCH`, `SET_TOKEN_URI_BASE`), anclaje (`ANCHOR_DOSSIER`), cierre
+ * con faltante (`BURN_UNSOLD`) y mantenimiento (`EXTEND_TTL`,
+ * `RESTORE_ENTRIES`). Una intención sin manejador se rechaza
+ * (`CHN_INTENT_REJECTED`): `OPERATOR_TRANSFER` y `REDEEM_BURN` son de las
+ * Olas 4 y 5.
  */
 const INTENT_HANDLER_CLASSES = [
   CreateWineryAccountHandler,
@@ -48,6 +57,9 @@ const INTENT_HANDLER_CLASSES = [
   MintBatchHandler,
   SetTokenUriBaseHandler,
   AnchorDossierHandler,
+  BurnUnsoldHandler,
+  ExtendTtlHandler,
+  RestoreEntriesHandler,
 ];
 
 /**
@@ -70,6 +82,7 @@ const INTENT_HANDLER_CLASSES = [
     },
     // La bitácora se escribe con `AuditService` directamente (actor sistema)
     AuditService,
+    ChainTtlService,
     ...INTENT_HANDLER_CLASSES,
     {
       provide: INTENT_HANDLERS,
@@ -82,6 +95,8 @@ const INTENT_HANDLER_CLASSES = [
     ChainTxSweeper,
     PlatformAccountsSync,
     WineryIdentityProvisioner,
+    ChainIndexer,
+    ChainReconciler,
     ChainBootstrap,
     ...CHAIN_JOB_HANDLERS,
   ],

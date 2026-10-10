@@ -39,8 +39,56 @@ export interface ChainGateway {
     name: string,
     fromLedger: number,
   ): Promise<ChainContractEvent[]>;
+  /**
+   * Página de eventos de varios contratos (`getEvents`, §8.1), en orden, a
+   * partir de `startLedger` o de `cursor` (el de la página anterior). Hasta 25
+   * contratos por llamada (cinco filtros de cinco, el tope del RPC).
+   */
+  eventsPage(query: EventsQuery): Promise<EventsPage>;
+  /** Ventana de ledgers que conserva el RPC (`getHealth`). */
+  ledgerWindow(): Promise<{ latest: number; oldest: number }>;
+  /**
+   * Vida de unas entradas (`getLedgerEntries` → `liveUntilLedgerSeq`, §8.3),
+   * por su clave en XDR base64. Una entrada que no existe no aparece en el
+   * mapa.
+   */
+  entriesTtl(keys: xdr.LedgerKey[]): Promise<EntriesTtl>;
   /** Friendbot (solo `TESTNET` y `LOCAL`). */
   fund(address: string): Promise<{ txHash: string | null }>;
+}
+
+/** Contratos por llamada a `getEvents`: 5 filtros × 5 `contractIds`. */
+export const EVENTS_CONTRACTS_PER_CALL = 25;
+
+export interface EventsQuery {
+  contractIds: string[];
+  /** Primer ledger a leer; se ignora si hay `cursor`. */
+  startLedger: number;
+  cursor?: string | null;
+  limit?: number;
+}
+
+/** Evento tal como lo guarda el indexador (`chain_events`). */
+export interface IndexedChainEvent extends ChainContractEvent {
+  /** Id del RPC (`{toid}-{índice}`): único y ordenable. */
+  rpcEventId: string;
+  contractAddress: string;
+  txHash: string;
+  ledger: number;
+  closedAt: Date;
+}
+
+export interface EventsPage {
+  events: IndexedChainEvent[];
+  cursor: string | null;
+  latestLedger: number;
+  oldestLedger: number | null;
+}
+
+export interface EntriesTtl {
+  latestLedger: number;
+  /** `LedgerKey` en XDR base64 → último ledger en que la entrada vive. */
+  liveUntil: Map<string, number>;
 }
 
 export const CHAIN_GATEWAY = Symbol('CHAIN_GATEWAY');

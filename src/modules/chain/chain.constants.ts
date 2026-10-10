@@ -146,6 +146,7 @@ export const CHAIN_ALERT_CODES = [
   'NETWORK_RESET',
   'CHN_INTENT_REJECTED',
   'TX_FAILED',
+  'MINT_RANGE_MISMATCH',
 ] as const;
 
 /**
@@ -164,6 +165,7 @@ export const CHAIN_TX_ERROR_CODES = [
   'CHN_INSUFFICIENT_BALANCE',
   'CHN_INTENT_REJECTED',
   'CHN_MINT_DISABLED',
+  'CHN_WINERY_NOT_ACTIVE',
   'CHN_NETWORK_RESET',
 ] as const;
 
@@ -191,7 +193,40 @@ export const intentKeys = {
     `uri:${contractId}:${createHash('sha256').update(baseUri).digest('hex').slice(0, 32)}`,
   /** Un intento de Friendbot por cuenta y día (UTC). */
   fund: (role: 'OPERATIONS' | 'ANCHOR', day: string) => `fund:${role}:${day}`,
+  /**
+   * Extensión del TTL de las entradas de un contrato (§8.3): la del día y, si
+   * tras ella vuelve a haber algo que extender (otra emisión), `:1`, `:2`…
+   */
+  ttlContract: (contractId: string, day: string, n = 0) =>
+    `ttl:${contractId}:${day}${n > 0 ? `:${n}` : ''}`,
+  /** Extensión del TTL del código compartido (su propia transacción, P-SC-6). */
+  ttlCode: (wasmHash: string, day: string, n = 0) =>
+    `ttl:code:${wasmHash.slice(0, 16)}:${day}${n > 0 ? `:${n}` : ''}`,
+  /** Restauración que pide el intento `attempt` de una transacción (§2.3). */
+  restore: (transactionId: string, attempt: number) =>
+    `restore:${transactionId}:${attempt}`,
+  /** Quema de un NFT sin vender en un cierre con faltante (§8.4). */
+  burnUnsold: (closureId: string, tokenId: number) =>
+    `burn-unsold:${closureId}:${tokenId}`,
 } as const;
+
+/**
+ * Ledgers por día con los que se cuenta la vida de una entrada (§8.3): 5 s
+ * por ledger, como en testnet y mainnet (`docs/testnet.md` §6 del repo de
+ * contratos). La red local cierra uno por segundo: allí un «día» de TTL dura
+ * menos, pero las cuentas son las mismas.
+ */
+export const LEDGERS_PER_DAY = 17_280;
+/** A cuánto se extiende lo que baja del umbral (S-20). */
+export const TTL_EXTEND_TO_DAYS = 120;
+/** Por debajo de esto y sin extensión en curso: alerta `TTL_EXPIRING` (§8.2). */
+export const TTL_ALERT_BELOW_DAYS = 14;
+/** Ids por cubo de propiedad de OpenZeppelin (`OwnershipBucket(id / 3200)`). */
+export const OWNERSHIP_BUCKET_SIZE = 3_200;
+/** Transacción `SUBMITTED`/`RETRYING` más tiempo que esto: `TX_STUCK` (§8.2). */
+export const TX_STUCK_MINUTES = 15;
+/** Retención del RPC ≈ 7 días: con el cursor a más de 6, `INDEXER_GAP` (§8.1). */
+export const INDEXER_GAP_DAYS = 6;
 
 /** Intenciones que forman la identidad de una bodega (§3.1). */
 export const IDENTITY_TX_KINDS: readonly ChainTxKind[] = [

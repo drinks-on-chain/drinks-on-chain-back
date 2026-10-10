@@ -32,10 +32,8 @@ import {
 import { platformRolesWith } from '@modules/platform-users/permissions';
 import {
   ApiErrorCodes,
-  ApiNotImplementedO3,
   ApiRoleForbidden,
   ApiRuleErrors,
-  notImplementedO3,
 } from './contract/o3-contract';
 import {
   ChainActionDto,
@@ -53,6 +51,7 @@ import {
   StartReconciliationDto,
 } from './dto/chain.dto';
 import { PlatformAccountsService } from './accounts/platform-accounts.service';
+import { ChainMonitoringService } from './monitoring/chain-monitoring.service';
 import { ChainTransactionsService } from './tx/chain-transactions.service';
 
 /** Ver: administración, operaciones y soporte. */
@@ -76,6 +75,7 @@ export class PlatformChainController {
   constructor(
     private readonly transactions: ChainTransactionsService,
     private readonly platformAccounts: PlatformAccountsService,
+    private readonly monitoring: ChainMonitoringService,
   ) {}
 
   // ── Transacciones (§2.4) ─────────────────────────────────────────────────
@@ -190,11 +190,11 @@ export class PlatformChainController {
   })
   @ApiPaginatedResponse(ChainEventDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.6')
+  @ApiRuleErrors()
   listEvents(
-    @Query() _query: ChainEventsQueryDto,
+    @Query() query: ChainEventsQueryDto,
   ): Promise<Paginated<ChainEventDto>> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.events(query);
   }
 
   // ── Conciliación y alertas (§8.2) ────────────────────────────────────────
@@ -207,11 +207,11 @@ export class PlatformChainController {
   })
   @ApiPaginatedResponse(ReconciliationRunDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.6')
+  @ApiRuleErrors()
   listRuns(
-    @Query() _query: ReconciliationRunsQueryDto,
+    @Query() query: ReconciliationRunsQueryDto,
   ): Promise<Paginated<ReconciliationRunDto>> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.listRuns(query);
   }
 
   @Get('reconciliation/runs/:id')
@@ -220,11 +220,10 @@ export class PlatformChainController {
   @ApiOkResponse({ type: ReconciliationRunDetailDto })
   @ApiRoleForbidden()
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['NOT_FOUND'])
-  @ApiNotImplementedO3('3.6')
   getRun(
-    @Param('id', ParseUUIDPipe) _id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ): Promise<ReconciliationRunDetailDto> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.run(id);
   }
 
   @Post('reconciliation/runs')
@@ -240,13 +239,14 @@ export class PlatformChainController {
   @ApiRoleForbidden()
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'CHN_RECONCILIATION_RUNNING (ya hay una en curso para ese alcance; `meta.runId`)',
+    'CHN_DISABLED (la cadena no está configurada en este entorno)',
   ])
-  @ApiRuleErrors()
-  @ApiNotImplementedO3('3.6')
+  @ApiRuleErrors(['(`subjectId` no es un contrato o una colección existente)'])
   startRun(
-    @Body() _dto: StartReconciliationDto,
+    @Body() dto: StartReconciliationDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ReconciliationRunDto> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.startRun(dto, user);
   }
 
   @Get('alerts')
@@ -259,11 +259,11 @@ export class PlatformChainController {
   })
   @ApiPaginatedResponse(ChainAlertDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.6')
+  @ApiRuleErrors()
   listAlerts(
-    @Query() _query: ChainAlertsQueryDto,
+    @Query() query: ChainAlertsQueryDto,
   ): Promise<Paginated<ChainAlertDto>> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.alerts(query);
   }
 
   @Post('alerts/:id/resolve')
@@ -278,11 +278,11 @@ export class PlatformChainController {
   @ApiErrorCodes(HttpStatus.NOT_FOUND, ['NOT_FOUND'])
   @ApiErrorCodes(HttpStatus.CONFLICT, ['CHN_ALERT_ALREADY_RESOLVED'])
   @ApiRuleErrors()
-  @ApiNotImplementedO3('3.6')
   resolveAlert(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: ResolveChainAlertDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ResolveChainAlertDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<ChainAlertDto> {
-    throw notImplementedO3('3.6');
+    return this.monitoring.resolveAlert(id, dto.note, user);
   }
 }

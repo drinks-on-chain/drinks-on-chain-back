@@ -59,6 +59,7 @@ describe('Variables de la cadena (contrato O3 §2.1)', () => {
       consumerSeedCheckAddress: null,
       publicApiBaseUrl: null,
       deployMaxFeeStroops: '500000000',
+      codeTtlMaxFeeStroops: '1000000000',
       txRetryDelaysMs: [10_000, 30_000, 60_000, 120_000, 300_000],
       friendbotUrl: null,
       environment: 'testnet',

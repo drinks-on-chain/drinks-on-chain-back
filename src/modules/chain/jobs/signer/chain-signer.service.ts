@@ -6,6 +6,7 @@ import {
   BASE_FEE,
   Memo,
   Operation,
+  SorobanDataBuilder,
   Transaction,
   TransactionBuilder,
   authorizeEntry,
@@ -22,6 +23,8 @@ import {
   CUSTODY_REF_ANCHOR,
   CUSTODY_REF_OPERATIONS,
   RESERVED_CHAIN_TX_KINDS,
+  intentKeys,
+  type ChainSubjectType,
   type ChainTxKind,
   type ChainTxStatus,
 } from '../../chain.constants';
@@ -30,7 +33,9 @@ import {
   KEY_CUSTODY,
   type KeyCustody,
 } from '../../custody/key-custody';
+import { ChainIntentsService } from '../../tx/chain-intents.service';
 import {
+  ArchivedEntriesFailure,
   ChainTxFailure,
   IntentNotReady,
   IntentOnHold,
@@ -137,6 +142,7 @@ export class ChainSigner {
     @Inject(KEY_CUSTODY) private readonly custody: KeyCustody,
     @Inject(CHAIN_GATEWAY) private readonly gateway: ChainGateway,
     @Inject(CHAIN_SETTINGS) private readonly settings: ChainSettings,
+    private readonly intents: ChainIntentsService,
   ) {}
 
   /** Entorno de los manejadores: sin acceso a la firma. */
@@ -197,9 +203,55 @@ export class ChainSigner {
         from: ['BUILDING'],
       });
       outcome = result === 'IGNORED' ? 'SKIPPED' : result;
+      if (failure instanceof ArchivedEntriesFailure && result === 'RETRYING') {
+        await this.requestRestore(claim.row, failure);
+      }
     }
     await this.after(transactionId, outcome);
     return outcome;
+  }
+
+  /**
+   * `CHN_ARCHIVED_ENTRY` (§2.3, §8.3): la simulación pidió restaurar entradas
+   * archivadas. Se registra una intención `RESTORE_ENTRIES` con esas claves
+   * (el firmante la valida como cualquier otra) y la transacción original se
+   * reintenta con sus esperas. Una por intento: registrarla dos veces no crea
+   * otra.
+   */
+  private async requestRestore(
+    row: ChainTransaction,
+    failure: ArchivedEntriesFailure,
+  ): Promise<void> {
+    if (row.kind === 'RESTORE_ENTRIES' || failure.ledgerKeys.length === 0) {
+      return;
+    }
+    try {
+      await this.prisma.$transaction((db) =>
+        this.intents.register(db, {
+          kind: 'RESTORE_ENTRIES',
+          intentKey: intentKeys.restore(row.id, row.attempts),
+          subject: {
+            type: row.subjectType as ChainSubjectType,
+            id: row.subjectId,
+          },
+          wineryId: row.wineryId,
+          params: {
+            forTransactionId: row.id,
+            ledgerKeys: [...failure.ledgerKeys],
+          },
+          correlationId: row.correlationId,
+        }),
+      );
+      this.logger.warn({
+        message: `Entradas archivadas: se encadena RESTORE_ENTRIES para ${row.kind}`,
+        transactionId: row.id,
+        entries: failure.ledgerKeys.length,
+      });
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo registrar la restauración de ${row.id}: ${error instanceof Error ? error.message.slice(0, 200) : 'error'}`,
+      );
+    }
   }
 
   /** Consulta en la red una transacción `SUBMITTED` y la resuelve. */
@@ -511,7 +563,10 @@ export class ChainSigner {
   }
 
   private async build(
-    prepared: Extract<PreparedIntent, { type: 'CLASSIC' | 'SOROBAN' }>,
+    prepared: Extract<
+      PreparedIntent,
+      { type: 'CLASSIC' | 'SOROBAN' | 'FOOTPRINT' }
+    >,
     source: SignerSpec,
   ): Promise<{ tx: Transaction; signers: SignerSpec[] }> {
     const account = await this.gateway.loadAccount(source.address);
@@ -542,6 +597,10 @@ export class ChainSigner {
       }
       tx = draft.build();
       signers = [source, ...prepared.extraSigners];
+    } else if (prepared.type === 'FOOTPRINT') {
+      if (prepared.maxFeeStroops) cap = BigInt(prepared.maxFeeStroops);
+      tx = await this.footprint(prepared, builder);
+      signers = [source];
     } else {
       if (prepared.maxFeeStroops) cap = BigInt(prepared.maxFeeStroops);
       const assembled = await this.assemble(prepared, builder);
@@ -653,6 +712,34 @@ export class ChainSigner {
     };
   }
 
+  /**
+   * Mantenimiento (§8.3): la operación no lleva argumentos; lo que extiende o
+   * restaura son las claves de su huella. La simulación fija los recursos y
+   * la comisión (la renta), como en cualquier otra.
+   */
+  private async footprint(
+    prepared: Extract<PreparedIntent, { type: 'FOOTPRINT' }>,
+    builder: (fee: string) => TransactionBuilder,
+  ): Promise<Transaction> {
+    const data = new SorobanDataBuilder();
+    const restore = prepared.action === 'RESTORE';
+    if (restore) data.setReadWrite(prepared.keys);
+    else data.setReadOnly(prepared.keys);
+    const draft = builder(BASE_FEE)
+      .addOperation(
+        restore
+          ? Operation.restoreFootprint({})
+          : Operation.extendFootprintTtl({ extendTo: prepared.extendTo ?? 0 }),
+      )
+      .setSorobanData(data.build())
+      .build();
+    const simulation = await this.gateway.simulate(draft);
+    if (rpc.Api.isSimulationError(simulation)) {
+      throw failureFromDiagnostics(simulation.error);
+    }
+    return rpc.assembleTransaction(draft, simulation).build();
+  }
+
   private assertSimulated(
     simulation: rpc.Api.SimulateTransactionResponse,
   ): rpc.Api.SimulateTransactionSuccessResponse {
@@ -660,9 +747,11 @@ export class ChainSigner {
       throw failureFromDiagnostics(simulation.error);
     }
     if (rpc.Api.isSimulationRestore(simulation)) {
-      throw new ChainTxFailure(
-        'CHN_ARCHIVED_ENTRY',
-        'la simulación pide restaurar entradas archivadas',
+      // Entradas archivadas (§2.3): el firmante encadena su restauración
+      throw new ArchivedEntriesFailure(
+        simulation.restorePreamble.transactionData
+          .getReadWrite()
+          .map((key) => key.toXDR('base64')),
       );
     }
     return simulation;

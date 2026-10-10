@@ -255,3 +255,53 @@ Al desplegar esta versión (la coordinación, con `~/doc-dev/bin/deploy.sh <sha>
 2. **Relleno de anclajes**: con la cadena habilitada, al arrancar el worker la tarea `chain.anchor.backfill` registra `ANCHOR_DOSSIER` para cada expediente cerrado sin anclaje (p. ej. «Singani Gran Reserva 2026»). Cada anclaje cuesta 100 stroops a la cuenta de anclaje. Se ve en `GET /v1/platform/chain/transactions?kind=ANCHOR_DOSSIER`.
 3. **`CHAIN_MINT_ENABLED`**: sigue en `false` hasta que la coordinación lo decida (ADR-011). Mientras tanto, aprobar una solicitud deja su emisión `PENDING` con `CHN_MINT_DISABLED`; al ponerla a `true` en `~/doc-dev/.env` y volver a desplegar, las pendientes se emiten solas. El anclaje **no** depende de esta variable.
 4. Sin variables nuevas. Costes observados en la red local (comisión cobrada a operaciones): primer `mint_batch` de 100 ≈ 0,04 XLM; siguientes ≈ 0,04 XLM; 32 000 NFT ≈ 0,014 XLM; anclaje, 100 stroops (cuenta de anclaje). En testnet la renta puede diferir: `feeChargedStroops` de cada transacción guarda lo real.
+
+### 7. Indexador, conciliación, TTL y cierre con faltante (paso 3.6)
+
+Sin migraciones ni variables obligatorias nuevas (las tablas son de la apertura). Opcional: `CHAIN_CODE_TTL_MAX_FEE_STROOPS` (tope propio de la extensión del TTL del código; 100 XLM por defecto, se devuelve lo no gastado).
+
+**Tareas programadas** (cola `scheduled` del worker; con la cadena sin configurar no hacen nada):
+
+| Tarea | Cuándo | Qué hace |
+|---|---|---|
+| `chain.tx.poll` | cada 5 s | Sondea las transacciones enviadas y despierta las que esperan turno, reintento o una condición (`CHN_MINT_DISABLED`, `CHN_WINERY_NOT_ACTIVE`: cada 60 s) |
+| `chain.balance.check` | cada 15 min | Saldos de operaciones y anclaje; abre o cierra `LOW_BALANCE` |
+| `chain.testnet.fund` | cada 15 min | Solo `TESTNET`/`LOCAL`: Friendbot si falta saldo (una vez al día por cuenta) |
+| `chain.indexer.poll` | cada 60 s | Eventos de los contratos desde el cursor guardado → `chain_events`; `UNEXPECTED_EVENT`, `INDEXER_GAP`, `NETWORK_RESET` |
+| `chain.reconcile` | cada hora (y al arrancar el worker) | Conciliación **ligera**: contadores, pausa, roles, reglas de la base, transacciones atascadas, TTL y una muestra de dueños y quemas |
+| `chain.reconcile.full` | 02:30 America/La_Paz (06:30 UTC) | Conciliación **completa**: además, todos los NFT vendidos y quemados y la transacción de cada anclaje que el RPC conserve |
+| `chain.ttl.extend` | 03:00 America/La_Paz (07:00 UTC) | `EXTEND_TTL` de lo que baje de `CHAIN_TTL_EXTEND_BELOW_DAYS` (30). Además se revisa sola 2 s después de cada emisión, quema o despliegue |
+| `chain.identity.backfill`, `chain.anchor.backfill` | al arrancar y bajo demanda | Rellenos de identidades y de anclajes |
+
+**Qué pasa al habilitar la cadena por primera vez** (después de §5 y §6), en este orden y sin intervención:
+
+1. Se registran y fondean las cuentas de operaciones y de anclaje (Friendbot). La alerta `LOW_BALANCE` del arranque se cierra sola al confirmarse el fondeo.
+2. **Relleno de identidades**: una cuenta y un contrato por bodega `ACTIVE`, de una en una (dos transacciones por bodega).
+3. **Relleno de anclajes**: un `ANCHOR_DOSSIER` por expediente cerrado sin anclaje.
+4. A los 2 s de cada despliegue, `EXTEND_TTL` de las entradas del contrato que nazcan con menos de 30 días (en testnet nacen con 7).
+5. El indexador empieza en el ledger de la primera transacción propia; la primera conciliación ligera deja `codeTtlDays` en `GET /v1/platform/chain/accounts`.
+6. Cierres de lote: los lotes embotellados **antes** de este despliegue no tienen `lot.bottled` en el outbox; su cierre se calcula la primera vez que alguien abre `GET /v1/platform/collections/{id}/closure` (o lo decide). Si faltan botellas, avisa por correo en ese momento.
+
+Revisa después `GET /v1/platform/chain/alerts` (debe quedar vacía) y `GET /v1/platform/dashboard` (`chain.lastReconciliation.status = OK`). Una alerta `CRITICAL` llega además por correo a administración y operaciones.
+
+**Costes esperados en testnet** (los paga la cuenta de operaciones; cifras observadas en la red local, protocolo 29, en stroops; en testnet la renta puede diferir y `feeChargedStroops` de cada transacción guarda lo real):
+
+| Transacción | Observado | Nota |
+|---|---|---|
+| `DEPLOY_WINERY_CONTRACT` | ≈ 955 000 (0,096 XLM) | Una vez por bodega |
+| `MINT_BATCH` | 100 000–400 000 (0,01–0,04 XLM) | Por emisión, no por botella |
+| `EXTEND_TTL` de un contrato | ≈ 1 750 000 (0,175 XLM) | Dos `Owner` de 7 a 120 días y lo que ronde los 30; una por contrato tras cada emisión |
+| `EXTEND_TTL` del código | ≈ 6,5 XLM por cada 30 días (medido por la pista SC) | Una vez cada ≈ 90 días: de menos de 30 a 120 días son ≈ 20 XLM. En la prueba solo se extendieron unos ledgers (≈ 250 000 stroops) |
+| `BURN_UNSOLD` | 70 000 de media; 277 000 la primera (0,007–0,028 XLM) | Una por NFT quemado: 20 quemas ≈ 0,15 XLM y ≈ 45 s en la red local |
+| `SET_TOKEN_URI_BASE` | 30 000 (0,003 XLM) | Solo si cambia el `slug` de la bodega o el origen de la API |
+| `PAUSE_CONTRACT` | ≈ 246 000 (0,025 XLM) | Revocación o incidente |
+| `ANCHOR_DOSSIER` | 100 | Cuenta de anclaje |
+| `RESTORE_ENTRIES` | sin medir | La red local no archiva entradas (S-25); solo si algo se queda sin extender |
+
+**Procedimiento ante un reinicio de testnet** (S-22; la red borra cuentas, contratos y NFT). Lo detectan el indexador (la secuencia de ledgers retrocede) y la conciliación (el RPC no reconoce un contrato): alerta `CRITICAL` `NETWORK_RESET` y correo. Es un procedimiento **manual de desarrollo**, con copia previa de la base y aviso a la coordinación:
+
+1. Deshabilita la cadena (vacía `CHAIN_CUSTODY_DRIVER` en `~/doc-dev/.env`) y despliega: nada más sale a la red.
+2. Con el dueño de la base (el rol de la aplicación no tiene `DELETE` en estas tablas), retira lo que era de la red anterior. Los NFT de antes del reinicio **se pierden**: las colecciones de desarrollo hay que rehacerlas. En orden: `lot_closure_items`, `lot_closures`, `tokens`, `mints`, `collection_images`, `collection_status_history`, `collections`, `tokenization_request_changes`, `tokenization_requests`, `dossier_anchors` (y los lotes `ANCHORED` vuelven a `CERTIFIED`, con `bottling_batches.is_anchored_on_chain = false`), `chain_events`, `chain_cursors`, `chain_alerts`, `reconciliation_runs`, `chain_tx_attempts`, `chain_transactions`, `nft_contracts` y `chain_accounts` (antes, `wineries.chain_account_id = NULL`). Si quieres las mismas direcciones para las bodegas, anota antes sus `derivation_index` y repónlos al recrear `chain_accounts`.
+3. Vuelve a habilitar la cadena y despliega. El arranque repite lo de «por primera vez»: Friendbot, identidades y anclajes de los expedientes cerrados. Resuelve a mano la alerta `NETWORK_RESET` con una nota.
+
+Si solo se perdió el **código** (`WINERY_NFT_WASM_HASH` ya no existe en la red), la pista de contratos lo vuelve a subir antes del paso 3.

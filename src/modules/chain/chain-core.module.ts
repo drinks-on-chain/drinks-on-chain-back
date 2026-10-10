@@ -3,6 +3,7 @@ import { OutboxModule } from '@shared/outbox/outbox.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { ChainAlertsWriter } from './alerts/chain-alerts.writer';
 import { DossierAnchorService } from './anchor/dossier-anchor.service';
+import { ReconciliationRunsService } from './reconciliation/reconciliation-runs.service';
 import { ChainSettingsModule } from './chain-settings.module';
 import { WineryIdentityService } from './identity/winery-identity.service';
 import { ChainIntentsService } from './tx/chain-intents.service';
@@ -19,6 +20,7 @@ import { ChainIntentsService } from './tx/chain-intents.service';
     WineryIdentityService,
     ChainAlertsWriter,
     DossierAnchorService,
+    ReconciliationRunsService,
   ],
   exports: [
     ChainSettingsModule,
@@ -27,6 +29,7 @@ import { ChainIntentsService } from './tx/chain-intents.service';
     WineryIdentityService,
     ChainAlertsWriter,
     DossierAnchorService,
+    ReconciliationRunsService,
   ],
 })
 export class ChainCoreModule {}

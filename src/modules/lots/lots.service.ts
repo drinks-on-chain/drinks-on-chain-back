@@ -8,6 +8,7 @@ import {
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { AUDIT_TX_OPTIONS, AuditService } from '@shared/audit/audit.service';
 import { AuditAction } from '@shared/audit/audit.actions';
+import { OutboxService } from '@shared/outbox/outbox.service';
 import { ErrorCode } from '@shared/exceptions/error-codes';
 import { ValidationException } from '@shared/exceptions/validation.exception';
 import type { Paginated } from '@shared/interfaces/api-response.interface';
@@ -41,6 +42,11 @@ import {
 import type { LotProductType } from './domain/lot-stage';
 import { lotNotFound, ruleError, violation } from './domain/trace-errors';
 import { estimateBelowMinted } from '@modules/tokenization/domain/quota';
+import {
+  LOT_AGGREGATE,
+  LOT_DISCARDED,
+  type LotBottlesChangedPayload,
+} from './lots.events';
 
 /** Lote del servidor (contrato O2 §2): creación, consulta, edición y descarte. */
 @Injectable()
@@ -48,6 +54,7 @@ export class LotsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly outbox: OutboxService,
   ) {}
 
   async list(
@@ -317,6 +324,13 @@ export class LotsService {
           voidedBottleCodes: voided.count,
         },
         resource: { type: 'lot', id },
+      });
+      // Contrato O3 §8.4: el cierre con faltante lo calcula quien lo consume
+      await this.outbox.add<LotBottlesChangedPayload>(tx, {
+        type: LOT_DISCARDED,
+        aggregateType: LOT_AGGREGATE,
+        aggregateId: id,
+        payload: { lotId: id, wineryId, lotCode: locked.lotCode, bottles: 0 },
       });
       await this.audit.record(tx, {
         action: AuditAction.LOT_DISCARDED,

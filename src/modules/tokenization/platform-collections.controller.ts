@@ -31,10 +31,8 @@ import {
 import { platformRolesWith } from '@modules/platform-users/permissions';
 import {
   ApiErrorCodes,
-  ApiNotImplementedO3,
   ApiRoleForbidden,
   ApiRuleErrors,
-  notImplementedO3,
 } from '@modules/chain/contract/o3-contract';
 import { ChainTxRefDto } from '@modules/chain/dto/chain-common.dto';
 import {
@@ -57,6 +55,7 @@ import {
   CurrentUser,
   type AuthenticatedUser,
 } from '@shared/decorators/current-user.decorator';
+import { LotClosureService } from './closure/lot-closure.service';
 import { CollectionsService } from './collections.service';
 
 /** Ver: administración, operaciones y soporte. */
@@ -88,7 +87,10 @@ const PUBLISH_CONFLICTS = [
 @OrgType('PLATFORM')
 @Controller('platform/collections')
 export class PlatformCollectionsController {
-  constructor(private readonly collections: CollectionsService) {}
+  constructor(
+    private readonly collections: CollectionsService,
+    private readonly closures: LotClosureService,
+  ) {}
 
   @Get()
   @Roles(...READERS)
@@ -311,9 +313,8 @@ export class PlatformCollectionsController {
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'TOK_CLOSURE_NOT_APPLICABLE (lote sin embotellar ni descartar; `meta.stage`)',
   ])
-  @ApiNotImplementedO3('3.6')
-  closure(@Param('id', ParseUUIDPipe) _id: string): Promise<LotClosureDto> {
-    throw notImplementedO3('3.6');
+  closure(@Param('id', ParseUUIDPipe) id: string): Promise<LotClosureDto> {
+    return this.closures.platformView(id);
   }
 
   @Post(':id/closure/decide')
@@ -336,15 +337,16 @@ export class PlatformCollectionsController {
   @ApiErrorCodes(HttpStatus.CONFLICT, [
     'TOK_CLOSURE_NOT_APPLICABLE',
     'CONFLICT (cierre ya decidido)',
+    'CHN_CONTRACT_PAUSED (decisión con quemas y el contrato pausado en la red)',
     ...IDEMPOTENCY,
   ])
   @ApiRuleErrors(['IDEMPOTENCY_KEY_REQUIRED', '(falta `reason`)'])
-  @ApiNotImplementedO3('3.6')
   decideClosure(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Body() _dto: DecideLotClosureDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: DecideLotClosureDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<LotClosureDto> {
-    throw notImplementedO3('3.6');
+    return this.closures.decide(id, dto, user);
   }
 
   @Post(':id/closure/items/:tokenId/resolve')
@@ -367,15 +369,18 @@ export class PlatformCollectionsController {
     'TOK_COLLECTION_NOT_FOUND',
     'NOT_FOUND (el token no es un ítem del cierre)',
   ])
-  @ApiErrorCodes(HttpStatus.CONFLICT, ['CONFLICT (ítem ya resuelto)'])
+  @ApiErrorCodes(HttpStatus.CONFLICT, [
+    'CONFLICT (ítem ya resuelto, o NFT sin vender: se quema)',
+    'TOK_CLOSURE_NOT_APPLICABLE',
+  ])
   @ApiRuleErrors()
-  @ApiNotImplementedO3('3.6')
   resolveClosureItem(
-    @Param('id', ParseUUIDPipe) _id: string,
-    @Param('tokenId', ParseIntPipe) _tokenId: number,
-    @Body() _dto: ResolveLotClosureItemDto,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('tokenId', ParseIntPipe) tokenId: number,
+    @Body() dto: ResolveLotClosureItemDto,
+    @CurrentUser() user: AuthenticatedUser,
   ): Promise<LotClosureDto> {
-    throw notImplementedO3('3.6');
+    return this.closures.resolveItem(id, tokenId, dto, user);
   }
 }
 
@@ -386,6 +391,8 @@ export class PlatformCollectionsController {
 @OrgType('PLATFORM')
 @Controller('platform/lot-closures')
 export class PlatformLotClosuresController {
+  constructor(private readonly closures: LotClosureService) {}
+
   @Get()
   @Roles(...READERS)
   @ApiOperation({
@@ -396,10 +403,10 @@ export class PlatformLotClosuresController {
   })
   @ApiPaginatedResponse(LotClosureSummaryDto)
   @ApiRoleForbidden()
-  @ApiNotImplementedO3('3.6')
+  @ApiRuleErrors()
   list(
-    @Query() _query: LotClosuresQueryDto,
+    @Query() query: LotClosuresQueryDto,
   ): Promise<Paginated<LotClosureSummaryDto>> {
-    throw notImplementedO3('3.6');
+    return this.closures.list(query);
   }
 }

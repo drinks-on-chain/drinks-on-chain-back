@@ -7,7 +7,8 @@ import type { MailTemplate } from './index';
  * dueño de la bodega, solicitud recibida, cambios pedidos, aprobada (con la
  * emisión en curso) y rechazada, y los cambios de estado de su colección; a
  * operaciones, solicitud nueva o reenviada. Con la emisión confirmada, NFT emitidos
- * (con enlace al contrato). El de faltante llega con el paso 3.6.
+ * (con enlace al contrato). Con el lote embotellado, el faltante (al dueño y a
+ * operaciones). Y las alertas `CRITICAL` de la cadena, a operaciones.
  */
 
 const NOTE = `style="margin:0;color:${BRAND.muted};"`;
@@ -182,6 +183,99 @@ export const NFT_MINTED_TEMPLATE: MailTemplate = {
   ].join('\n'),
 };
 
+/** El lote tiene menos botellas que NFT emitidos: al dueño (§8.4). */
+export const SHORTFALL_DETECTED_TEMPLATE: MailTemplate = {
+  name: 'faltante-detectado',
+  description:
+    'Aviso al dueño de la bodega: su lote tiene menos botellas que NFT emitidos',
+  variables: [
+    'nombre',
+    'lote',
+    'botellas',
+    'emitidos',
+    'faltante',
+    'sinVender',
+    'vendidos',
+    'enlace',
+  ],
+  subject: `Faltante de botellas en {{lote}}`,
+  text: [
+    'Hola, {{nombre}}:',
+    '',
+    'El lote {{lote}} tiene {{botellas}} botellas y {{emitidos}} NFT emitidos: faltan {{faltante}} botellas.',
+    `De los NFT afectados, {{sinVender}} no se han vendido (el equipo de ${BRAND.name} los retirará de la red) y {{vendidos}} ya tienen comprador (te contactaremos para resolverlos uno a uno).`,
+    'No necesitas hacer nada en la red. Puedes ver el cierre del lote en el ERP:',
+    '{{enlace}}',
+  ].join('\n'),
+  html: [
+    `<p ${P}>Hola, {{nombre}}:</p>`,
+    `<p ${P}>El lote <strong>{{lote}}</strong> tiene <strong>{{botellas}} botellas</strong> y <strong>{{emitidos}} NFT</strong> emitidos: faltan <strong>{{faltante}} botellas</strong>.</p>`,
+    `<p ${P}>De los NFT afectados, {{sinVender}} no se han vendido (el equipo de ${BRAND.name} los retirará de la red) y {{vendidos}} ya tienen comprador (te contactaremos para resolverlos uno a uno).</p>`,
+    `<p ${NOTE}>No necesitas hacer nada en la red.</p>`,
+    linkBlock('Ver el cierre del lote en el ERP'),
+  ].join('\n'),
+};
+
+/** Faltante detectado: a operaciones, que decide el cierre (§8.4). */
+export const SHORTFALL_OPERATIONS_TEMPLATE: MailTemplate = {
+  name: 'faltante-operaciones',
+  description:
+    'Aviso a operaciones de un lote con menos botellas que NFT: hay que decidir el cierre',
+  variables: [
+    'nombre',
+    'bodega',
+    'lote',
+    'botellas',
+    'emitidos',
+    'faltante',
+    'sinVender',
+    'vendidos',
+    'enlace',
+  ],
+  subject: `Faltante de {{faltante}} botellas: {{bodega}} · {{lote}}`,
+  text: [
+    'Hola, {{nombre}}:',
+    '',
+    'El lote {{lote}} de {{bodega}} tiene {{botellas}} botellas y {{emitidos}} NFT emitidos: faltan {{faltante}}.',
+    'NFT sin vender que hay que quemar: {{sinVender}}. NFT vendidos sin botella (devolución o sustitución, uno a uno): {{vendidos}}.',
+    'La decisión del cierre con quemas es de administración:',
+    '{{enlace}}',
+  ].join('\n'),
+  html: [
+    `<p ${P}>Hola, {{nombre}}:</p>`,
+    `<p ${P}>El lote <strong>{{lote}}</strong> de <strong>{{bodega}}</strong> tiene {{botellas}} botellas y {{emitidos}} NFT emitidos: faltan <strong>{{faltante}}</strong>.</p>`,
+    `<p ${P}>NFT sin vender que hay que quemar: <strong>{{sinVender}}</strong>. NFT vendidos sin botella (devolución o sustitución, uno a uno): <strong>{{vendidos}}</strong>.</p>`,
+    `<p ${NOTE}>La decisión del cierre con quemas es de administración.</p>`,
+    linkBlock('Abrir el back office'),
+  ].join('\n'),
+};
+
+/** Alerta `CRITICAL` de la cadena: a operaciones (§8.2 y §11). */
+export const CHAIN_ALERT_TEMPLATE: MailTemplate = {
+  name: 'alerta-cadena',
+  description:
+    'Aviso a operaciones de una alerta crítica de la cadena (conciliación, indexador o firmante)',
+  variables: ['nombre', 'codigo', 'red', 'mensaje', 'detectada', 'enlace'],
+  subject: `Alerta crítica de la cadena ({{red}}): {{codigo}}`,
+  text: [
+    'Hola, {{nombre}}:',
+    '',
+    'Se abrió una alerta crítica de la cadena en la red {{red}}: {{codigo}}.',
+    '{{mensaje}}',
+    'Detectada: {{detectada}}.',
+    '',
+    'Nada se corrige solo: revísala y resuélvela en el back office.',
+    '{{enlace}}',
+  ].join('\n'),
+  html: [
+    `<p ${P}>Hola, {{nombre}}:</p>`,
+    `<p ${P}>Se abrió una alerta crítica de la cadena en la red <strong>{{red}}</strong>: <strong>{{codigo}}</strong>.</p>`,
+    `<p ${P}><em>{{mensaje}}</em></p>`,
+    `<p ${NOTE}>Detectada: {{detectada}}. Nada se corrige solo: revísala y resuélvela en el back office.</p>`,
+    linkBlock('Abrir el back office'),
+  ].join('\n'),
+};
+
 export const TOKENIZATION_TEMPLATES: readonly MailTemplate[] = [
   TOKENIZATION_RECEIVED_TEMPLATE,
   TOKENIZATION_NEW_OPERATIONS_TEMPLATE,
@@ -190,4 +284,7 @@ export const TOKENIZATION_TEMPLATES: readonly MailTemplate[] = [
   TOKENIZATION_REJECTED_TEMPLATE,
   COLLECTION_STATUS_TEMPLATE,
   NFT_MINTED_TEMPLATE,
+  SHORTFALL_DETECTED_TEMPLATE,
+  SHORTFALL_OPERATIONS_TEMPLATE,
+  CHAIN_ALERT_TEMPLATE,
 ];

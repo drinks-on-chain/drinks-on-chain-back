@@ -41,6 +41,9 @@ import { lockLot } from './lot-records';
 import {
   BOTTLE_CODES_EXPORT_JOB,
   BottleCodesExportPayload,
+  LOT_AGGREGATE,
+  LOT_BOTTLE_CODE_VOIDED,
+  type LotBottleCodeVoidedPayload,
 } from './lots.events';
 import { actorOf, resolveTraceActors, TraceActor } from './trace-actors';
 import { actorMembership, DbClient, dbClock } from './trace-db';
@@ -575,6 +578,23 @@ export class BottleCodesService {
         // Sin el código: la línea de tiempo la ven roles que solo ven totales
         data: { serial: unit.serial, replaced: replacement !== null, reason },
         resource: { type: 'bottle_unit', id: unit.id },
+      });
+      // Contrato O3 §8.4: sin sustituto hay una botella menos (posible faltante)
+      const activeBottles = await tx.bottleUnit.count({
+        where: { lotId: lot.id, status: 'ACTIVE' },
+      });
+      await this.outbox.add<LotBottleCodeVoidedPayload>(tx, {
+        type: LOT_BOTTLE_CODE_VOIDED,
+        aggregateType: LOT_AGGREGATE,
+        aggregateId: lot.id,
+        payload: {
+          lotId: lot.id,
+          wineryId,
+          lotCode: lot.lotCode,
+          bottles: activeBottles,
+          serial: unit.serial,
+          replaced: replacement !== null ? 1 : 0,
+        },
       });
       await this.audit.record(tx, {
         action: AuditAction.BOTTLE_CODE_VOIDED,

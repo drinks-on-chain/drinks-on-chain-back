@@ -103,6 +103,29 @@ export interface TokenizationChainPort {
     tx: Prisma.TransactionClient,
     request: MintIntentRequest,
   ): Promise<void>;
+
+  /**
+   * Registra la intención `BURN_UNSOLD` de un NFT sin vender de un cierre ya
+   * decidido (§8.4), en la transacción de la decisión. Idempotente por
+   * `burn-unsold:{closureId}:{tokenId}`. Devuelve el id de su transacción.
+   */
+  registerBurnIntent(
+    tx: Prisma.TransactionClient,
+    request: BurnIntentRequest,
+  ): Promise<string>;
+}
+
+/** Quema de un NFT sin vender decidida en un cierre con faltante. */
+export interface BurnIntentRequest {
+  closureId: string;
+  collectionId: string;
+  wineryId: string;
+  contractId: string;
+  /** `tokens.id` y su id en la red. */
+  tokenRowId: string;
+  tokenId: number;
+  /** Quien decidió el cierre (administración). */
+  requestedBy: { userId: string; fullName: string | null };
 }
 
 /** `mint:{mintId}:{index}`: clave de la intención de un trozo. */

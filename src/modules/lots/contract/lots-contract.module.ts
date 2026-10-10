@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { OutboxModule } from '@shared/outbox/outbox.module';
 import { PrismaModule } from '@shared/prisma/prisma.module';
 import { TraceabilityModule } from '@modules/traceability/traceability.module';
 import { LotBottlingService } from '../lot-bottling.service';
@@ -33,6 +34,7 @@ import { TankTransitionsController } from './tank-transitions.controller';
 @Module({
   imports: [
     PrismaModule,
+    OutboxModule,
     TraceabilityModule,
     LotViewsModule,
     LotCertificationModule,

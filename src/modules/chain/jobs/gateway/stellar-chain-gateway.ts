@@ -18,11 +18,16 @@ import {
   failureFromDiagnostics,
   failureFromTxResultCode,
 } from '../../tx/chain-tx.errors';
-import type {
-  ChainContractEvent,
-  ChainGateway,
-  SendOutcome,
-  TxLookup,
+import {
+  EVENTS_CONTRACTS_PER_CALL,
+  type ChainContractEvent,
+  type ChainGateway,
+  type EntriesTtl,
+  type EventsPage,
+  type EventsQuery,
+  type IndexedChainEvent,
+  type SendOutcome,
+  type TxLookup,
 } from './chain-gateway';
 
 /** Reenvíos de la **misma** transacción ante `-32603` o `TRY_AGAIN_LATER`. */
@@ -32,6 +37,11 @@ const SEND_RETRY_WAIT_MS = 1_000;
 const READ_ATTEMPTS = 2;
 const READ_RETRY_WAIT_MS = 300;
 const FRIENDBOT_TIMEOUT_MS = 30_000;
+/** `contractIds` por filtro de `getEvents` (tope del RPC). */
+const EVENTS_CONTRACTS_PER_FILTER = 5;
+const EVENTS_PAGE_LIMIT = 200;
+/** Claves por llamada a `getLedgerEntries` (tope del RPC). */
+const LEDGER_ENTRIES_PER_CALL = 200;
 const RPC_TIMEOUT_MS = 20_000;
 
 const sleep = (ms: number) =>
@@ -381,6 +391,82 @@ export class StellarChainGateway implements ChainGateway {
     }));
   }
 
+  async eventsPage(query: EventsQuery): Promise<EventsPage> {
+    if (query.contractIds.length > EVENTS_CONTRACTS_PER_CALL) {
+      throw new Error(
+        `getEvents admite ${EVENTS_CONTRACTS_PER_CALL} contratos por llamada`,
+      );
+    }
+    const filters: rpc.Api.EventFilter[] = [];
+    for (
+      let i = 0;
+      i < query.contractIds.length;
+      i += EVENTS_CONTRACTS_PER_FILTER
+    ) {
+      filters.push({
+        type: 'contract',
+        contractIds: query.contractIds.slice(
+          i,
+          i + EVENTS_CONTRACTS_PER_FILTER,
+        ),
+      });
+    }
+    const limit = query.limit ?? EVENTS_PAGE_LIMIT;
+    const response = await this.call(() =>
+      this.server.getEvents(
+        query.cursor
+          ? { cursor: query.cursor, filters, limit }
+          : { startLedger: Math.max(1, query.startLedger), filters, limit },
+      ),
+    );
+    const events: IndexedChainEvent[] = [];
+    for (const event of response.events) {
+      const contractAddress = event.contractId?.contractId() ?? null;
+      if (!contractAddress) continue;
+      events.push({
+        ...decodeEvent(event.topic, event.value, contractAddress),
+        contractAddress,
+        rpcEventId: event.id,
+        txHash: event.txHash,
+        ledger: event.ledger,
+        closedAt: new Date(event.ledgerClosedAt),
+      });
+    }
+    return {
+      events,
+      cursor: response.cursor || null,
+      latestLedger: response.latestLedger,
+      oldestLedger:
+        typeof response.oldestLedger === 'number'
+          ? response.oldestLedger
+          : null,
+    };
+  }
+
+  async ledgerWindow(): Promise<{ latest: number; oldest: number }> {
+    const health = await this.call(() => this.server.getHealth());
+    return { latest: health.latestLedger, oldest: health.oldestLedger };
+  }
+
+  async entriesTtl(keys: xdr.LedgerKey[]): Promise<EntriesTtl> {
+    const liveUntil = new Map<string, number>();
+    let latestLedger = 0;
+    for (let i = 0; i < keys.length; i += LEDGER_ENTRIES_PER_CALL) {
+      const batch = keys.slice(i, i + LEDGER_ENTRIES_PER_CALL);
+      const response = await this.call(() =>
+        this.server.getLedgerEntries(...batch),
+      );
+      latestLedger = Math.max(latestLedger, response.latestLedger);
+      for (const entry of response.entries) {
+        if (typeof entry.liveUntilLedgerSeq === 'number') {
+          liveUntil.set(entry.key.toXDR('base64'), entry.liveUntilLedgerSeq);
+        }
+      }
+    }
+    if (keys.length === 0) latestLedger = await this.latestLedger();
+    return { latestLedger, liveUntil };
+  }
+
   private async oldestLedger(): Promise<number | null> {
     try {
       const health = (await this.call(() => this.server.getHealth())) as {
@@ -506,5 +592,8 @@ export class DisabledChainGateway implements ChainGateway {
   send = () => this.fail<SendOutcome>();
   getTransaction = () => this.fail<TxLookup>();
   contractEvents = () => this.fail<ChainContractEvent[]>();
+  eventsPage = () => this.fail<EventsPage>();
+  ledgerWindow = () => this.fail<{ latest: number; oldest: number }>();
+  entriesTtl = () => this.fail<EntriesTtl>();
   fund = () => this.fail<{ txHash: string | null }>();
 }

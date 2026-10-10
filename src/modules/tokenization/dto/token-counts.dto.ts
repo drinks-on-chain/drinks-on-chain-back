@@ -36,6 +36,31 @@ export class TokenCountsDto {
   expired!: number;
 }
 
+/** Estado del NFT (§6.3) → contador de `TokenCounts` al que suma. */
+export const TOKEN_COUNT_KEYS: Record<string, keyof TokenCountsDto> = {
+  MINTED: 'available',
+  RESERVED: 'reserved',
+  SOLD: 'sold',
+  REDEEMABLE: 'redeemable',
+  PASS_ACTIVE: 'passActive',
+  REDEEMED: 'redeemed',
+  BURNED: 'burned',
+  EXPIRED: 'expired',
+};
+
+/** Suma de los contadores de varias colecciones (cuenta de la bodega, §3.4). */
+export function sumTokenCounts(
+  counts: readonly TokenCountsDto[],
+): TokenCountsDto {
+  const total: TokenCountsDto = { ...ZERO_TOKEN_COUNTS };
+  for (const item of counts) {
+    for (const key of Object.keys(total) as (keyof TokenCountsDto)[]) {
+      total[key] += item[key];
+    }
+  }
+  return total;
+}
+
 export const ZERO_TOKEN_COUNTS: TokenCountsDto = {
   minted: 0,
   available: 0,

@@ -58,6 +58,20 @@ export type PreparedIntent =
       /** Tope de comisión propio de esta intención (si no, el general). */
       maxFeeStroops?: string;
     }
+  /**
+   * Mantenimiento del almacenamiento (§8.3): `extendFootprintTtl` con las
+   * claves en la huella de solo lectura, o `restoreFootprint` con las claves
+   * en la de lectura y escritura. Solo firma el sobre (operaciones).
+   */
+  | {
+      type: 'FOOTPRINT';
+      action: 'EXTEND' | 'RESTORE';
+      keys: xdr.LedgerKey[];
+      /** `EXTEND`: ledgers contados desde el actual. */
+      extendTo?: number;
+      /** Tope de comisión propio (la extensión del código, P-SC-6). */
+      maxFeeStroops?: string;
+    }
   /** Friendbot: no firma nada. */
   | { type: 'FRIENDBOT'; address: string };
 

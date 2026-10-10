@@ -109,3 +109,22 @@ export type CollectionRedeemablePayload = {
   /** NFT que pasaron de `SOLD` a `REDEEMABLE`. */
   tokens: number;
 };
+
+/**
+ * El lote tiene menos botellas que NFT vivos (contrato O3 §8.4 y §11): se
+ * abrió (o reabrió) su cierre con faltante. La Ola 4 lo consumirá para
+ * retirar del catálogo los NFT afectados.
+ */
+export const LOT_SHORTFALL_DETECTED = 'lot.shortfall_detected';
+
+export type LotShortfallDetectedPayload = {
+  closureId: string;
+  collectionId: string;
+  lotId: string;
+  wineryId: string;
+  bottles: number;
+  minted: number;
+  shortfall: number;
+  unsoldToBurn: number;
+  soldWithoutBottle: number;
+};

@@ -51,6 +51,12 @@ export const CHAIN_DEFAULTS = {
    * días (≈ 28 XLM de presupuesto en la red local; se devuelve lo no gastado).
    */
   deployMaxFeeStroops: '500000000',
+  /**
+   * 100 XLM: tope propio de `EXTEND_TTL` del **código** (§8.3). Llevarlo 30
+   * días más allá cuesta ≈ 6,5 XLM en la red local; de < 30 a 120 días, el
+   * triple o más. Lo no gastado se devuelve.
+   */
+  codeTtlMaxFeeStroops: '1000000000',
   /** Esperas entre intentos (S-4): 10 s, 30 s, 1 min, 2 min, 5 min → 6 intentos. */
   txRetryDelaysMs: [10_000, 30_000, 60_000, 120_000, 300_000],
   /** `timeBounds.maxTime = ahora + 120 s` (§2.3). */
@@ -190,6 +196,11 @@ export const chainEnvValidationSchema = {
     STROOPS,
     'entero positivo en stroops',
   ),
+  CHAIN_CODE_TTL_MAX_FEE_STROOPS: optionalPattern(
+    'CHAIN_CODE_TTL_MAX_FEE_STROOPS',
+    STROOPS,
+    'entero positivo en stroops',
+  ),
   // Esperas entre intentos, en ms y separadas por comas (pruebas); por
   // defecto 10 s, 30 s, 1 min, 2 min y 5 min (S-4)
   CHAIN_TX_RETRY_DELAYS_MS: optionalPattern(
@@ -282,6 +293,8 @@ export interface ChainSettings {
   publicApiBaseUrl: string | null;
   /** Tope de comisión del despliegue de un contrato (puede extender el código). */
   deployMaxFeeStroops: string;
+  /** Tope de comisión propio de la extensión del TTL del código (§8.3). */
+  codeTtlMaxFeeStroops: string;
   /** Esperas entre intentos de una transacción (S-4). */
   txRetryDelaysMs: readonly number[];
   /** Friendbot (solo `TESTNET` y `LOCAL`); `null` = el que anuncia el RPC. */
@@ -344,6 +357,9 @@ export function chainSettingsFromConfig(config: ConfigService): ChainSettings {
     deployMaxFeeStroops:
       text(config, 'CHAIN_DEPLOY_MAX_FEE_STROOPS') ??
       CHAIN_DEFAULTS.deployMaxFeeStroops,
+    codeTtlMaxFeeStroops:
+      text(config, 'CHAIN_CODE_TTL_MAX_FEE_STROOPS') ??
+      CHAIN_DEFAULTS.codeTtlMaxFeeStroops,
     txRetryDelaysMs:
       text(config, 'CHAIN_TX_RETRY_DELAYS_MS')
         ?.split(',')

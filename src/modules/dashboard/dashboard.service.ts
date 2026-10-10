@@ -145,7 +145,12 @@ export class DashboardService {
       waitlist,
       tokenization,
       chain,
-      alerts: buildAlerts(now, { applications, invitations, emails }),
+      alerts: buildAlerts(now, {
+        applications,
+        invitations,
+        emails,
+        chain: chain.openAlerts,
+      }),
       recentAudit: recent,
     };
   }
@@ -379,7 +384,7 @@ function plural(n: number, one: string, many: string): string {
 /**
  * Alertas del tablero (una por tipo, de la más grave a la menos): correos
  * fallidos, solicitudes sin tomar más de 48 h e invitaciones que caducan en
- * menos de 24 h. Se añaden más tipos con sus olas.
+ * menos de 24 h; desde la Ola 3, las alertas abiertas de la cadena.
  */
 export function buildAlerts(
   now: Date,
@@ -387,6 +392,8 @@ export function buildAlerts(
     applications: ApplicationStats;
     invitations: InvitationStats;
     emails: { count: number; latest: Date | null };
+    /** Alertas abiertas de la cadena (contrato O3 §8.2). */
+    chain?: { critical: number; warning: number };
   },
 ): DashboardAlert[] {
   const alerts: DashboardAlert[] = [];
@@ -399,6 +406,15 @@ export function buildAlerts(
       link: null,
     });
   }
+  if ((data.chain?.critical ?? 0) > 0) {
+    alerts.push({
+      id: 'chain-alerts-critical',
+      level: 'CRITICAL',
+      message: `${plural(data.chain?.critical ?? 0, 'alerta crítica de la cadena sin resolver', 'alertas críticas de la cadena sin resolver')}: nada se corrige solo.`,
+      createdAt: now.toISOString(),
+      link: '/cadena/alertas',
+    });
+  }
   if (data.applications.unassigned.count > 0) {
     alerts.push({
       id: 'applications-unassigned',
@@ -406,6 +422,15 @@ export function buildAlerts(
       message: `${plural(data.applications.unassigned.count, 'solicitud de alta lleva', 'solicitudes de alta llevan')} más de ${UNASSIGNED_APPLICATION_ALERT_HOURS} h sin que nadie la tome.`,
       createdAt: (data.applications.unassigned.oldest ?? now).toISOString(),
       link: '/solicitudes',
+    });
+  }
+  if ((data.chain?.warning ?? 0) > 0) {
+    alerts.push({
+      id: 'chain-alerts-warning',
+      level: 'WARNING',
+      message: `${plural(data.chain?.warning ?? 0, 'aviso de la cadena sin resolver', 'avisos de la cadena sin resolver')}.`,
+      createdAt: now.toISOString(),
+      link: '/cadena/alertas',
     });
   }
   if (data.invitations.expiringIn24h > 0) {
