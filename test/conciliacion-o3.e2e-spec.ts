@@ -1118,10 +1118,12 @@ describeChain(
         fees.extendTtlContrato = String(tx.feeChargedStroops);
         const after = await ttl.readContract(CONTRACT_ID);
         for (const entry of after.entries) {
-          expect([entry.name, (entry.daysLeft as number) > 119]).toEqual([
+          // Lo que bajaba del umbral queda a 120 días; el resto, como estaba
+          const wasYoung = young.some((e) => e.name === entry.name);
+          expect([
             entry.name,
-            true,
-          ]);
+            (entry.daysLeft as number) > (wasYoung ? 119 : 29),
+          ]).toEqual([entry.name, true]);
         }
         // Repetirla el mismo día no registra otra: ya no hay nada bajo el umbral
         const again = await ttl.run();

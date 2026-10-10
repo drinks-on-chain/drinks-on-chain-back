@@ -124,10 +124,10 @@ export class ChainTxConfirmedHandler implements JobHandler<
   async handle(data: OutboxJobData<ChainTxEventPayload>): Promise<void> {
     const { kind, transactionId } = data.payload;
     if (kind === 'FUND_ACCOUNT') {
-      // Saldo nuevo: la alerta `LOW_BALANCE` de la cuenta se cierra ya
-      await this.accounts.checkBalances().catch(() => undefined);
       await this.jobs.backfill();
       await this.jobs.anchorBackfill();
+      // Saldo nuevo: la alerta `LOW_BALANCE` de la cuenta se cierra ya
+      await this.accounts.checkBalances().catch(() => undefined);
     }
     if (TTL_REVIEW_AFTER.includes(kind)) await this.jobs.ttlReview(2_000);
     if (kind === 'RESTORE_ENTRIES') {

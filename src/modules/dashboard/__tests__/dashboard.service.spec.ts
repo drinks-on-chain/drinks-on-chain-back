@@ -306,6 +306,37 @@ describe('Tablero del back office', () => {
     ]);
     expect(alerts.every((a) => a.createdAt === NOW.toISOString())).toBe(true);
   });
+
+  it('buildAlerts: las alertas abiertas de la cadena entran por su nivel (contrato O3 §8.2)', () => {
+    const quiet = {
+      applications: {
+        counts: {
+          unverified: 0,
+          received: 0,
+          inReview: 0,
+          meetingScheduled: 0,
+        },
+        unassigned: { count: 0, oldest: null },
+      },
+      invitations: { pending: 0, expiringIn24h: 0 },
+      emails: { count: 0, latest: null },
+    };
+    expect(
+      buildAlerts(NOW, { ...quiet, chain: { critical: 0, warning: 0 } }),
+    ).toEqual([]);
+    const alerts = buildAlerts(NOW, {
+      ...quiet,
+      chain: { critical: 2, warning: 1 },
+    });
+    expect(alerts.map((a) => [a.id, a.level, a.link])).toEqual([
+      ['chain-alerts-critical', 'CRITICAL', '/cadena/alertas'],
+      ['chain-alerts-warning', 'WARNING', '/cadena/alertas'],
+    ]);
+    expect(alerts[0].message).toBe(
+      '2 alertas críticas de la cadena sin resolver: nada se corrige solo.',
+    );
+    expect(alerts[1].message).toBe('1 aviso de la cadena sin resolver.');
+  });
 });
 
 describe('Tablero · saldos de la cadena (chain.balance.check)', () => {
