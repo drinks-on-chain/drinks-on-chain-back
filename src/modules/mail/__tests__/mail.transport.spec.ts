@@ -1,6 +1,7 @@
 import * as Joi from 'joi';
 import { ConfigService } from '@nestjs/config';
 import {
+  DEFAULT_MESSAGE_ID_DOMAIN,
   MailSettings,
   MailTransport,
   RoutingMailTransport,
@@ -10,6 +11,7 @@ import {
   mailEnvValidationSchema,
   mailSettingsFromConfig,
   parseCaptureDomains,
+  resolveMessageIdDomain,
 } from '../mail.transport';
 
 const mail = (to: string) => ({
@@ -28,6 +30,7 @@ function settings(overrides: Partial<MailSettings> = {}): MailSettings {
     user: 'resend',
     password: 'clave-de-prueba',
     from: 'Drinks on Chain <no-reply@drinksonchain.com>',
+    messageIdDomain: 'drinksonchain.com',
     capture: { domains: [], port: 1025 },
     ...overrides,
   };
@@ -200,25 +203,62 @@ describe('Variables de correo (Joi)', () => {
     ).toBeUndefined();
   });
 
-  it('rechaza una lista de dominios mal formada', () => {
+  it('rechaza una lista de dominios mal formada y un dominio de Message-ID inválido', () => {
     expect(
       schema.validate({
         MAIL_CAPTURE_DOMAINS: 'test;example',
         MAIL_CAPTURE_SMTP_HOST: 'mailpit',
       }).error?.message,
     ).toMatch(/lista de dominios/);
+    expect(
+      schema.validate({ MAIL_MESSAGE_ID_DOMAIN: 'no es un dominio' }).error,
+    ).toBeDefined();
+    expect(
+      schema.validate({ MAIL_MESSAGE_ID_DOMAIN: '' }).error,
+    ).toBeUndefined();
   });
 
-  it('mailSettingsFromConfig arma la captura', () => {
+  it('mailSettingsFromConfig arma la captura y el dominio del Message-ID', () => {
     const env: Record<string, string> = {
       MAIL_FROM: 'Drinks on Chain <no-reply@DrinksOnChain.com>',
       MAIL_CAPTURE_DOMAINS: 'Test, example',
       MAIL_CAPTURE_SMTP_HOST: 'mailpit',
       MAIL_CAPTURE_SMTP_PORT: '1026',
+      MAIL_MESSAGE_ID_DOMAIN: '',
     };
     const config = { get: (key: string) => env[key] } as ConfigService;
     expect(mailSettingsFromConfig(config)).toMatchObject({
+      messageIdDomain: 'drinksonchain.com',
       capture: { domains: ['test', 'example'], host: 'mailpit', port: 1026 },
     });
+  });
+});
+
+describe('Dominio del Message-ID', () => {
+  it('MAIL_MESSAGE_ID_DOMAIN manda', () => {
+    expect(
+      resolveMessageIdDomain(' Mail.DrinksOnChain.com ', 'x <a@otro.com>'),
+    ).toBe('mail.drinksonchain.com');
+  });
+
+  it('sin él, el dominio de la dirección de MAIL_FROM', () => {
+    expect(
+      resolveMessageIdDomain(
+        undefined,
+        'Drinks on Chain <no-reply@drinksonchain.com>',
+      ),
+    ).toBe('drinksonchain.com');
+    expect(resolveMessageIdDomain('', 'no-reply@dev.drinksonchain.com')).toBe(
+      'dev.drinksonchain.com',
+    );
+  });
+
+  it('si no se puede sacar de MAIL_FROM, el valor por defecto', () => {
+    expect(DEFAULT_MESSAGE_ID_DOMAIN).toBe('mail.drinksonchain.local');
+    for (const from of [undefined, '', 'Drinks on Chain', 'x <a@>', 'a@b']) {
+      expect(resolveMessageIdDomain(undefined, from)).toBe(
+        DEFAULT_MESSAGE_ID_DOMAIN,
+      );
+    }
   });
 });

@@ -5,14 +5,16 @@ import { HandlesJob, JobContext, JobHandler } from '@shared/queue/job-handler';
 import { QUEUE_EMAIL } from '@shared/queue/queue.constants';
 import type { OutboxJobData } from '@shared/outbox/outbox.types';
 import { MailRenderer, MailVariables } from '../mail.renderer';
-import { MAIL_TRANSPORT, MailTransport } from '../mail.transport';
+import {
+  MAIL_SETTINGS,
+  MAIL_TRANSPORT,
+  MailSettings,
+  MailTransport,
+} from '../mail.transport';
 import { EMAIL_REQUESTED, EmailRequestedPayload } from '../mail.events';
 
 /** Un envío en SENDING más tiempo que esto se considera abandonado. */
 export const EMAIL_SENDING_STALE_MS = 5 * 60_000;
-
-/** Dominio del Message-ID (estable por correo, no depende del SMTP). */
-const MESSAGE_ID_DOMAIN = 'mail.drinksonchain.local';
 
 /**
  * Envía por SMTP un correo de `email_messages` (cola `email`).
@@ -21,7 +23,9 @@ const MESSAGE_ID_DOMAIN = 'mail.drinksonchain.local';
  * envío se reclama con una actualización condicional (`QUEUED`/`FAILED` →
  * `SENDING`), así que dos ejecuciones del mismo trabajo no envían dos veces.
  * Queda un caso de "al menos una vez": si el proceso muere tras entregar al
- * SMTP y antes de marcar `SENT`, se reenvía con el mismo `Message-ID`.
+ * SMTP y antes de marcar `SENT`, se reenvía con el mismo `Message-ID`
+ * (`<id>@<MAIL_MESSAGE_ID_DOMAIN>`: depende solo del id y de la configuración,
+ * no del SMTP que lo entregue).
  *
  * Si el SMTP falla, marca `FAILED` con el error y relanza para que BullMQ
  * reintente con espera exponencial. Al enviarse, borra las variables (pueden
@@ -38,6 +42,8 @@ export class EmailRequestedHandler implements JobHandler<
   constructor(
     private readonly prisma: PrismaService,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport,
+    @Inject(MAIL_SETTINGS)
+    private readonly settings: Pick<MailSettings, 'messageIdDomain'>,
   ) {}
 
   async handle(
@@ -60,7 +66,7 @@ export class EmailRequestedHandler implements JobHandler<
         subject: rendered.subject,
         text: rendered.text,
         html: rendered.html,
-        messageId: `<${message.id}@${MESSAGE_ID_DOMAIN}>`,
+        messageId: `<${message.id}@${this.settings.messageIdDomain}>`,
         headers: { 'X-DOC-Email-Id': message.id },
       });
       await this.prisma.emailMessage.update({

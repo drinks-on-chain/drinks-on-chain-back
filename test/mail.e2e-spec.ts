@@ -12,6 +12,7 @@ import { MailService } from '../src/modules/mail/mail.service';
 import {
   MAIL_SETTINGS,
   MailSettings,
+  resolveMessageIdDomain,
 } from '../src/modules/mail/mail.transport';
 import { runWithCorrelationId } from '../src/shared/logging/correlation';
 
@@ -28,6 +29,7 @@ const mailSettings: MailSettings = {
   port: 9,
   secure: false,
   from: MAIL_FROM,
+  messageIdDomain: resolveMessageIdDomain(undefined, MAIL_FROM),
   capture: {
     domains: ['test', 'example', 'invalid', 'localhost'],
     host: process.env.SMTP_HOST ?? 'localhost',
@@ -208,7 +210,8 @@ describe('Correo por la cola hasta Mailpit (e2e)', () => {
     expect(found[0].Subject).toBe(
       `Correo de prueba de Drinks on Chain (${run})`,
     );
-    expect(found[0].MessageID).toBe(`${message.id}@mail.drinksonchain.local`);
+    // Message-ID con el dominio de MAIL_FROM
+    expect(found[0].MessageID).toBe(`${message.id}@drinksonchain.com`);
 
     const detail = (await (
       await fetch(`${MAILPIT_API_URL}/api/v1/message/${found[0].ID}`)

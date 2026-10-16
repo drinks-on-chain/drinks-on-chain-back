@@ -2,11 +2,18 @@ import * as Joi from 'joi';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, Transporter } from 'nodemailer';
 
+/** Dominio del Message-ID si no se configura ni se puede sacar de `MAIL_FROM`. */
+export const DEFAULT_MESSAGE_ID_DOMAIN = 'mail.drinksonchain.local';
+
 const DEFAULT_MAIL_FROM = 'Drinks on Chain <no-reply@drinksonchain.local>';
 
 /** Sufijos de dominio separados por comas (`test,example,invalid,localhost`). */
 const DOMAIN_LIST_PATTERN =
   /^\s*\.?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\s*(,\s*\.?[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*\s*)*,?\s*$/;
+
+/** Nombre de host práctico (etiquetas separadas por puntos, al menos dos). */
+const HOSTNAME_PATTERN =
+  /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
 
 const CAPTURE_HOST_REQUIRED =
   'MAIL_CAPTURE_SMTP_HOST es obligatorio cuando MAIL_CAPTURE_DOMAINS tiene dominios';
@@ -43,6 +50,8 @@ export const mailEnvValidationSchema = {
     otherwise: Joi.string().allow('').optional(),
   }),
   MAIL_CAPTURE_SMTP_PORT: Joi.number().port().default(1025),
+  // Dominio del Message-ID. Vacío = el de la dirección de MAIL_FROM
+  MAIL_MESSAGE_ID_DOMAIN: Joi.string().allow('').hostname().optional(),
 };
 
 export const MAIL_SETTINGS = Symbol('MAIL_SETTINGS');
@@ -71,6 +80,8 @@ export interface MailCaptureSettings {
 export interface MailSettings extends SmtpServerSettings {
   from: string;
   replyTo?: string;
+  /** Dominio del Message-ID (`<id>@<dominio>`). */
+  messageIdDomain: string;
   /** Sin sufijos = sin captura (todo por el SMTP principal). */
   capture: MailCaptureSettings;
 }
@@ -121,6 +132,21 @@ export function isCapturedAddress(
   );
 }
 
+/**
+ * Dominio del Message-ID: `MAIL_MESSAGE_ID_DOMAIN` si está; si no, el de la
+ * dirección de `MAIL_FROM`; si no se puede sacar, el valor por defecto.
+ */
+export function resolveMessageIdDomain(
+  explicit: string | undefined,
+  from: string | undefined,
+): string {
+  const configured = explicit?.trim().toLowerCase();
+  if (configured) return configured;
+  const fromDomain = from ? domainOfAddress(from) : undefined;
+  if (fromDomain && HOSTNAME_PATTERN.test(fromDomain)) return fromDomain;
+  return DEFAULT_MESSAGE_ID_DOMAIN;
+}
+
 export function mailSettingsFromConfig(config: ConfigService): MailSettings {
   const text = (key: string) => {
     const value = config.get<string>(key);
@@ -137,6 +163,10 @@ export function mailSettingsFromConfig(config: ConfigService): MailSettings {
     password: text('SMTP_PASSWORD'),
     from,
     replyTo: text('MAIL_REPLY_TO'),
+    messageIdDomain: resolveMessageIdDomain(
+      text('MAIL_MESSAGE_ID_DOMAIN'),
+      from,
+    ),
     capture: {
       domains: parseCaptureDomains(text('MAIL_CAPTURE_DOMAINS')),
       host: text('MAIL_CAPTURE_SMTP_HOST'),

@@ -140,7 +140,7 @@ describe('EmailRequestedHandler', () => {
     occurredAt: new Date().toISOString(),
   };
 
-  function setup(claimed = 1) {
+  function setup(claimed = 1, messageIdDomain = 'mail.drinksonchain.local') {
     const prisma = {
       emailMessage: {
         updateMany: jest.fn().mockResolvedValue({ count: claimed }),
@@ -162,6 +162,7 @@ describe('EmailRequestedHandler', () => {
     const handler = new EmailRequestedHandler(
       prisma as unknown as PrismaService,
       transport,
+      { messageIdDomain },
     );
     return { prisma, transport, handler };
   }
@@ -187,6 +188,19 @@ describe('EmailRequestedHandler', () => {
       data: { variables: unknown };
     };
     expect(update.data.variables).toBeDefined();
+  });
+
+  it('el Message-ID usa el dominio configurado y no cambia al reenviar', async () => {
+    const { prisma, transport, handler } = setup(1, 'drinksonchain.com');
+    await handler.handle(data);
+    prisma.emailMessage.updateMany.mockResolvedValueOnce({ count: 1 });
+    await handler.handle(data);
+    expect(transport.send).toHaveBeenCalledTimes(2);
+    const ids = transport.send.mock.calls.map(([mail]) => mail.messageId);
+    expect(ids).toEqual([
+      '<mail-1@drinksonchain.com>',
+      '<mail-1@drinksonchain.com>',
+    ]);
   });
 
   it('no reenvía un correo ya enviado o en curso', async () => {
