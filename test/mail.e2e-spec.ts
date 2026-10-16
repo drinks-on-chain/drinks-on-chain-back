@@ -9,10 +9,31 @@ import { OutboxJobData } from '../src/shared/outbox/outbox.types';
 import { PrismaService } from '../src/shared/prisma/prisma.service';
 import { MailModule } from '../src/modules/mail/mail.module';
 import { MailService } from '../src/modules/mail/mail.service';
+import {
+  MAIL_SETTINGS,
+  MailSettings,
+} from '../src/modules/mail/mail.transport';
 import { runWithCorrelationId } from '../src/shared/logging/correlation';
 
 const MAILPIT_API_URL = process.env.MAILPIT_API_URL ?? 'http://localhost:8025';
 const run = `mail-${Date.now()}`;
+const MAIL_FROM = 'Drinks on Chain (e2e) <no-reply@drinksonchain.com>';
+
+/**
+ * Principal inalcanzable (como Resend en el servidor) y captura de `.test` en
+ * Mailpit: si el enrutado fallara, el correo no llegaría nunca a Mailpit.
+ */
+const mailSettings: MailSettings = {
+  host: '127.0.0.1',
+  port: 9,
+  secure: false,
+  from: MAIL_FROM,
+  capture: {
+    domains: ['test', 'example', 'invalid', 'localhost'],
+    host: process.env.SMTP_HOST ?? 'localhost',
+    port: Number(process.env.SMTP_PORT ?? 1025),
+  },
+};
 
 async function waitFor<T>(
   probe: () => Promise<T | null | undefined | false>,
@@ -68,7 +89,7 @@ async function publishOwnEvent(
  * Correo de extremo a extremo con Postgres, Redis y Mailpit reales: la API
  * encola (fila + outbox en una transacción), el evento se publica en la cola
  * `email`, el procesador del worker lo envía por SMTP y el mensaje se lee en
- * Mailpit.
+ * Mailpit. El destinatario `.test` sale por el SMTP de captura.
  */
 describe('Correo por la cola hasta Mailpit (e2e)', () => {
   let moduleRef: TestingModule;
@@ -101,6 +122,8 @@ describe('Correo por la cola hasta Mailpit (e2e)', () => {
     })
       .overrideProvider(WORKER_SETTINGS)
       .useValue(settings)
+      .overrideProvider(MAIL_SETTINGS)
+      .useValue(mailSettings)
       // Sin relay propio: otro e2e con su relay en marcha a la vez podría
       // quedarse con eventos ajenos. El evento de este correo lo publica la
       // prueba como lo haría el relay (ver publishOwnEvent).

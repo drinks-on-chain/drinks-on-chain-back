@@ -6,12 +6,15 @@ import {
   MAIL_TRANSPORT,
   MailSettings,
   MailTransport,
-  SmtpMailTransport,
+  createMailTransport,
   mailSettingsFromConfig,
 } from '../mail.transport';
 import { EmailRequestedHandler } from './email-requested.handler';
 
-/** Envío de correo en el worker: SMTP (`SMTP_*`, `MAIL_FROM`) y su procesador. */
+/**
+ * Envío de correo en el worker: SMTP (`SMTP_*`, `MAIL_FROM`), captura de los
+ * dominios de prueba (`MAIL_CAPTURE_*`) y su procesador.
+ */
 @Module({
   imports: [PrismaModule],
   providers: [
@@ -24,7 +27,7 @@ import { EmailRequestedHandler } from './email-requested.handler';
       provide: MAIL_TRANSPORT,
       inject: [MAIL_SETTINGS],
       useFactory: (settings: MailSettings): MailTransport =>
-        new SmtpMailTransport(settings),
+        createMailTransport(settings),
     },
     EmailRequestedHandler,
   ],
