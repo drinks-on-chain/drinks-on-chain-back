@@ -203,13 +203,23 @@ services:
       OUTBOX_MAX_ATTEMPTS: ${OUTBOX_MAX_ATTEMPTS:-10}
       OUTBOX_RETENTION_DAYS: ${OUTBOX_RETENTION_DAYS:-7}
       WORKER_HEARTBEAT_FILE: /tmp/doc-worker.heartbeat
-      # Correo (cola `email`): en desarrollo, a Mailpit (UI en 127.0.0.1:8025)
+      # Correo (cola `email`): por defecto, a Mailpit (UI en 127.0.0.1:8025);
+      # con Resend, SMTP_* en el .env (ver docs/arquitectura/correo-y-archivos.md)
       SMTP_HOST: ${SMTP_HOST:-mailpit}
       SMTP_PORT: ${SMTP_PORT:-1025}
       SMTP_SECURE: ${SMTP_SECURE:-false}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       MAIL_FROM: ${MAIL_FROM:-Drinks on Chain (desarrollo) <no-reply@dev.drinksonchain.local>}
+      MAIL_REPLY_TO: ${MAIL_REPLY_TO:-}
+      # Captura: los destinatarios de estos sufijos (semilla de demo, e2e) van a
+      # Mailpit aunque el SMTP principal sea el proveedor real (Resend): no
+      # rebotan y las e2e siguen leyendo sus enlaces. Vacío = sin captura
+      MAIL_CAPTURE_DOMAINS: ${MAIL_CAPTURE_DOMAINS:-test,example,invalid,localhost}
+      MAIL_CAPTURE_SMTP_HOST: ${MAIL_CAPTURE_SMTP_HOST:-mailpit}
+      MAIL_CAPTURE_SMTP_PORT: ${MAIL_CAPTURE_SMTP_PORT:-1025}
+      # Dominio del Message-ID; vacío = el de la dirección de MAIL_FROM
+      MAIL_MESSAGE_ID_DOMAIN: ${MAIL_MESSAGE_ID_DOMAIN:-}
       # Mismo almacenamiento privado que la API: el worker guarda ahí los ZIP
       # de códigos de botella para la imprenta (Ola 2, `trace.bottle-codes.export`)
       STORAGE_DRIVER: ${STORAGE_DRIVER:-s3}
