@@ -2,6 +2,19 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Correo real: captura de los dominios de prueba
+
+Preparación del envío real con Resend (SMTP). Detalle en [correo y archivos](docs/arquitectura/correo-y-archivos.md#correo-real-con-resend).
+
+### Añadido
+
+- Variables opcionales del worker `MAIL_CAPTURE_DOMAINS`, `MAIL_CAPTURE_SMTP_HOST` y `MAIL_CAPTURE_SMTP_PORT`: los destinatarios cuyo dominio termina en uno de los sufijos (por etiqueta completa y sin mayúsculas: `altos.test` coincide con `test`, `contest.com` no) salen por un SMTP de captura sin TLS ni autenticación (Mailpit); el resto, por el principal. Con sufijos y sin host de captura, el worker no arranca. `deploy/dev/compose.yml` captura `test,example,invalid,localhost` en `mailpit:1025`.
+- Variable opcional `MAIL_MESSAGE_ID_DOMAIN`.
+
+### Cambios de comportamiento
+
+- El dominio del `Message-ID` pasa a ser, por defecto, el de la dirección de `MAIL_FROM` (antes, siempre `mail.drinksonchain.local`, que queda como último recurso). Sigue siendo estable: el mismo correo reenviado lleva el mismo id.
+
 ## Sin publicar · Ola 3 · paso 3.6: indexador, conciliación, TTL y cierre con faltante
 
 Contrato `o3-tokenizacion` §8 (con la corrección de §8.3 de las «Precisiones de la apertura»), §10, §11 y §14. **Ninguna de las 54 rutas de la ola responde ya `501`.** Detalle en el [README](README.md#indexador-conciliación-ttl-y-cierre-con-faltante-paso-36) y en [`deploy/README.md` §7](deploy/README.md#7-indexador-conciliación-ttl-y-cierre-con-faltante-paso-36).

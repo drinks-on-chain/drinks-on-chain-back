@@ -12,7 +12,7 @@ flowchart LR
 ```
 
 - **Encolar**: `MailService.enqueue(tx, { template, to, variables, idempotencyKey?, organizationId? })` dentro de la transacción de la operación (si se revierte, no sale ningún correo). Valida plantilla, variables y dirección antes de escribir. `enqueueStandalone` abre su propia transacción. Importa `MailModule`.
-- **Idempotencia**: `idempotency_key` única (p. ej. `invitation:<id>:v1`): encolar dos veces con la misma clave devuelve el mismo correo. En el envío, el procesador reclama el correo con una actualización condicional (`QUEUED`/`FAILED` → `SENDING`), así que un trabajo repetido no envía dos veces; un `SENT` no se vuelve a enviar. Queda un caso "al menos una vez" (el proceso muere tras entregar al SMTP y antes de marcar `SENT`): se reenvía con el mismo `Message-ID` (`<id>@mail.drinksonchain.local`).
+- **Idempotencia**: `idempotency_key` única (p. ej. `invitation:<id>:v1`): encolar dos veces con la misma clave devuelve el mismo correo. En el envío, el procesador reclama el correo con una actualización condicional (`QUEUED`/`FAILED` → `SENDING`), así que un trabajo repetido no envía dos veces; un `SENT` no se vuelve a enviar. Queda un caso "al menos una vez" (el proceso muere tras entregar al SMTP y antes de marcar `SENT`): se reenvía con el mismo `Message-ID` (`<id>@<dominio>`, ver `MAIL_MESSAGE_ID_DOMAIN`: depende solo del id del correo y de la configuración, no del SMTP que lo entrega).
 - **Estados** (`email_messages.status`): `QUEUED → SENDING → SENT`, o `FAILED` con `last_error` si el SMTP falla (BullMQ reintenta con espera exponencial, `JOB_ATTEMPTS`). `attempts` cuenta los envíos intentados. Un `SENDING` de más de 5 minutos se considera abandonado y se puede volver a reclamar.
 - **Privacidad**: al enviarse se borran las variables (pueden llevar enlaces con token); queda el asunto.
 - **Plantillas** (`src/modules/mail/templates/`): Handlebars en modo estricto — una variable que falta es un error —, sin helpers ni parciales, HTML escapado, variables planas (texto, número, sí/no) y asunto sin saltos de línea (inyección de cabeceras). Texto plano + HTML con el marco de la marca (papel `#fdfcf5`, tinta, un solo oro, serif), en español. Hoy: `prueba`. Las de la Ola 1 (contrato O1 §10) se añaden a `MAIL_TEMPLATES`.
@@ -24,6 +24,21 @@ flowchart LR
 | `SMTP_SECURE` | `false` | `true` = TLS directo (465); `false` = STARTTLS si se ofrece |
 | `SMTP_USER` / `SMTP_PASSWORD` | vacíos | Autenticación SMTP (Mailpit acepta cualquiera) |
 | `MAIL_FROM` / `MAIL_REPLY_TO` | `Drinks on Chain <no-reply@drinksonchain.local>` | Remitente y respuesta |
+| `MAIL_CAPTURE_DOMAINS` | vacío (`test,example,invalid,localhost` en `deploy/dev/compose.yml`) | Sufijos de dominio separados por comas cuyos destinatarios van al SMTP de captura. Vacío = sin captura |
+| `MAIL_CAPTURE_SMTP_HOST` / `MAIL_CAPTURE_SMTP_PORT` | — / `1025` (`mailpit:1025` en compose) | SMTP de captura, sin TLS ni autenticación (Mailpit). El host es obligatorio si hay sufijos: sin él, el worker no arranca |
+| `MAIL_MESSAGE_ID_DOMAIN` | el dominio de la dirección de `MAIL_FROM` (si no se puede sacar, `mail.drinksonchain.local`) | Dominio del `Message-ID` (`<id>@dominio`) |
+
+### Correo real con Resend
+
+El SMTP principal pasa a Resend con estas variables en el `.env` del servidor (la clave, solo ahí; nunca en el repositorio ni en el chat):
+
+| Variable | Valor |
+|---|---|
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` | `smtp.resend.com` / `465` / `true` (TLS directo) |
+| `SMTP_USER` / `SMTP_PASSWORD` | `resend` / la clave de API de Resend |
+| `MAIL_FROM` | Una dirección de un dominio **verificado** en Resend (p. ej. `Drinks on Chain <no-reply@<dominio verificado>>`); si no, Resend rechaza el envío. El `Message-ID` toma ese dominio salvo que se fije `MAIL_MESSAGE_ID_DOMAIN` |
+
+**Captura de los dominios de prueba.** La semilla de demo y las e2e usan direcciones `.test` (`admin@altos.test`) y leen los correos en Mailpit; enviadas a Resend rebotarían (y dañan la reputación del dominio). Con `MAIL_CAPTURE_DOMAINS` el worker enruta por el dominio del destinatario: si termina en uno de los sufijos — sin mayúsculas y por etiqueta completa: `altos.test` coincide con `test`, `contest.com` no — sale por el SMTP de captura (Mailpit); si no, por el principal. `deploy/dev/compose.yml` ya captura `test,example,invalid,localhost` en `mailpit:1025`, así que con el principal en Mailpit (lo de hoy) nada cambia, y al pasar a Resend la demo y las e2e H1/H2 siguen funcionando. La comprobación del transporte mira los dos SMTP y el cierre cierra ambos.
 
 ## Archivos (OPS-06, SE-04)
 
@@ -76,6 +91,6 @@ La API y el worker escriben **JSON de una línea** (`src/shared/logging/json-log
 
 ## Pruebas
 
-- Correo: `src/modules/mail/__tests__/mail.spec.ts` y `test/mail.e2e-spec.ts` (encola, el worker envía, se lee en Mailpit; en la CI con el servicio `axllent/mailpit`).
+- Correo: `src/modules/mail/__tests__/mail.spec.ts`, `src/modules/mail/__tests__/mail.transport.spec.ts` (enrutado por dominio y `Message-ID`) y `test/mail.e2e-spec.ts` (encola, el worker envía por el SMTP de captura con el principal inalcanzable, se lee en Mailpit; en la CI con el servicio `axllent/mailpit`).
 - Archivos: `src/shared/storage/__tests__/`, `src/modules/uploads/__tests__/` y `test/uploads.e2e-spec.ts` (driver local y, con `S3_E2E=true`, MinIO; en la CI con un contenedor MinIO).
 - Salud, Swagger y logs: `src/modules/health/__tests__/`, `src/config/__tests__/swagger.config.spec.ts`, `src/shared/logging/__tests__/`.

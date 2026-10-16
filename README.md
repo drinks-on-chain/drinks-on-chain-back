@@ -195,6 +195,7 @@ Variables nuevas de la Ola 0 · 0.7–0.9 (todas con valores por defecto de desa
 | `STORAGE_SIGNED_URL_TTL_SECONDS` | api | Vida de las URL firmadas (900 s) |
 | `STORAGE_LOCAL_PATH`, `STORAGE_BASE_URL`, `STORAGE_SIGNING_SECRET` | api | Driver local: carpeta, origen público de la API y secreto de las URL firmadas |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `MAIL_REPLY_TO` | worker | Correo; por defecto Mailpit en `localhost:1025` |
+| `MAIL_CAPTURE_DOMAINS`, `MAIL_CAPTURE_SMTP_HOST`, `MAIL_CAPTURE_SMTP_PORT`, `MAIL_MESSAGE_ID_DOMAIN` | worker | Opcionales: destinatarios de dominios de prueba (`.test`…) a un SMTP de captura (Mailpit) aunque el principal sea Resend, y dominio del `Message-ID` (por defecto, el de `MAIL_FROM`). Ver [correo y archivos](docs/arquitectura/correo-y-archivos.md#correo-real-con-resend) |
 | `LOG_FORMAT` | api, worker | `json` (por defecto) o `text` |
 | `SWAGGER_ENABLED` | api | Sin definir: activo fuera de producción, apagado en producción |
 
