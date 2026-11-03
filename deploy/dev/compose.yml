@@ -60,6 +60,10 @@ services:
       S3_FORCE_PATH_STYLE: 'true'
       # Cadena (Ola 3, contrato O3 §2.1): todas opcionales; vacías = cadena
       # deshabilitada. Los secretos (CHAIN_SECRET_*, semillas) solo van al worker
+      # Anclaje del expediente (docs/arquitectura/anclaje.md): en desarrollo,
+      # SIMULATED (confirmado sin red) mientras la cadena siga deshabilitada.
+      # Al activar la cadena: ANCHOR_LEDGER=STELLAR en ~/doc-dev/.env
+      ANCHOR_LEDGER: ${ANCHOR_LEDGER:-SIMULATED}
       STELLAR_NETWORK: ${STELLAR_NETWORK:-TESTNET}
       STELLAR_NETWORK_PASSPHRASE: ${STELLAR_NETWORK_PASSPHRASE:-}
       STELLAR_RPC_URL: ${STELLAR_RPC_URL:-}
@@ -233,6 +237,10 @@ services:
       LOG_FORMAT: ${LOG_FORMAT:-json}
       # Cadena (Ola 3, contrato O3 §2.1): todas opcionales; vacías = cadena
       # deshabilitada. Los secretos (CHAIN_SECRET_*, semillas) solo van al worker
+      # Anclaje del expediente (docs/arquitectura/anclaje.md): en desarrollo,
+      # SIMULATED (confirmado sin red) mientras la cadena siga deshabilitada.
+      # Al activar la cadena: ANCHOR_LEDGER=STELLAR en ~/doc-dev/.env
+      ANCHOR_LEDGER: ${ANCHOR_LEDGER:-SIMULATED}
       STELLAR_NETWORK: ${STELLAR_NETWORK:-TESTNET}
       STELLAR_NETWORK_PASSPHRASE: ${STELLAR_NETWORK_PASSPHRASE:-}
       STELLAR_RPC_URL: ${STELLAR_RPC_URL:-}

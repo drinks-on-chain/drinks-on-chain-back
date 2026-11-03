@@ -10,6 +10,7 @@ El anclaje de la huella del expediente (A-22) pasa a ser un **puerto**, `Dossier
 
 - Variable opcional `ANCHOR_LEDGER` (api y worker): `STELLAR` (por defecto, sin cambios) o `SIMULATED`. Con `SIMULATED` el expediente cerrado se da por anclado **sin salir a ninguna red**, con los mismos efectos que el anclaje real (lote `ANCHORED`, `DOSSIER_ANCHORED` en la línea de tiempo con el texto «simulación: sin red», bitácora con `simulated: true`, colección canjeable, `lot.anchored`). Se guarda en red `LOCAL` con una cuenta de anclaje simulada fija y sin enlace al explorador. Se rechaza con `STELLAR_NETWORK=PUBLIC`.
 - Con `SIMULATED` y la cadena deshabilitada, el worker lanza al arrancar el relleno de anclajes (`chain.anchor.backfill`).
+- `deploy/dev/compose.yml` pasa `ANCHOR_LEDGER` a la api y al worker, con `SIMULATED` por defecto en el entorno de desarrollo; al activar la cadena, `ANCHOR_LEDGER=STELLAR` en `~/doc-dev/.env`.
 
 ### Cambios de comportamiento
 
