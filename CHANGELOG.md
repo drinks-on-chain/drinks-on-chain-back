@@ -2,6 +2,10 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Dependencias con avisos de seguridad
+
+- `joi` 17.13.9 y `nodemailer` 10.1.4 o superior; `pnpm.overrides` para las transitivas: `multer` ≥ 2.5.0 (Nest), `body-parser` ≥ 2.4.0 y `qs` ≥ 6.16.1 (Express), `follow-redirects` ≥ 1.16.2 (axios del SDK de Stellar) y `js-yaml` ≥ 5.4.1 (Swagger). La auditoría de la CI (`pnpm audit --prod --audit-level high`) vuelve a pasar.
+
 ## Sin publicar · Anclaje del expediente detrás de un puerto (y simulado)
 
 El anclaje de la huella del expediente (A-22) pasa a ser un **puerto**, `DossierAnchorLedger` (`src/modules/chain/anchor/dossier-anchor.port.ts`, token `DOSSIER_ANCHOR_LEDGER`), con dos implementaciones. Detalle en [anclaje del expediente](docs/arquitectura/anclaje.md).
