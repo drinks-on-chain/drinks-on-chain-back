@@ -16,6 +16,7 @@ import {
   type CollectionRedeemablePayload,
 } from '@modules/tokenization/tokenization.events';
 import type { ChainAlertsWriter } from '../alerts/chain-alerts.writer';
+import { isSimulatedAnchor } from './simulated-anchor';
 
 type Db = Prisma.TransactionClient;
 
@@ -128,6 +129,9 @@ export async function applyAnchorConfirmed(
     return 'MISMATCH';
   }
 
+  // Anclaje simulado (`ANCHOR_LEDGER=SIMULATED`): mismos efectos, marcado como tal
+  const simulated = isSimulatedAnchor(anchor);
+
   // 1. Anclaje verificado y lote `CERTIFIED → ANCHORED`
   await db.dossierAnchor.update({
     where: { id: anchor.id },
@@ -151,8 +155,11 @@ export async function applyAnchorConfirmed(
     occurredAt: anchoredAt,
     stage,
     actorMembershipId: null,
-    summary: 'Huella del expediente anclada en la red Stellar',
+    summary: simulated
+      ? 'Huella del expediente anclada (simulación: sin red)'
+      : 'Huella del expediente anclada en la red Stellar',
     data: {
+      simulated,
       network: anchor.network,
       account: anchor.account,
       memoHashHex: anchor.memoHashHex,
@@ -180,6 +187,7 @@ export async function applyAnchorConfirmed(
     before: { stage: lot.stage },
     after: {
       stage,
+      simulated,
       network: anchor.network,
       account: anchor.account,
       memoHashHex: anchor.memoHashHex,

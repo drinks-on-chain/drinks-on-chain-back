@@ -1,4 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import {
+  SIMULATED_ANCHOR_ACCOUNT,
+  isSimulatedAnchor,
+} from '@modules/chain/anchor/simulated-anchor';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
 import type Redis from 'ioredis';
@@ -227,17 +231,20 @@ export class PublicPassportService {
     });
     if (!lot) throw await this.miss(key, ip);
     const chain = chainSettingsFromConfig(this.config);
-    const official = await this.prisma.chainAccount.findFirst({
-      where: {
-        role: 'ANCHOR',
-        network: chain.network,
-        address: { not: null },
-      },
-      select: { address: true },
-    });
     const closed = lot.dossier?.status === 'CLOSED' && !!lot.dossier.hash;
     const hash = closed ? (lot.dossier?.hash ?? null) : null;
     const anchorRow = closed ? (lot.dossier?.anchor ?? null) : null;
+    // Cuenta de anclaje oficial: la de la red; con el anclaje simulado, la fija de la simulación
+    const official = isSimulatedAnchor(anchorRow)
+      ? { address: SIMULATED_ANCHOR_ACCOUNT }
+      : await this.prisma.chainAccount.findFirst({
+          where: {
+            role: 'ANCHOR',
+            network: chain.network,
+            address: { not: null },
+          },
+          select: { address: true },
+        });
     const anchor = toPublicDossierAnchor(anchorRow, chain.explorerBaseUrl);
     const base = (this.config.get<string>('API_PUBLIC_URL') ?? '')
       .trim()

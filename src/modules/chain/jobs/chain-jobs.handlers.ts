@@ -46,7 +46,10 @@ import {
   type ChainTxJobData,
   type WineryChainIdentityReadyPayload,
 } from '../chain.events';
-import { DossierAnchorService } from '../anchor/dossier-anchor.service';
+import {
+  DOSSIER_ANCHOR_LEDGER,
+  type DossierAnchorLedger,
+} from '../anchor/dossier-anchor.port';
 import { ChainJobsQueue } from './chain-jobs.queue';
 import { ChainTxSweeper } from './chain-tx.sweeper';
 import { ChainIndexer } from './indexer/chain-indexer.service';
@@ -263,7 +266,8 @@ export class ChainIdentityBackfillHandler implements JobHandler {
 @HandlesJob(QUEUE_CHAIN, CHAIN_ANCHOR_BACKFILL_JOB)
 export class ChainAnchorBackfillHandler implements JobHandler {
   constructor(
-    private readonly anchors: DossierAnchorService,
+    @Inject(DOSSIER_ANCHOR_LEDGER)
+    private readonly anchors: DossierAnchorLedger,
     private readonly jobs: ChainJobsQueue,
   ) {}
 

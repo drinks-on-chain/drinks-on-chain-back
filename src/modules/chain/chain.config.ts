@@ -130,6 +130,13 @@ const optionalUrl = () =>
  * (`env.validation.ts`) y el worker (`worker.config.ts`).
  */
 export const chainEnvValidationSchema = {
+  // Anclaje del expediente (puerto DOSSIER_ANCHOR_LEDGER): STELLAR (por
+  // defecto) o SIMULATED (sin red, para probar el recorrido completo)
+  ANCHOR_LEDGER: Joi.string()
+    .empty('')
+    .uppercase()
+    .valid('STELLAR', 'SIMULATED')
+    .optional(),
   // Vacía (como la pasa docker compose sin valor) = sin definir
   STELLAR_NETWORK: Joi.string()
     .empty('')
@@ -266,6 +273,15 @@ export function assertChainEnvCoherent<T extends Record<string, unknown>>(
     return helpers.message({
       custom:
         'CHAIN_CUSTODY_DRIVER=ENV no se admite con STELLAR_NETWORK=PUBLIC: las claves en variables del entorno son solo para testnet y la red local',
+    });
+  }
+  if (
+    String(value.ANCHOR_LEDGER ?? '').toUpperCase() === 'SIMULATED' &&
+    value.STELLAR_NETWORK === 'PUBLIC'
+  ) {
+    return helpers.message({
+      custom:
+        'ANCHOR_LEDGER=SIMULATED no se admite con STELLAR_NETWORK=PUBLIC: en la red principal el anclaje siempre es real',
     });
   }
   return value;

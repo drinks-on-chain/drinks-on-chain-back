@@ -3,29 +3,26 @@ import type { Prisma } from '@prisma/client';
 import { PrismaService } from '@shared/prisma/prisma.service';
 import { CHAIN_SETTINGS, type ChainSettings } from '../chain.config';
 import { intentKeys } from '../chain.constants';
+import { ChainIntentsService } from '../tx/chain-intents.service';
 import {
-  ChainIntentsService,
-  type ChainIntentInput,
-} from '../tx/chain-intents.service';
+  ANCHOR_BACKFILL_BATCH,
+  type AnchorRequestedBy,
+  type AnchorRequestResult,
+  type DossierAnchorLedger,
+} from './dossier-anchor.port';
+import {
+  SIMULATED_ANCHOR_ACCOUNT,
+  isSimulatedAnchor,
+} from './simulated-anchor';
 
-export type AnchorRequestResult =
-  /** Intención `ANCHOR_DOSSIER` registrada. */
-  | 'REQUESTED'
-  /** Ya había una intención para ese expediente. */
-  | 'IN_PROGRESS'
-  | 'ALREADY_ANCHORED'
-  /** El expediente no está cerrado (o no existe). */
-  | 'NOT_CLOSED'
-  /** La cuenta de anclaje aún no está registrada: lo recoge el relleno. */
-  | 'NO_ANCHOR_ACCOUNT'
-  | 'DISABLED';
+// Se mantienen aquí por compatibilidad con quien los importaba de este archivo
+export { ANCHOR_BACKFILL_BATCH, type AnchorRequestResult };
 
-type RequestedBy = NonNullable<ChainIntentInput['requestedBy']>;
-
-const SYSTEM: RequestedBy = { userId: null, fullName: null, source: 'WORKER' };
-
-/** Lotes por pasada del relleno (cada anclaje va en su propia transacción). */
-export const ANCHOR_BACKFILL_BATCH = 25;
+const SYSTEM: AnchorRequestedBy = {
+  userId: null,
+  fullName: null,
+  source: 'WORKER',
+};
 
 /**
  * Anclaje del expediente (contrato O3 §7.1, CHN-10): registra la intención
@@ -35,7 +32,8 @@ export const ANCHOR_BACKFILL_BATCH = 25;
  * `lot.certified` y el relleno `chain.anchor.backfill`.
  */
 @Injectable()
-export class DossierAnchorService {
+export class DossierAnchorService implements DossierAnchorLedger {
+  readonly kind = 'STELLAR' as const;
   private readonly logger = new Logger(DossierAnchorService.name);
 
   constructor(
@@ -48,7 +46,7 @@ export class DossierAnchorService {
   async request(
     db: Prisma.TransactionClient,
     lotId: string,
-    requestedBy: RequestedBy = SYSTEM,
+    requestedBy: AnchorRequestedBy = SYSTEM,
   ): Promise<AnchorRequestResult> {
     if (!this.settings.enabled) return 'DISABLED';
     const { network } = this.settings;
@@ -60,7 +58,11 @@ export class DossierAnchorService {
     if (!dossier || dossier.status !== 'CLOSED' || !dossier.hash) {
       return 'NOT_CLOSED';
     }
-    if (dossier.anchor?.status === 'ANCHORED') return 'ALREADY_ANCHORED';
+    // Un anclaje simulado (`ANCHOR_LEDGER=SIMULATED`) no cuenta: se ancla en la red
+    const simulated = isSimulatedAnchor(dossier.anchor);
+    if (dossier.anchor?.status === 'ANCHORED' && !simulated) {
+      return 'ALREADY_ANCHORED';
+    }
     const account = await db.chainAccount.findFirst({
       where: { role: 'ANCHOR', network, address: { not: null } },
       select: { address: true },
@@ -86,6 +88,22 @@ export class DossierAnchorService {
           transactionId: transaction.id,
         },
       });
+    } else if (simulated) {
+      // Sustituye el anclaje simulado por el real: vuelve a pendiente en esta red
+      await db.dossierAnchor.update({
+        where: { id: dossier.anchor.id },
+        data: {
+          status: 'PENDING',
+          network,
+          account: account.address,
+          memoHashHex: dossier.hash,
+          txHash: null,
+          ledger: null,
+          anchoredAt: null,
+          verifiedAt: null,
+          transactionId: transaction.id,
+        },
+      });
     } else if (dossier.anchor.transactionId !== transaction.id) {
       await db.dossierAnchor.update({
         where: { id: dossier.anchor.id },
@@ -105,7 +123,15 @@ export class DossierAnchorService {
   ): Promise<{ requested: number; more: boolean }> {
     if (!this.settings.enabled) return { requested: 0, more: false };
     const pending = await this.prisma.lotDossier.findMany({
-      where: { status: 'CLOSED', hash: { not: null }, anchor: null },
+      where: {
+        status: 'CLOSED',
+        hash: { not: null },
+        // Sin anclaje, o con uno simulado que hay que anclar de verdad
+        OR: [
+          { anchor: null },
+          { anchor: { account: SIMULATED_ANCHOR_ACCOUNT } },
+        ],
+      },
       orderBy: { closedAt: 'asc' },
       select: { lotId: true },
       take: limit + 1,

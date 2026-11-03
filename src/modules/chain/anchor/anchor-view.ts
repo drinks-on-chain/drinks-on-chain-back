@@ -10,6 +10,7 @@ import type {
 } from '../dto/chain-common.dto';
 import { explorerTxUrl, memoHashFromHex } from '../explorer';
 import { toChainTxRef } from '../tx/chain-tx.mapper';
+import { isSimulatedAnchor } from './simulated-anchor';
 
 export type AnchorRow = DossierAnchor & {
   transaction: ChainTransaction | null;
@@ -33,6 +34,8 @@ export function toDossierAnchor(
 ): DossierAnchorDto | null {
   if (!row?.transaction) return null;
   const memo = memoHashFromHex(row.memoHashHex);
+  // Un anclaje simulado no está en ninguna red: sin enlace al explorador
+  if (isSimulatedAnchor(row)) explorerBaseUrl = null;
   return {
     status: anchorStatus(row),
     network: row.network as ChainNetwork,
@@ -72,6 +75,7 @@ export function toPublicDossierAnchor(
 ): PublicDossierAnchorDto | null {
   if (!row) return null;
   const memo = memoHashFromHex(row.memoHashHex);
+  if (isSimulatedAnchor(row)) explorerBaseUrl = null;
   const anchored = row.status === 'ANCHORED' && row.verifiedAt !== null;
   return {
     status: anchored ? 'ANCHORED' : 'PENDING',

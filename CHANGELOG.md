@@ -2,6 +2,20 @@
 
 Versiones del backend de Drinks on Chain. El contrato de la API es `openapi.json`; los cambios incompatibles llevan la etiqueta `breaking-change` en su PR (`.github/workflows/openapi.yml`).
 
+## Sin publicar · Anclaje del expediente detrás de un puerto (y simulado)
+
+El anclaje de la huella del expediente (A-22) pasa a ser un **puerto**, `DossierAnchorLedger` (`src/modules/chain/anchor/dossier-anchor.port.ts`, token `DOSSIER_ANCHOR_LEDGER`), con dos implementaciones. Detalle en [anclaje del expediente](docs/arquitectura/anclaje.md).
+
+### Añadido
+
+- Variable opcional `ANCHOR_LEDGER` (api y worker): `STELLAR` (por defecto, sin cambios) o `SIMULATED`. Con `SIMULATED` el expediente cerrado se da por anclado **sin salir a ninguna red**, con los mismos efectos que el anclaje real (lote `ANCHORED`, `DOSSIER_ANCHORED` en la línea de tiempo con el texto «simulación: sin red», bitácora con `simulated: true`, colección canjeable, `lot.anchored`). Se guarda en red `LOCAL` con una cuenta de anclaje simulada fija y sin enlace al explorador. Se rechaza con `STELLAR_NETWORK=PUBLIC`.
+- Con `SIMULATED` y la cadena deshabilitada, el worker lanza al arrancar el relleno de anclajes (`chain.anchor.backfill`).
+
+### Cambios de comportamiento
+
+- El anclaje real (`DossierAnchorService`) trata un anclaje simulado como inexistente: lo vuelve a anclar en la red (la fila pasa a `PENDING` con la cuenta y la red reales) y el relleno lo incluye.
+- La verificación pública toma como cuenta oficial la simulada cuando el anclaje es simulado.
+
 ## Sin publicar · Correo real: captura de los dominios de prueba
 
 Preparación del envío real con Resend (SMTP). Detalle en [correo y archivos](docs/arquitectura/correo-y-archivos.md#correo-real-con-resend).

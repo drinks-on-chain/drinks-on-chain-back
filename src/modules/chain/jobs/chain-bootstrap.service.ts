@@ -4,6 +4,8 @@ import {
   Logger,
   OnApplicationBootstrap,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { anchorLedgerFromConfig } from '../anchor/dossier-anchor.port';
 import { CHAIN_SETTINGS, type ChainSettings } from '../chain.config';
 import { ChainJobsQueue } from './chain-jobs.queue';
 import { PlatformAccountsSync } from './platform-accounts.sync';
@@ -27,6 +29,7 @@ export class ChainBootstrap implements OnApplicationBootstrap {
     private readonly accounts: PlatformAccountsSync,
     private readonly jobs: ChainJobsQueue,
     @Inject(CHAIN_SETTINGS) private readonly settings: ChainSettings,
+    private readonly config: ConfigService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -36,7 +39,16 @@ export class ChainBootstrap implements OnApplicationBootstrap {
         ? `Cadena habilitada: red ${network}, custodio ${custodyDriver}, emisión ${mintEnabled ? 'activa' : 'apagada (CHAIN_MINT_ENABLED=false)'}`
         : 'Cadena deshabilitada: faltan CHAIN_CUSTODY_DRIVER o STELLAR_RPC_URL',
     );
-    if (enabled) this.startup = this.start();
+    if (enabled) {
+      this.startup = this.start();
+    } else if (anchorLedgerFromConfig(this.config) === 'SIMULATED') {
+      // Sin red, pero con el anclaje simulado: los expedientes ya cerrados
+      // también quedan anclados (simulación)
+      this.logger.log(
+        'Anclaje del expediente SIMULADO (ANCHOR_LEDGER=SIMULATED): nada sale a la red',
+      );
+      this.startup = this.jobs.anchorBackfill();
+    }
   }
 
   /** Termina cuando acabó el arranque (lo esperan las pruebas). */
